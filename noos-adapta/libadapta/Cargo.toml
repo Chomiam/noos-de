@@ -1,0 +1,33 @@
+[package]
+name = "libadapta"
+version = "0.5.0"
+edition = "2021"
+description = "Rust bindings for libAdapta (libadwaita with theme support), derived from libadwaita-rs 0.9.2"
+license = "MIT"
+
+[lib]
+name = "libadapta"
+
+[features]
+gtk_v4_2 = ["gtk/v4_2"]
+gtk_v4_6 = ["gtk_v4_2", "gtk/v4_6"]
+gtk_v4_10 = ["gtk_v4_6", "gtk/v4_10"]
+gtk_v4_18 = ["gtk_v4_10", "gtk/v4_18"]
+v1_1 = ["ffi/v1_1"]
+v1_2 = ["v1_1", "ffi/v1_2"]
+v1_3 = ["v1_2", "ffi/v1_3"]
+v1_4 = ["v1_3", "ffi/v1_4"]
+v1_5 = ["v1_4", "ffi/v1_5"]
+
+[dependencies]
+libc = "0.2"
+glib = "0.22"
+gio = "0.22"
+pango = "0.22"
+gdk = { package = "gdk4", version = "0.11" }
+gtk = { package = "gtk4", version = "0.11" }
+ffi = { package = "libadapta-sys", path = "../libadapta-sys" }
+
+# Les éléments libadwaita > 1.5 restent dans le code mais ne sont jamais compilés.
+[lints.rust]
+unexpected_cfgs = "allow"

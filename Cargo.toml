@@ -1,0 +1,52 @@
+[workspace]
+resolver = "3"
+members = [
+    "noos-adapta/libadapta-sys",
+    "noos-adapta/libadapta",
+    "noos-core",
+    "noos-theme",
+    "noos-comp",
+    "noos-shell",
+    "noos-file",
+    "noos-settings",
+    "noos-pkg",
+    "noos-software",
+    "noos-snip",
+    "noos-term",
+    "noos-keys",
+    "noos-login",
+    "noos-installer",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+authors = ["Axel Valens"]
+
+[workspace.dependencies]
+noos-core = { path = "noos-core" }
+noos-theme = { path = "noos-theme" }
+noos-pkg = { path = "noos-pkg" }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "1"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+async-channel = "2"
+
+gtk = { package = "gtk4", version = "0.11", features = ["v4_18"] }
+# libAdapta = libadwaita 1.5 + support des thèmes (bindings dans noos-adapta/)
+adap = { package = "libadapta", path = "noos-adapta/libadapta", features = ["v1_5"] }
+gtk4-layer-shell = "0.8"
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+lto = "thin"

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Bouton Démarrer NOOS : le symbole infini du logo, en dégradé saphir → lavande → rose -->
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#89b4fa"/>
+      <stop offset="50%" stop-color="#cba6f7"/>
+      <stop offset="100%" stop-color="#f38ba8"/>
+    </linearGradient>
+  </defs>
+  <path d="M 32,32 C 40,21 53,21 53,32 C 53,43 40,43 32,32 C 24,21 11,21 11,32 C 11,43 24,43 32,32 Z"
+        fill="none" stroke="url(#g)" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

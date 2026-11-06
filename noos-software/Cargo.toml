@@ -1,0 +1,15 @@
+[package]
+name = "noos-software"
+description = "NOOS Logiciels : applications Flatpak et paquets de la distribution, mises à jour et dépôts"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+noos-pkg.workspace = true
+noos-theme.workspace = true
+gtk.workspace = true
+adap.workspace = true
+async-channel.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true

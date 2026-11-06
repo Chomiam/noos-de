@@ -1,0 +1,42 @@
+[options]
+work_mode = "sys"
+library = "Adap"
+version = "1"
+girs_directories = ["../gir-files"]
+min_cfg_version = "1"
+external_libraries = [
+   "GLib",
+   "GObject",
+   "Gdk",
+   "Gio",
+   "Gtk",
+   "Pango",
+]
+
+ignore = [
+   "Adap.VERSION_S", 
+   "Adap.MAJOR_VERSION", 
+   "Adap.MICRO_VERSION", 
+   "Adap.MINOR_VERSION"
+]
+
+[[object]]
+name = "Adap.ViewStackPages"
+status = "generate"
+   [[object.function]]
+   name = "get_type"
+   version = "1.4"
+
+[[object]]
+name = "Adap.AboutDialog"
+status = "generate"
+   [[object.function]]
+   name = "new_from_appdata"
+   cfg_condition = "not(target_env = \"msvc\")"
+
+[[object]]
+name = "Adap.AboutWindow"
+status = "generate"
+   [[object.function]]
+   name = "new_from_appdata"
+   cfg_condition = "not(target_env = \"msvc\")"

@@ -1,0 +1,16 @@
+[package]
+name = "noos-installer"
+description = "Installateur de NOOS (Fedora 45, installation réseau) en GTK4 + libAdapta"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+noos-core.workspace = true
+noos-theme.workspace = true
+gtk.workspace = true
+adap.workspace = true
+async-channel.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true

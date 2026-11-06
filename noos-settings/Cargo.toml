@@ -1,0 +1,15 @@
+[package]
+name = "noos-settings"
+description = "Paramètres NOOS : thème, barre des tâches, écrans (HDR/VRR), jeux, entrées"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+noos-core.workspace = true
+noos-theme.workspace = true
+gtk.workspace = true
+adap.workspace = true
+async-channel.workspace = true
+noos-pkg.workspace = true
+anyhow.workspace = true

@@ -1,0 +1,4 @@
+# libAdapta est compilé localement (scripts/build-libadapta.sh) dans target/libadapta-build :
+# on pointe pkg-config sur le .pc « uninstalled » généré par meson.
+[env]
+PKG_CONFIG_PATH = { value = "target/libadapta-build/meson-uninstalled", relative = true }

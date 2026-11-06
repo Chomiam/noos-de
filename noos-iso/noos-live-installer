@@ -1,0 +1,33 @@
+#!/bin/bash
+# Système live NOOS : installateur plein écran (root, tty1). Relancé s'il se ferme.
+PREFIX=/opt/noos
+export PATH="$PREFIX/bin:$PATH"
+export LD_LIBRARY_PATH="$PREFIX/lib"
+export NOOS_DATA_DIR="$PREFIX/share/noos"
+export XDG_DATA_DIRS="$PREFIX/share:/usr/local/share:/usr/share"
+export XDG_SESSION_TYPE=wayland
+# Pas d'accélération 3D (machine virtuelle sans virgl, pilote absent) : rendu GTK
+# logiciel, plus fiable que l'émulation OpenGL.
+if ! ls /dev/dri/renderD* >/dev/null 2>&1; then
+    export GSK_RENDERER=cairo
+fi
+export RUST_LOG="${RUST_LOG:-info,smithay=warn}"
+. /etc/locale.conf 2>/dev/null && export LANG
+# Dépannage : entrée GRUB « journal série » (noos.serial) → journaux aussi sur ttyS0.
+if grep -qw noos.serial /proc/cmdline && [ -w /dev/ttyS0 ]; then
+    exec > >(tee -a /dev/ttyS0) 2> >(tee -a /tmp/noos-live.log /dev/ttyS0 >&2)
+else
+    exec 2>>/tmp/noos-live.log
+fi
+while true; do
+    dbus-run-session -- noos-comp --drm --kiosk noos-installer
+    echo
+    echo "L'installateur s'est fermé (journal : /tmp/noos-live.log, /tmp/noos-install.log)."
+    printf "Entrée : relancer · s : shell · r : redémarrer · a : arrêter > "
+    read -r answer
+    case "$answer" in
+        s|S) NOOS_LIVE_SHELL=1 exec /bin/bash -l ;;
+        r|R) systemctl reboot ;;
+        a|A) systemctl poweroff ;;
+    esac
+done

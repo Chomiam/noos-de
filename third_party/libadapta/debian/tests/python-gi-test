@@ -1,0 +1,10 @@
+#!/usr/bin/python3
+#
+# Make sure gobject introspection works
+
+import gi
+
+gi.require_version('Adap', '1')
+from gi.repository import Adap
+
+assert 'ActionRow' in dir(Adap)

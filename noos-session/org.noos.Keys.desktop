@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Porte-clés
+Comment=Mots de passe enregistrés, trousseaux et clés SSH
+Exec=noos-keys
+Icon=dialog-password
+Terminal=false
+Type=Application
+Categories=GTK;Utility;Security;
+Keywords=mot de passe;password;trousseau;keyring;secret;ssh;clé;
+StartupWMClass=org.noos.Keys

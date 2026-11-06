@@ -1,0 +1,17 @@
+[package]
+name = "noos-login"
+description = "Écran de connexion NOOS (greeter greetd) façon Windows 11, en GTK4 + libAdapta"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+noos-core.workspace = true
+noos-theme.workspace = true
+gtk.workspace = true
+adap.workspace = true
+async-channel.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+anyhow.workspace = true

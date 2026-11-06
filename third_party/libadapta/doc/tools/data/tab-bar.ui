@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.0"/>
+  <requires lib="libadapta" version="1.0"/>
+  <object class="AdapWindow" id="widget">
+    <property name="title">Tab Bar</property>
+    <property name="default-width">600</property>
+    <property name="default-height">150</property>
+    <property name="content">
+      <object class="AdapToolbarView">
+        <property name="top-bar-style">raised</property>
+        <child type="top">
+          <object class="GtkHeaderBar"/>
+        </child>
+        <child type="top">
+          <object class="AdapTabBar">
+            <property name="view">view</property>
+          </object>
+        </child>
+        <property name="content">
+          <object class="AdapTabView" id="view">
+            <child>
+              <object class="AdapTabPage">
+                <property name="title">Page 1</property>
+                <property name="child">
+                  <object class="AdapBin"/>
+                </property>
+              </object>
+            </child>
+            <child>
+              <object class="AdapTabPage">
+                <property name="title">Page 2</property>
+                <property name="child">
+                  <object class="AdapBin"/>
+                </property>
+              </object>
+            </child>
+            <child>
+              <object class="AdapTabPage">
+                <property name="title">Page 3</property>
+                <property name="child">
+                  <object class="AdapBin"/>
+                </property>
+              </object>
+            </child>
+          </object>
+        </property>
+      </object>
+    </property>
+  </object>
+</interface>

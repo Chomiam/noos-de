@@ -1,0 +1,12 @@
+[package]
+name = "noos-theme"
+description = "Moteur de thème NOOS : palettes, génération d'un thème libAdapta, rechargement à chaud"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+noos-core.workspace = true
+gtk.workspace = true
+adap.workspace = true
+anyhow.workspace = true

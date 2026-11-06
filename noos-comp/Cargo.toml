@@ -1,0 +1,39 @@
+[package]
+name = "noos-comp"
+description = "Compositeur Wayland de NOOS (basé sur Smithay)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+noos-core.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+xcursor = "0.3"
+bitflags = "2"
+png = "0.18"
+libdisplay-info = { version = "0.3", features = ["v0_2"] }
+
+# Smithay épinglé sur un commit précis : l'API bouge vite entre deux versions.
+[dependencies.smithay]
+git = "https://github.com/Smithay/smithay.git"
+rev = "65aa86fa5236e41775c313408102a5d5c2d1e2ca"
+default-features = false
+features = [
+    "backend_winit",
+    "backend_drm",
+    "backend_gbm",
+    "backend_egl",
+    "backend_libinput",
+    "backend_udev",
+    "backend_session_libseat",
+    "desktop",
+    "renderer_gl",
+    "wayland_frontend",
+]
+
+[dependencies.smithay-drm-extras]
+git = "https://github.com/Smithay/smithay.git"
+rev = "65aa86fa5236e41775c313408102a5d5c2d1e2ca"

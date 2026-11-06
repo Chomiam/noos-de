@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!-- Bouclier orange : pare-feu actif mais géré manuellement (lecture seule) -->
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffb43c"/>
+      <stop offset="1" stop-color="#c77a00"/>
+    </linearGradient>
+  </defs>
+  <path d="M64 8 L108 24 V58 C108 88 89 108 64 120 C39 108 20 88 20 58 V24 Z" fill="url(#g)"/>
+  <path d="M64 8 L108 24 V58 C108 88 89 108 64 120 Z" fill="#000" opacity="0.08"/>
+  <path d="M64 40 V72" stroke="#fff" stroke-width="10" stroke-linecap="round"/>
+  <circle cx="64" cy="88" r="6" fill="#fff"/>
+</svg>

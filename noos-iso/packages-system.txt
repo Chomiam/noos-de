@@ -1,0 +1,23 @@
+# Système installé (en plus de packages-common.txt et des bibliothèques détectées).
+@hardware-support
+greetd
+pipewire
+pipewire-pulseaudio
+pipewire-alsa
+pipewire-utils
+wireplumber
+xdg-desktop-portal
+xdg-desktop-portal-gtk
+xdg-desktop-portal-wlr
+xdg-user-dirs
+xdg-utils
+xwayland-satellite
+xorg-x11-server-Xwayland
+grim
+vte291-gtk4
+polkit
+oo7-daemon
+gvfs
+flatpak
+firefox
+bash-completion

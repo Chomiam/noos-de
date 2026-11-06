@@ -1,0 +1,389 @@
+# Greek translation for libadapta.
+# Copyright (C) 2022 libadapta's COPYRIGHT HOLDER
+# This file is distributed under the same license as the libadapta package.
+# Efstathios Iosifidis <eiosifidis@gnome.org>, 2022.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: libadapta main\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/libadapta/issues\n"
+"POT-Creation-Date: 2023-09-27 15:39+0000\n"
+"PO-Revision-Date: 2024-01-06 11:08+0200\n"
+"Last-Translator: Efstathios Iosifidis <eiosifidis@gnome.org>\n"
+"Language-Team: Greek <gnome-el-list@gnome.org>\n"
+"Language: el\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Generator: Poedit 3.4\n"
+
+#: src/adap-about-window.c:206
+msgid "GNU General Public License, version 2 or later"
+msgstr "Γενική δημόσια άδεια GNU, έκδοση 2 ή νεότερη"
+
+#: src/adap-about-window.c:207
+msgid "GNU General Public License, version 3 or later"
+msgstr "Γενική δημόσια άδεια GNU, έκδοση 3 ή νεότερη"
+
+#: src/adap-about-window.c:208
+msgid "GNU Lesser General Public License, version 2.1 or later"
+msgstr "Γενική ελάσσων δημόσια άδεια GNU, έκδοση 2.1 ή νεότερη"
+
+#: src/adap-about-window.c:209
+msgid "GNU Lesser General Public License, version 3 or later"
+msgstr "Γενική ελάσσων δημόσια άδεια GNU, έκδοση 3 ή νεότερη"
+
+#: src/adap-about-window.c:210
+msgid "BSD 2-Clause License"
+msgstr "BSD 2-Άδεια ρήτρας"
+
+#: src/adap-about-window.c:211
+msgid "The MIT License (MIT)"
+msgstr "Η άδεια MIT (MIT)"
+
+#: src/adap-about-window.c:212
+msgid "Artistic License 2.0"
+msgstr "Καλλιτεχνική άδεια 2.0"
+
+#: src/adap-about-window.c:213
+msgid "GNU General Public License, version 2 only"
+msgstr "Γενική δημόσια άδεια GNU, έκδοση 2 μόνο"
+
+#: src/adap-about-window.c:214
+msgid "GNU General Public License, version 3 only"
+msgstr "Γενική δημόσια άδεια GNU, έκδοση 3 μόνο"
+
+#: src/adap-about-window.c:215
+msgid "GNU Lesser General Public License, version 2.1 only"
+msgstr "Γενική ελάσσων δημόσια άδεια GNU, έκδοση 2.1 μόνο"
+
+#: src/adap-about-window.c:216
+msgid "GNU Lesser General Public License, version 3 only"
+msgstr "Γενική ελάσσων δημόσια άδεια GNU, έκδοση 3 μόνο"
+
+#: src/adap-about-window.c:217
+msgid "GNU Affero General Public License, version 3 or later"
+msgstr "Γενική ελάσσων δημόσια άδεια GNU, έκδοση 3 ή νεότερη"
+
+#: src/adap-about-window.c:218
+msgid "GNU Affero General Public License, version 3 only"
+msgstr "Γενική δημόσια άδεια GNU, έκδοση 3 μόνο"
+
+#: src/adap-about-window.c:219
+msgid "BSD 3-Clause License"
+msgstr "BSD 3-Άδεια ρήτρας"
+
+#: src/adap-about-window.c:220
+msgid "Apache License, Version 2.0"
+msgstr "Άδεια Apache, Έκδοση 2.0"
+
+#: src/adap-about-window.c:221
+msgid "Mozilla Public License 2.0"
+msgstr "Δημόσια άδεια Mozilla 2.0"
+
+#: src/adap-about-window.c:537
+msgid "Code by"
+msgstr "Προγραμματίστηκε από"
+
+#: src/adap-about-window.c:538
+msgid "Design by"
+msgstr "Σχεδίαση από"
+
+#: src/adap-about-window.c:539
+msgid "Artwork by"
+msgstr "Γραφικά από"
+
+#: src/adap-about-window.c:540
+msgid "Documentation by"
+msgstr "Τεκμηρίωση από"
+
+#: src/adap-about-window.c:541
+msgid "Translated by"
+msgstr "Μετάφραση από"
+
+#. Translators: this is the license preamble; the string at the end
+#. * contains the name of the license as link text.
+#.
+#: src/adap-about-window.c:570
+#, c-format
+msgid ""
+"This application comes with absolutely no warranty. See the <a "
+"href=\"%s\">%s</a> for details."
+msgstr ""
+"Αυτή η εφαρμογή έρχεται με καμία απολύτως εγγύηση. Δείτε το <a "
+"href=\"%s\">%s</a> για λεπτομέρειες."
+
+#: src/adap-about-window.c:648
+msgid "This Application"
+msgstr "Αυτή η εφαρμογή"
+
+#: src/adap-about-window.c:950
+#, c-format
+msgid "Version %s"
+msgstr "Έκδοση %s"
+
+#: src/adap-about-window.c:976
+msgid "Unable to parse release notes:"
+msgstr "Αδυναμία ανάλυσης σημειώσεων έκδοσης:"
+
+#: src/adap-about-window.c:982
+#, c-format
+msgid "Line: %d, character: %d"
+msgstr "Γραμμή: %d, χαρακτήρας: %d"
+
+#: src/adap-about-window.c:1258
+msgid "Copied to clipboard"
+msgstr "Αντιγράφτηκε στο πρόχειρο"
+
+#: src/adap-about-window.c:1286
+msgid "Unable to save debugging information"
+msgstr "Αδυναμία αποθήκευσης πληροφοριών εντοπισμού σφαλμάτων"
+
+#: src/adap-about-window.c:1291
+msgid "Close"
+msgstr "Κλείσιμο"
+
+#: src/adap-about-window.c:1307
+msgid "Save debugging information"
+msgstr "Αποθήκευση πληροφοριών αποσφαλμάτωσης"
+
+#: src/adap-about-window.ui:5
+msgid "About"
+msgstr "Περί"
+
+#: src/adap-about-window.ui:92
+msgid "_What’s New"
+msgstr "_Τι νέο υπάρχει"
+
+#: src/adap-about-window.ui:108
+msgid "_Details"
+msgstr "_Λεπτομέρειες"
+
+#: src/adap-about-window.ui:124 src/adap-about-window.ui:344
+msgid "_Website"
+msgstr "_Ιστότοπος"
+
+#: src/adap-about-window.ui:148
+msgid "_Support Questions"
+msgstr "Ερωτήσεις _υποστήριξης"
+
+#: src/adap-about-window.ui:165
+msgid "_Report an Issue"
+msgstr "_Αναφορά σφάλματος"
+
+#: src/adap-about-window.ui:181
+msgid "_Troubleshooting"
+msgstr "_Αντιμετώπιση προβλημάτων"
+
+#: src/adap-about-window.ui:201
+msgid "_Credits"
+msgstr "_Μνεία"
+
+#: src/adap-about-window.ui:217
+msgid "_Legal"
+msgstr "_Νομικά"
+
+#: src/adap-about-window.ui:233
+msgid "_Acknowledgements"
+msgstr "_Ευχαριστίες"
+
+#: src/adap-about-window.ui:263
+msgid "What’s New"
+msgstr "Τι νέο υπάρχει"
+
+#: src/adap-about-window.ui:306
+msgid "Details"
+msgstr "Λεπτομέριες"
+
+#: src/adap-about-window.ui:372
+msgid "Troubleshooting"
+msgstr "Αντιμετώπιση προβλημάτων"
+
+#: src/adap-about-window.ui:395
+msgid ""
+"To assist in troubleshooting, you can view your debugging information. "
+"Providing this information to the application developers can help diagnose "
+"any problems you encounter when you report an issue."
+msgstr ""
+"Για να βοηθήσετε στην αντιμετώπιση προβλημάτων, μπορείτε να προβάλετε τις "
+"πληροφορίες εντοπισμού σφαλμάτων. Η παροχή αυτών των πληροφοριών στους "
+"προγραμματιστές της εφαρμογής μπορεί να βοηθήσει στη διάγνωση τυχόν "
+"προβλημάτων που αντιμετωπίζετε όταν αναφέρετε ένα πρόβλημα."
+
+#: src/adap-about-window.ui:406
+msgid "_Debugging Information"
+msgstr "_Πληροφορίες αποσφαλμάτωσης"
+
+#: src/adap-about-window.ui:433
+msgid "Debugging Information"
+msgstr "Πληροφορίες αποσφαλμάτωσης"
+
+#: src/adap-about-window.ui:478
+msgid "_Copy Text"
+msgstr "_Αντιγραφή κειμένου"
+
+#: src/adap-about-window.ui:486
+msgid "_Save as…"
+msgstr "Απο_θήκευση ως…"
+
+#: src/adap-about-window.ui:499
+msgid "Credits"
+msgstr "Συντελεστές"
+
+#: src/adap-about-window.ui:530
+msgid "Legal"
+msgstr "Νομικά"
+
+#: src/adap-about-window.ui:561
+msgid "Acknowledgements"
+msgstr "Ευχαριστίες"
+
+#: src/adap-back-button.c:347 src/adap-back-button.c:445
+#: src/adap-back-button.c:555
+msgid "Back"
+msgstr "Πίσω"
+
+#: src/adap-combo-row.ui:50
+msgid "Search…"
+msgstr "Αναζήτηση…"
+
+#: src/adap-entry-row.ui:97
+msgid "Apply"
+msgstr "Εφαρμογή"
+
+#: src/adap-inspector-page.c:75
+msgid "No Preference"
+msgstr "Καμία προτίμηση"
+
+#: src/adap-inspector-page.c:77
+msgid "Prefer Dark"
+msgstr "Προτίμηση σκοτεινού"
+
+#: src/adap-inspector-page.c:79
+msgid "Prefer Light"
+msgstr "Προτίμηση φωτεινού"
+
+#. Translators: The name of the library, not the stylesheet
+#: src/adap-inspector-page.c:97
+msgid "Adapta"
+msgstr "Adapta"
+
+#: src/adap-inspector-page.ui:10
+msgid "System Appearance"
+msgstr "Εμφάνιση συστήματος"
+
+#: src/adap-inspector-page.ui:11
+msgid ""
+"Override settings for this application. They will be reset upon closing the "
+"inspector."
+msgstr ""
+"Παράκαμψη ρυθμίσεων για αυτήν την εφαρμογή. Θα γίνει επαναφορά με το "
+"κλείσιμο του επιθεωρητή."
+
+#: src/adap-inspector-page.ui:14
+msgid "System Supports Color Schemes"
+msgstr "Το σύστημα υποστηρίζει συνδυασμό χρωμάτων"
+
+#: src/adap-inspector-page.ui:20
+msgid "Preferred Color Scheme"
+msgstr "Προτιμώμενος συνδυασμός χρωμάτων"
+
+#: src/adap-inspector-page.ui:37
+msgid "High Contrast"
+msgstr "Υψηλή Αντίθεση"
+
+#: src/adap-password-entry-row.c:70
+msgid "Hide Password"
+msgstr "Απόκρυψη συνθηματικού"
+
+#: src/adap-password-entry-row.c:74
+msgid "Show Password"
+msgstr "Εμφάνιση συνθηματικού"
+
+#: src/adap-password-entry-row.c:168
+msgid "Caps Lock is on"
+msgstr "Είναι πατημένο το Caps Lock"
+
+#: src/adap-password-entry-row.c:176
+msgid "_Show Password"
+msgstr "_Εμφάνιση συνθηματικού"
+
+#: src/adap-preferences-window.c:259
+msgid "Untitled page"
+msgstr "Σελίδα χωρίς τίτλο"
+
+#: src/adap-preferences-window.ui:8
+msgid "Preferences"
+msgstr "Προτιμήσεις"
+
+#: src/adap-preferences-window.ui:81
+msgid "Search preferences"
+msgstr "Αναζήτηση προτιμήσεων"
+
+#: src/adap-preferences-window.ui:96
+msgid "Search"
+msgstr "Αναζήτηση"
+
+#: src/adap-preferences-window.ui:163
+msgid "No Results Found"
+msgstr "Δε βρέθηκαν αποτελέσματα"
+
+#: src/adap-preferences-window.ui:164 src/adap-tab-overview.ui:111
+msgid "Try a different search."
+msgstr "Δοκιμάστε μια διαφορετική αναζήτηση."
+
+#: src/adap-split-button.c:519 src/adap-split-button.c:1033
+msgid "More Options"
+msgstr "Περισσότερες επιλογές"
+
+#: src/adap-tab-button.ui:7
+msgid "View Open Tabs"
+msgstr "Προβολή ανοικτών καρτελών"
+
+#. Translators: Tab overview title, %u is the number of open tabs
+#: src/adap-tab-overview.c:922
+#, c-format
+msgid "%u Tab"
+msgid_plural "%u Tabs"
+msgstr[0] "%u καρτέλα"
+msgstr[1] "%u καρτέλες"
+
+#: src/adap-tab-overview.ui:21
+msgid "Search Tabs"
+msgstr "Αναζήτηση καρτελών"
+
+#: src/adap-tab-overview.ui:51
+msgid "Search tabs"
+msgstr "Αναζήτηση καρτελών"
+
+#: src/adap-tab-overview.ui:97
+msgid "No Open Tabs"
+msgstr "Καμία ανοικτή καρτέλα"
+
+#: src/adap-tab-overview.ui:110
+msgid "No Tabs Found"
+msgstr "Δε βρέθηκαν καρτέλες"
+
+#: src/adap-tab-overview.ui:131
+msgid "New _Tab"
+msgstr "Νέα _καρτέλα"
+
+#: src/adap-tab-thumbnail.ui:39 src/adap-tab.ui:95
+msgid "Close Tab"
+msgstr "Κλείσιμο καρτέλας"
+
+#~ msgid "_Save"
+#~ msgstr "Απ_οθήκευση"
+
+#~ msgid "_Cancel"
+#~ msgstr "Ακύ_ρωση"
+
+#~ msgid "Hide Text"
+#~ msgstr "Απόκρυψη κειμένου"
+
+#~ msgid "Show Text"
+#~ msgstr "Εμφάνιση κειμένου"
+
+#~ msgid "_Show Text"
+#~ msgstr "_Εμφάνιση κειμένου"

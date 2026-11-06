@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Logiciels
+Comment=Installer des applications (Flatpak, paquets de la distribution), mises à jour et dépôts
+Exec=noos-software
+Icon=system-software-install
+Terminal=false
+Type=Application
+Categories=GTK;System;PackageManager;
+Keywords=apps;logiciels;mises à jour;flatpak;paquets;dépôts;
+OnlyShowIn=NOOS;
+StartupWMClass=org.noos.Software

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Adapta Demo
+Exec=adapta-1-demo
+Icon=org.gnome.Adapta1.Demo
+Keywords=libadapta;
+Terminal=false
+Type=Application
+Categories=GTK;
+StartupNotify=true
+NoDisplay=true

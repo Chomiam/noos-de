@@ -1,0 +1,17 @@
+[package]
+name = "noos-shell"
+description = "Shell NOOS : barre des tâches, menu Démarrer, réglages rapides, fond d'écran"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+noos-core.workspace = true
+noos-theme.workspace = true
+gtk.workspace = true
+adap.workspace = true
+gtk4-layer-shell.workspace = true
+async-channel.workspace = true
+gio-unix = "0.22"
+anyhow.workspace = true
+serde_json.workspace = true

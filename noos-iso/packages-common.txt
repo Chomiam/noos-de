@@ -1,0 +1,45 @@
+# Paquets communs au système live et au système installé (un par ligne, « # » = commentaire).
+@core
+kernel
+linux-firmware
+NetworkManager-wifi
+NetworkManager-bluetooth
+wpa_supplicant
+bluez
+btrfs-progs
+dosfstools
+e2fsprogs
+plymouth
+plymouth-plugin-script
+mesa-dri-drivers
+# Chargés dynamiquement par GTK (invisibles pour ldd) : OpenGL ES / EGL, images.
+mesa-libEGL
+mesa-libGL
+libglvnd-gles
+libglvnd-egl
+glycin-loaders
+gdk-pixbuf2-modules-extra
+mesa-vulkan-drivers
+vulkan-loader
+libinput
+libseat
+gtk4
+gtk4-layer-shell
+librsvg2
+glib2
+dbus-daemon
+dbus-tools
+# pam_systemd : session logind (indispensable à libseat pour prendre l'écran)
+systemd-pam
+xkeyboard-config
+papirus-icon-theme
+adwaita-icon-theme
+adwaita-cursor-theme
+google-noto-sans-fonts
+google-noto-sans-mono-fonts
+google-noto-emoji-fonts
+glibc-langpack-fr
+glibc-langpack-en
+kbd
+curl
+nano

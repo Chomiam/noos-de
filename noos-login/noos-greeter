@@ -1,0 +1,21 @@
+#!/bin/sh
+# Écran de connexion NOOS, lancé par greetd (utilisateur « greeter ») :
+# compositeur NOOS en mode kiosque + noos-login. Voir /etc/greetd/config.toml.
+PREFIX=/opt/noos
+export PATH="$PREFIX/bin:$PATH"
+export LD_LIBRARY_PATH="$PREFIX/lib"
+export NOOS_DATA_DIR="$PREFIX/share/noos"
+export XDG_DATA_DIRS="$PREFIX/share:/usr/local/share:/usr/share"
+export XDG_SESSION_TYPE=wayland
+# Pas d'accélération 3D (machine virtuelle sans virgl, pilote absent) : rendu GTK
+# logiciel, plus fiable que l'émulation OpenGL.
+if ! ls /dev/dri/renderD* >/dev/null 2>&1; then
+    export GSK_RENDERER=cairo
+fi
+export RUST_LOG="${RUST_LOG:-warn}"
+# Langue du système (dates, messages PAM).
+if [ -f /etc/locale.conf ]; then
+    . /etc/locale.conf
+    export LANG
+fi
+exec dbus-run-session -- noos-comp --drm --kiosk noos-login

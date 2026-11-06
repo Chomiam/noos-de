@@ -1,0 +1,13 @@
+[package]
+name = "noos-keys"
+description = "Porte-clés NOOS : mots de passe (Secret Service), clés SSH — GTK4 + libAdapta"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+noos-core.workspace = true
+gtk.workspace = true
+adap.workspace = true
+async-channel.workspace = true
+anyhow.workspace = true

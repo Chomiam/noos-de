@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=NOOS
+Comment=Bureau NOOS (prototype) — compositeur Rust/Smithay, interface GTK4 + libAdapta
+Exec=/usr/local/bin/noos-session
+TryExec=/usr/local/bin/noos-session
+Type=Application
+DesktopNames=NOOS

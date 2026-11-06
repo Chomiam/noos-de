@@ -1,0 +1,6 @@
+LIBADAPTA_1_0 {
+	global:
+		adap_*;
+	local:
+		*;
+};

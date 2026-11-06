@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Explorateur de fichiers
+Comment=Parcourir les fichiers et dossiers
+Exec=noos-file %U
+Icon=system-file-manager
+Terminal=false
+Type=Application
+Categories=GTK;Utility;Core;FileManager;
+MimeType=inode/directory;
+OnlyShowIn=NOOS;
+StartupWMClass=org.noos.Files

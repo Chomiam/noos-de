@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.0"/>
+  <requires lib="libadapta" version="1.0"/>
+  <object class="AdapWindow" id="widget">
+    <property name="title">Tab View</property>
+    <property name="width-request">360</property>
+    <property name="height-request">200</property>
+    <property name="default-width">800</property>
+    <property name="default-height">300</property>
+    <child>
+      <object class="AdapBreakpoint">
+        <condition>max-width: 500px</condition>
+        <setter object="overview_btn" property="visible">True</setter>
+        <setter object="new_tab_btn" property="visible">False</setter>
+        <setter object="tab_bar" property="visible">False</setter>
+      </object>
+    </child>
+    <property name="content">
+      <object class="AdapTabOverview">
+        <property name="view">view</property>
+        <property name="enable-new-tab">True</property>
+        <property name="child">
+          <object class="AdapToolbarView">
+            <property name="top-bar-style">raised</property>
+            <child type="top">
+              <object class="AdapHeaderBar">
+                <child type="end">
+                  <object class="AdapTabButton" id="overview_btn">
+                    <property name="visible">False</property>
+                    <property name="view">view</property>
+                    <property name="action-name">overview.open</property>
+                  </object>
+                </child>
+                <child type="end">
+                  <object class="GtkButton" id="new_tab_btn">
+                    <property name="icon-name">tab-new-symbolic</property>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child type="top">
+              <object class="AdapTabBar" id="tab_bar">
+                <property name="view">view</property>
+              </object>
+            </child>
+            <property name="content">
+              <object class="AdapTabView" id="view">
+                <child>
+                  <object class="AdapTabPage">
+                    <property name="title">Page 1</property>
+                    <property name="child">
+                      <object class="AdapBin">
+                        <style>
+                          <class name="overview-tab-page"/>
+                        </style>
+                      </object>
+                    </property>
+                  </object>
+                </child>
+                <child>
+                  <object class="AdapTabPage">
+                    <property name="title">Page 2</property>
+                    <property name="child">
+                      <object class="AdapStatusPage">
+                        <style>
+                          <class name="overview-tab-page"/>
+                        </style>
+                      </object>
+                    </property>
+                  </object>
+                </child>
+                <child>
+                  <object class="AdapTabPage">
+                    <property name="title">Page 3</property>
+                    <property name="child">
+                      <object class="AdapStatusPage">
+                        <style>
+                          <class name="overview-tab-page"/>
+                        </style>
+                      </object>
+                    </property>
+                  </object>
+                </child>
+              </object>
+            </property>
+          </object>
+        </property>
+      </object>
+    </property>
+  </object>
+</interface>

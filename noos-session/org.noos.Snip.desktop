@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Outil Capture d'écran
+Comment=Capturer tout ou partie de l'écran et annoter (Win+Maj+S, Impr. écran)
+Exec=noos-snip --app
+Icon=applets-screenshooter
+Terminal=false
+Type=Application
+Categories=GTK;Graphics;Utility;
+Keywords=capture;screenshot;écran;snip;
+OnlyShowIn=NOOS;
+StartupWMClass=org.noos.Snip

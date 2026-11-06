@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.0"/>
+  <requires lib="libadapta" version="1.0"/>
+  <template class="AdapDemoPageWelcome" parent="AdapBin">
+    <property name="child">
+      <object class="AdapStatusPage">
+        <property name="icon-name">org.gnome.Adapta1.Demo-symbolic</property>
+        <property name="title" translatable="yes">Welcome to Adapta Demo</property>
+        <property name="description" translatable="yes">This is a tour of the features the library has to offer.</property>
+      </object>
+    </property>
+  </template>
+</interface>

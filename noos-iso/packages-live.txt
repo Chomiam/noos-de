@@ -1,0 +1,7 @@
+# Système live (installateur) en plus de packages-common.txt.
+dracut-live
+efibootmgr
+util-linux
+gdisk
+libtimezonemap
+grub2-tools

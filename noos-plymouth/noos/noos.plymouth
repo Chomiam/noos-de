@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=NOOS
+Description=Logo NOOS et symbole infini animé sur fond sombre
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/noos
+ScriptFile=/usr/share/plymouth/themes/noos/noos.script

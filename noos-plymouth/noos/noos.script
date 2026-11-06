@@ -1,0 +1,93 @@
+# Thème Plymouth NOOS : logo centré, faisceau lumineux qui parcourt le symbole infini,
+# messages de démarrage et saisie de la phrase de passe (disque chiffré).
+
+Window.SetBackgroundTopColor(0.067, 0.067, 0.106);     # #11111b
+Window.SetBackgroundBottomColor(0.067, 0.067, 0.106);
+
+FRAMES = 60;
+cx = Window.GetX() + Window.GetWidth() / 2;
+cy = Window.GetY() + Window.GetHeight() / 2;
+
+# Logo à l'échelle de l'écran (≈ 38 % de la largeur, sans dépasser sa taille native).
+logo_image = Image("logo.png");
+scale = Window.GetWidth() * 0.38 / logo_image.GetWidth();
+if (scale > 1) scale = 1;
+lw = Math.Int(logo_image.GetWidth() * scale);
+lh = Math.Int(logo_image.GetHeight() * scale);
+logo = Sprite(logo_image.Scale(lw, lh));
+lx = cx - lw / 2;
+ly = cy - lh / 2 - lh * 0.15;
+logo.SetPosition(lx, ly, 1);
+
+for (i = 0; i < FRAMES; i++) {
+    if (i < 10) name = "beam-0" + i + ".png"; else name = "beam-" + i + ".png";
+    beam_images[i] = Image(name).Scale(lw, lh);
+}
+beam = Sprite(beam_images[0]);
+beam.SetPosition(lx, ly, 2);
+
+tick = 0;
+fun refresh_callback() {
+    tick++;
+    # 50 rafraîchissements/s → une image toutes les 3 (≈ 3,6 s par tour, comme le logo).
+    beam.SetImage(beam_images[Math.Int(tick / 3) % FRAMES]);
+}
+Plymouth.SetRefreshFunction(refresh_callback);
+
+# ── Messages (ex. « Vérification du disque… ») ──
+message_sprite = Sprite();
+message_sprite.SetPosition(cx, ly + lh + 60, 3);
+fun message_callback(text) {
+    img = Image.Text(text, 0.80, 0.84, 0.96, 1, "Sans 12");
+    message_sprite.SetImage(img);
+    message_sprite.SetX(cx - img.GetWidth() / 2);
+}
+Plymouth.SetMessageFunction(message_callback);
+
+# ── Phrase de passe (LUKS) ──
+entry_image = Image("entry.png");
+bullet_image = Image("bullet.png");
+entry = Sprite();
+prompt = Sprite();
+bullets[0] = Sprite();
+
+fun hide_password() {
+    entry.SetOpacity(0);
+    prompt.SetOpacity(0);
+    for (i = 0; bullets[i]; i++) bullets[i].SetOpacity(0);
+}
+
+fun password_callback(text, count) {
+    ey = ly + lh + 70;
+    entry.SetImage(entry_image);
+    entry.SetPosition(cx - entry_image.GetWidth() / 2, ey, 4);
+    entry.SetOpacity(1);
+    if (text == "") text = "Phrase de passe du disque";
+    p = Image.Text(text, 0.80, 0.84, 0.96, 1, "Sans 11");
+    prompt.SetImage(p);
+    prompt.SetPosition(cx - p.GetWidth() / 2, ey - p.GetHeight() - 10, 4);
+    prompt.SetOpacity(1);
+    for (i = 0; bullets[i]; i++) bullets[i].SetOpacity(0);
+    shown = count;
+    if (shown > 20) shown = 20;
+    total = shown * 18;
+    for (i = 0; i < shown; i++) {
+        if (!bullets[i]) bullets[i] = Sprite();
+        bullets[i].SetImage(bullet_image);
+        bullets[i].SetPosition(cx - total / 2 + i * 18 + 2, ey + 15, 5);
+        bullets[i].SetOpacity(1);
+    }
+    message_sprite.SetOpacity(0);
+}
+Plymouth.SetDisplayPasswordFunction(password_callback);
+
+fun normal_callback() {
+    hide_password();
+    message_sprite.SetOpacity(1);
+}
+Plymouth.SetDisplayNormalFunction(normal_callback);
+
+fun quit_callback() {
+    hide_password();
+}
+Plymouth.SetQuitFunction(quit_callback);

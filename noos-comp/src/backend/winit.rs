@@ -1,0 +1,218 @@
+//! Backend imbriqué : NOOS s'affiche dans une fenêtre de la session courante (GNOME…).
+//! Idéal pour développer sans quitter son bureau : `cargo run -p noos-comp -- --winit`.
+
+use std::time::Duration;
+
+use noos_core::ipc::{ModeInfo, OutputInfo};
+use smithay::{
+    backend::{
+        allocator::dmabuf::Dmabuf,
+        egl::EGLDevice,
+        renderer::{ImportDma, ImportMemWl, damage::OutputDamageTracker, gles::GlesRenderer},
+        winit::{self, WinitEvent, WinitGraphicsBackend},
+    },
+    output::{Mode, Output, PhysicalProperties, Subpixel},
+    reexports::{calloop::EventLoop, wayland_server::Display},
+    utils::Transform,
+    wayland::dmabuf::{DmabufFeedbackBuilder, DmabufState},
+};
+use tracing::warn;
+
+use crate::{backend::Backend, render, state::NoosState};
+
+pub struct WinitData {
+    pub backend: WinitGraphicsBackend<GlesRenderer>,
+    pub output: Output,
+    pub damage_tracker: OutputDamageTracker,
+    last_render: std::time::Instant,
+    swap_interval_set: bool,
+}
+
+impl WinitData {
+    pub fn import_dmabuf(&mut self, dmabuf: &Dmabuf) -> bool {
+        self.backend.renderer().import_dmabuf(dmabuf, None).is_ok()
+    }
+
+    /// Mode imbriqué : la « résolution » est la taille de la fenêtre hôte, que l'on change à la
+    /// souris (winit applique les redimensionnements programmés sans prévenir Smithay).
+    pub fn set_mode(&mut self, _width: i32, _height: i32) -> Result<Output, String> {
+        Err("en mode imbriqué, redimensionnez la fenêtre de développement à la souris".into())
+    }
+
+    pub fn output_info(&self) -> OutputInfo {
+        let mode = self.output.current_mode().unwrap_or(Mode { size: (0, 0).into(), refresh: 60_000 });
+        let modes = vec![ModeInfo { width: mode.size.w, height: mode.size.h, refresh: mode.refresh, preferred: true }];
+        OutputInfo {
+            name: self.output.name(),
+            make: "NOOS".into(),
+            model: "Fenêtre de développement".into(),
+            width: mode.size.w,
+            height: mode.size.h,
+            refresh: mode.refresh,
+            scale: self.output.current_scale().fractional_scale(),
+            modes,
+            transform: "normal".into(),
+            can_set_mode: false,
+            vrr_capable: false,
+            vrr_active: false,
+            hdr_capable: false,
+            hdr_active: false,
+            format: "ARGB8888".into(),
+            nested: true,
+        }
+    }
+}
+
+pub fn run() -> anyhow::Result<()> {
+    let mut event_loop: EventLoop<'static, NoosState> = EventLoop::try_new()?;
+    let display: Display<NoosState> = Display::new()?;
+    let dh = display.handle();
+
+    let (mut backend, winit) =
+        winit::init::<GlesRenderer>().map_err(|e| anyhow::anyhow!("initialisation winit : {e}"))?;
+    backend.window().set_title("NOOS — compositeur (mode imbriqué)");
+
+    let mode = Mode { size: backend.window_size(), refresh: 60_000 };
+    let output = Output::new(
+        "NOOS-1".into(),
+        PhysicalProperties {
+            size: (0, 0).into(),
+            subpixel: Subpixel::Unknown,
+            make: "NOOS".into(),
+            model: "winit".into(),
+            serial_number: "0".into(),
+        },
+    );
+    let _global = output.create_global::<NoosState>(&dh);
+    output.change_current_state(Some(mode), Some(Transform::Flipped180), None, Some((0, 0).into()));
+    output.set_preferred(mode);
+
+    // linux-dmabuf : indispensable pour les clients GTK4 accélérés (GL/Vulkan).
+    let mut dmabuf_state = DmabufState::new();
+    let formats = backend.renderer().dmabuf_formats();
+    let render_node = EGLDevice::device_for_display(backend.renderer().egl_context().display())
+        .and_then(|d| d.try_get_render_node());
+    let dmabuf_global = match render_node {
+        Ok(Some(node)) => {
+            let feedback = DmabufFeedbackBuilder::new(node.dev_id(), formats).build().unwrap();
+            dmabuf_state.create_global_with_default_feedback::<NoosState>(&dh, &feedback)
+        }
+        _ => {
+            warn!("pas de render node : dmabuf v3");
+            dmabuf_state.create_global::<NoosState>(&dh, formats)
+        }
+    };
+
+    let damage_tracker = OutputDamageTracker::from_output(&output);
+    let shm_formats = backend.renderer().shm_formats();
+    let data = WinitData { backend, output: output.clone(), damage_tracker, last_render: std::time::Instant::now(), swap_interval_set: false };
+
+    let mut state = NoosState::new(display, event_loop.handle(), event_loop.get_signal(), Backend::Winit(data));
+    state.dmabuf_state = Some((dmabuf_state, dmabuf_global));
+    state.shm_state.update_formats(shm_formats);
+    state.space.map_output(&output, (0, 0));
+
+    event_loop
+        .handle()
+        .insert_source(winit, move |event, _, state| match event {
+            WinitEvent::Resized { size, .. } => {
+                let mode = Mode { size, refresh: 60_000 };
+                output.change_current_state(Some(mode), None, None, None);
+                output.set_preferred(mode);
+                smithay::desktop::layer_map_for_output(&output).arrange();
+                state.relayout_maximized(&output);
+                state.update_vrr();
+            }
+            WinitEvent::Input(event) => state.process_input_event(event),
+            WinitEvent::Redraw => {}
+            WinitEvent::CloseRequested => state.loop_signal.stop(),
+            _ => {}
+        })
+        .map_err(|e| anyhow::anyhow!("source winit : {e}"))?;
+
+    crate::startup(&mut state);
+
+    // Rendu cadencé par la boucle (~60 Hz) et non par les événements Redraw de winit :
+    // ceux-ci attendent un « frame callback » de l'hôte, qui n'arrive jamais si la frame
+    // précédente n'avait rien à afficher (pas de commit) → gel de l'affichage.
+    event_loop.run(Some(Duration::from_millis(4)), &mut state, |state| {
+        let due = match &state.backend {
+            Backend::Winit(d) => d.last_render.elapsed() >= Duration::from_micros(16_600),
+            _ => false,
+        };
+        if due {
+            state.render_winit();
+        }
+        state.space.refresh();
+        state.popups.cleanup();
+        let _ = state.display_handle.flush_clients();
+    })?;
+    Ok(())
+}
+
+impl NoosState {
+    fn render_winit(&mut self) {
+        let Backend::Winit(mut data) = std::mem::replace(&mut self.backend, Backend::Detached) else {
+            return;
+        };
+        data.last_render = std::time::Instant::now();
+        let output = data.output.clone();
+        let clear = render::clear_color(self);
+        // Capture demandée : rendu complet pour ne pas lire un tampon périmé.
+        let age = if self.pending_screenshot.is_some() { 0 } else { data.backend.buffer_age().unwrap_or(0) };
+        let size = data.backend.window_size();
+
+        let swap_set = data.swap_interval_set;
+        let mut swap_now_set = false;
+        let result = match data.backend.bind() {
+            Ok((renderer, mut fb)) => {
+                // Mesa bloque eglSwapBuffers jusqu'au « frame callback » de l'hôte (intervalle 1
+                // par défaut, que Smithay ne modifie pas). Si la fenêtre est cachée côté GNOME,
+                // tout le compositeur se figeait (IPC compris) : on passe l'intervalle à 0.
+                // Dans une fenêtre, c'est le compositeur hôte qui dessine le curseur par défaut.
+                let elements = render::output_elements(self, renderer, &output, None);
+                let res = data
+                    .damage_tracker
+                    .render_output(renderer, &mut fb, age, &elements, clear)
+                    .map(|r| r.damage.cloned())
+                    .map_err(|e| format!("{e:?}"));
+                // Après le rendu : le contexte est alors forcément actif sur la surface de la
+                // fenêtre (avant, Smithay ne l'active pas toujours → EGL_BAD_CONTEXT). On
+                // réessaie à chaque frame tant que l'appel échoue.
+                if !swap_set {
+                    let display = renderer.egl_context().display().get_display_handle();
+                    let ok = unsafe { smithay::backend::egl::ffi::egl::SwapInterval(display.handle, 0) };
+                    swap_now_set = ok == 1;
+                }
+                if let Some(path) = self.pending_screenshot.take() {
+                    crate::screenshot::capture(renderer, &fb, size, true, &path);
+                }
+                res
+            }
+            Err(e) => Err(format!("{e:?}")),
+        };
+        match result {
+            Ok(Some(damage)) => {
+                if let Err(e) = data.backend.submit(Some(&damage)) {
+                    warn!("submit : {e}");
+                }
+            }
+            Ok(None) => {}
+            Err(e) => warn!("rendu winit : {e}"),
+        }
+        if swap_now_set {
+            data.swap_interval_set = true;
+        }
+        // Captures (après submit : on ne touche pas au tampon de la fenêtre).
+        if self.capture.has_pending() && self.capture_wanted(&output) {
+            let renderer = data.backend.renderer();
+            let elements = render::output_elements(self, renderer, &output, None);
+            self.process_captures(renderer, &output, &elements, clear);
+        }
+        let cursor_visible = matches!(self.cursor_status, smithay::input::pointer::CursorImageStatus::Named(_));
+        data.backend.window().set_cursor_visible(cursor_visible);
+        self.backend = Backend::Winit(data);
+
+        self.send_frames(&output);
+    }
+}

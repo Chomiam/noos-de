@@ -1,0 +1,474 @@
+# Georgian translation for libadapta.
+# Copyright (C) 2024 libadapta's authors
+# This file is distributed under the same license as the libadapta package.
+# Ekaterine Papava <papava.e@gtu.ge>, 2023-2024.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: libadapta\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/libadapta/issues\n"
+"POT-Creation-Date: 2024-08-05 20:03+0000\n"
+"PO-Revision-Date: 2024-08-17 07:23+0200\n"
+"Last-Translator: Ekaterine Papava <papava.e@gtu.ge>\n"
+"Language-Team: Georgian <(nothing)>\n"
+"Language: ka\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Generator: Poedit 3.3.2\n"
+
+#: src/adap-about-dialog.c:207 src/adap-about-window.c:207
+msgid "GNU General Public License, version 2 or later"
+msgstr "GNU Lesser General Public License Version 2"
+
+#: src/adap-about-dialog.c:208 src/adap-about-window.c:208
+msgid "GNU General Public License, version 3 or later"
+msgstr "GNU Lesser General Public License Version 3"
+
+#: src/adap-about-dialog.c:209 src/adap-about-window.c:209
+msgid "GNU Lesser General Public License, version 2.1 or later"
+msgstr "GNU Lesser General Public License Version 2.1"
+
+#: src/adap-about-dialog.c:210 src/adap-about-window.c:210
+msgid "GNU Lesser General Public License, version 3 or later"
+msgstr "GNU Lesser General Public License Version 3"
+
+#: src/adap-about-dialog.c:211 src/adap-about-window.c:211
+msgid "BSD 2-Clause License"
+msgstr "BSD 2-Clause License"
+
+#: src/adap-about-dialog.c:212 src/adap-about-window.c:212
+msgid "The MIT License (MIT)"
+msgstr "The MIT License (MIT)"
+
+#: src/adap-about-dialog.c:213 src/adap-about-window.c:213
+msgid "Artistic License 2.0"
+msgstr "ხელოვანების ლიცენზია"
+
+#: src/adap-about-dialog.c:214 src/adap-about-window.c:214
+msgid "GNU General Public License, version 2 only"
+msgstr "GNU Lesser General Public License Version 2"
+
+#: src/adap-about-dialog.c:215 src/adap-about-window.c:215
+msgid "GNU General Public License, version 3 only"
+msgstr "GNU Lesser General Public License Version 3"
+
+#: src/adap-about-dialog.c:216 src/adap-about-window.c:216
+msgid "GNU Lesser General Public License, version 2.1 only"
+msgstr "GNU Lesser General Public License Version 2.1"
+
+#: src/adap-about-dialog.c:217 src/adap-about-window.c:217
+msgid "GNU Lesser General Public License, version 3 only"
+msgstr "GNU Lesser General Public License Version 3"
+
+#: src/adap-about-dialog.c:218 src/adap-about-window.c:218
+msgid "GNU Affero General Public License, version 3 or later"
+msgstr "GNU Lesser General Public License Version 3"
+
+#: src/adap-about-dialog.c:219 src/adap-about-window.c:219
+msgid "GNU Affero General Public License, version 3 only"
+msgstr "GNU General Public License Version 3"
+
+#: src/adap-about-dialog.c:220 src/adap-about-window.c:220
+msgid "BSD 3-Clause License"
+msgstr "BSD 3-Clause License"
+
+#: src/adap-about-dialog.c:221 src/adap-about-window.c:221
+msgid "Apache License, Version 2.0"
+msgstr "Apache License, Version 2.0"
+
+#: src/adap-about-dialog.c:222 src/adap-about-window.c:222
+msgid "Mozilla Public License 2.0"
+msgstr "Mozilla Public License 2.0"
+
+#: src/adap-about-dialog.c:223 src/adap-about-window.c:223
+msgid "BSD Zero-Clause License"
+msgstr "BSD Zero-Clause License"
+
+#: src/adap-about-dialog.c:560 src/adap-about-window.c:559
+msgid "Code by"
+msgstr "კოდის ავტორი"
+
+#: src/adap-about-dialog.c:561 src/adap-about-window.c:560
+msgid "Design by"
+msgstr "დიზაინი"
+
+#: src/adap-about-dialog.c:562 src/adap-about-window.c:561
+msgid "Artwork by"
+msgstr "დიზაინის ავტორი"
+
+#: src/adap-about-dialog.c:563 src/adap-about-window.c:562
+msgid "Documentation by"
+msgstr "დოკუმენტაციის ავტორი"
+
+#: src/adap-about-dialog.c:564 src/adap-about-window.c:563
+msgid "Translated by"
+msgstr "თარგმნა"
+
+#. Translators: this is the license preamble; the string at the end
+#. * contains the name of the license as link text.
+#.
+#: src/adap-about-dialog.c:593 src/adap-about-window.c:592
+#, c-format
+msgid ""
+"This application comes with absolutely no warranty. See the <a "
+"href=\"%s\">%s</a> for details."
+msgstr ""
+"პროგრამას ყოველგვარი გარანტიების გარეშე იღებთ. მეტი დეტალებისთვის იხილეთ <a "
+"href=\"%s\">%s</a>."
+
+#: src/adap-about-dialog.c:671 src/adap-about-window.c:670
+msgid "This Application"
+msgstr "ეს აპლიკაცია"
+
+#: src/adap-about-dialog.c:973 src/adap-about-window.c:972
+#, c-format
+msgid "Version %s"
+msgstr "ვერისა %s"
+
+#: src/adap-about-dialog.c:999 src/adap-about-window.c:998
+msgid "Unable to parse release notes:"
+msgstr "რელიზის შენიშვნების დამუშავების შეცდომა:"
+
+#: src/adap-about-dialog.c:1005 src/adap-about-window.c:1004
+#, c-format
+msgid "Line: %d, character: %d"
+msgstr "ხაზი: %d, სიმბოლო: %d"
+
+#: src/adap-about-dialog.c:1291 src/adap-about-window.c:1290
+msgid "Copied to clipboard"
+msgstr "დაკოპირდა გაცვლის ბაფერში"
+
+#: src/adap-about-dialog.c:1318 src/adap-about-window.c:1318
+msgid "Unable to save debugging information"
+msgstr "გამართვის ინფორმაციის შენახვის შეცდომა"
+
+#: src/adap-about-dialog.c:1323 src/adap-about-window.c:1323
+#: src/adap-sheet-controls.c:127
+msgid "Close"
+msgstr "დახურვა"
+
+#: src/adap-about-dialog.c:1340 src/adap-about-window.c:1339
+msgid "Save debugging information"
+msgstr "გამართვის ინფორმაციის შენახვა"
+
+#: src/adap-about-dialog.ui:5 src/adap-about-window.ui:5
+msgid "About"
+msgstr "შესახებ"
+
+#: src/adap-about-dialog.ui:89 src/adap-about-window.ui:92
+msgid "_What’s New"
+msgstr "_რა არის ახალი"
+
+#: src/adap-about-dialog.ui:105 src/adap-about-window.ui:108
+msgid "_Details"
+msgstr "_დეტალები"
+
+#: src/adap-about-dialog.ui:121 src/adap-about-dialog.ui:341
+#: src/adap-about-window.ui:124 src/adap-about-window.ui:344
+msgid "_Website"
+msgstr "_ვებსაიტი"
+
+#: src/adap-about-dialog.ui:145 src/adap-about-window.ui:148
+msgid "_Support Questions"
+msgstr "მხარდაჭერის _კითხვები"
+
+#: src/adap-about-dialog.ui:162 src/adap-about-window.ui:165
+msgid "_Report an Issue"
+msgstr "_პრობლემის რეპორტი"
+
+#: src/adap-about-dialog.ui:178 src/adap-about-window.ui:181
+msgid "_Troubleshooting"
+msgstr "_პრობლემების გადაჭრა"
+
+#: src/adap-about-dialog.ui:198 src/adap-about-window.ui:201
+msgid "_Credits"
+msgstr "_კრედიტები"
+
+#: src/adap-about-dialog.ui:214 src/adap-about-window.ui:217
+msgid "_Legal"
+msgstr "_იურიდიული"
+
+#: src/adap-about-dialog.ui:230 src/adap-about-window.ui:233
+msgid "_Acknowledgements"
+msgstr "_სხვა გამოყენებული პროექტები"
+
+#: src/adap-about-dialog.ui:260 src/adap-about-window.ui:263
+msgid "What’s New"
+msgstr "რა არის ახალი"
+
+#: src/adap-about-dialog.ui:303 src/adap-about-window.ui:306
+msgid "Details"
+msgstr "დეტალები"
+
+#: src/adap-about-dialog.ui:369 src/adap-about-window.ui:372
+msgid "Troubleshooting"
+msgstr "პრობლემების გადაჭრა"
+
+#: src/adap-about-dialog.ui:392 src/adap-about-window.ui:395
+msgid ""
+"To assist in troubleshooting, you can view your debugging information. "
+"Providing this information to the application developers can help diagnose "
+"any problems you encounter when you report an issue."
+msgstr ""
+"პრობლემის გადაწყვეტაში დასახმარებლად შეგიძლიათ გადახედოთ გამართვის "
+"ინფორმაციას. პროგრამისტებისთვის ამ ინფორმაციის გაგზავნით შეგიძლიათ "
+"ნებისმიერი პრობლემა გადაჭრათ."
+
+#: src/adap-about-dialog.ui:403 src/adap-about-window.ui:406
+msgid "_Debugging Information"
+msgstr "_გამართვის ინფორმაცია"
+
+#: src/adap-about-dialog.ui:430 src/adap-about-window.ui:433
+msgid "Debugging Information"
+msgstr "გამართვის ინფორმაცია"
+
+#: src/adap-about-dialog.ui:475 src/adap-about-window.ui:478
+msgid "_Copy Text"
+msgstr "ტექსტის _კოპირება"
+
+#: src/adap-about-dialog.ui:483 src/adap-about-window.ui:486
+msgid "_Save As…"
+msgstr "შ_ენახვა როგორც…"
+
+#: src/adap-about-dialog.ui:496 src/adap-about-window.ui:499
+msgid "Credits"
+msgstr "კრედიტები"
+
+#: src/adap-about-dialog.ui:527 src/adap-about-window.ui:530
+msgid "Legal"
+msgstr "იურიდიული"
+
+#: src/adap-about-dialog.ui:559 src/adap-about-window.ui:562
+msgid "Acknowledgements"
+msgstr "სხვა გამოყენებული პროექტები"
+
+#: src/adap-back-button.c:330 src/adap-back-button.c:428
+#: src/adap-back-button.c:538
+msgid "Back"
+msgstr "უკან"
+
+#. Translators: This is a placeholder text of the search entry from AdapComboRow. It should be phrased as a verb.
+#: src/adap-combo-row.ui:50 src/adap-preferences-dialog.ui:85
+#: src/adap-preferences-window.ui:96
+msgid "Search"
+msgstr "ძებნა"
+
+#: src/adap-entry-row.ui:96
+msgid "Apply"
+msgstr "გადატარება"
+
+#: src/adap-inspector-page.c:98
+msgid "No Preference"
+msgstr "მორგების გარეშე"
+
+#: src/adap-inspector-page.c:100
+msgid "Prefer Dark"
+msgstr "ბნელის არჩევანი"
+
+#: src/adap-inspector-page.c:102
+msgid "Prefer Light"
+msgstr "ღიას არჩევანი"
+
+#: src/adap-inspector-page.c:115
+msgid "Blue"
+msgstr "ლურჯი"
+
+#: src/adap-inspector-page.c:117
+msgid "Teal"
+msgstr "მომწვანო ლურჯი"
+
+#: src/adap-inspector-page.c:119
+msgid "Green"
+msgstr "მწვანე"
+
+#: src/adap-inspector-page.c:121
+msgid "Yellow"
+msgstr "ყვითელი"
+
+#: src/adap-inspector-page.c:123
+msgid "Orange"
+msgstr "ნარინჯისფერი"
+
+#: src/adap-inspector-page.c:125
+msgid "Red"
+msgstr "წითელი"
+
+#: src/adap-inspector-page.c:127
+msgid "Pink"
+msgstr "ვარდისფერი"
+
+#: src/adap-inspector-page.c:129
+msgid "Purple"
+msgstr "იისფერი"
+
+#: src/adap-inspector-page.c:131
+msgid "Slate"
+msgstr "ფიქალი"
+
+#. Translators: The name of the library, not the stylesheet
+#: src/adap-inspector-page.c:270
+msgid "Adapta"
+msgstr "Adapta"
+
+#: src/adap-inspector-page.ui:10
+msgid "System Appearance"
+msgstr "სისტემის გარეგნობა"
+
+#: src/adap-inspector-page.ui:11
+msgid ""
+"Override settings for this application. They will be reset upon closing the "
+"inspector."
+msgstr ""
+"ამ აპლიკაციის პარამეტრების გადაფარვა. ისინი ინსპექტორის გაუქმებისთანავე "
+"გაუქმდება."
+
+#: src/adap-inspector-page.ui:14
+msgid "System Supports Color Schemes"
+msgstr "სისტემას აქვს ფერების სქემების მხარდაჭერა"
+
+#: src/adap-inspector-page.ui:20
+msgid "Preferred Color Scheme"
+msgstr "ფერების არჩეული სქემა"
+
+#: src/adap-inspector-page.ui:39
+msgid "Accent Color"
+msgstr "აქცენტის ფერი"
+
+#: src/adap-inspector-page.ui:42
+msgid "System Supports Accent Colors"
+msgstr "სისტემას აქვს აქცენტის ფერების მხარდაჭერა"
+
+#: src/adap-inspector-page.ui:48
+msgid "Preferred Accent Color"
+msgstr "ფერების არჩეული აქცენტი"
+
+#: src/adap-inspector-page.ui:77
+msgid "Accessibility"
+msgstr "წვდომადობა"
+
+#: src/adap-inspector-page.ui:80
+msgid "High Contrast"
+msgstr "მაღალი კონტრასტი"
+
+#: src/adap-password-entry-row.c:70
+msgid "Hide Password"
+msgstr "პაროლის დამალვა"
+
+#: src/adap-password-entry-row.c:74
+msgid "Show Password"
+msgstr "პაროლის ჩვენება"
+
+#: src/adap-password-entry-row.c:168
+msgid "Caps Lock is on"
+msgstr "CapsLock ჩართულია"
+
+#: src/adap-password-entry-row.c:176
+msgid "_Show Password"
+msgstr "პაროლის _ჩვენება"
+
+#: src/adap-preferences-dialog.c:256 src/adap-preferences-window.c:261
+msgid "Untitled page"
+msgstr "უსახელო გვერდი"
+
+#: src/adap-preferences-dialog.ui:5 src/adap-preferences-window.ui:8
+msgid "Preferences"
+msgstr "გამართვა"
+
+#: src/adap-preferences-dialog.ui:70 src/adap-preferences-window.ui:81
+msgid "Search preferences"
+msgstr "ძებნის პარამეტრები"
+
+#: src/adap-preferences-dialog.ui:152 src/adap-preferences-window.ui:163
+msgid "No Results Found"
+msgstr "შედეგების გარეშე"
+
+#: src/adap-preferences-dialog.ui:153 src/adap-tab-overview.ui:111
+msgid "Try a different search"
+msgstr "სცადეთ სხვა ძებნა"
+
+#: src/adap-preferences-window.ui:164
+msgid "Try a different search."
+msgstr "სცადეთ სხვა ძებნა."
+
+#: src/adap-sheet-controls.c:129
+msgid "Close the window"
+msgstr "ფანჯრის დახურვა"
+
+#: src/adap-split-button.c:519 src/adap-split-button.c:1033
+msgid "More Options"
+msgstr "მეტი პარამეტრი"
+
+#: src/adap-tab-button.ui:7
+msgid "View Open Tabs"
+msgstr "ღია ჩანართების ნახვა"
+
+#. Translators: Tab overview title, %u is the number of open tabs
+#: src/adap-tab-overview.c:928
+#, c-format
+msgid "%u Tab"
+msgid_plural "%u Tabs"
+msgstr[0] "%u ჩანართი"
+msgstr[1] "%u ჩანართი"
+
+#: src/adap-tab-overview.ui:21
+msgid "Search Tabs"
+msgstr "ჩანართების ძებნა"
+
+#: src/adap-tab-overview.ui:51
+msgid "Search tabs"
+msgstr "ჩანართების ძებნა"
+
+#: src/adap-tab-overview.ui:97
+msgid "No Open Tabs"
+msgstr "ღია ჩანართების გარეშე"
+
+#: src/adap-tab-overview.ui:110
+msgid "No Tabs Found"
+msgstr "შედეგების გარეშე"
+
+#: src/adap-tab-overview.ui:131
+msgid "New _Tab"
+msgstr "ახალი _ჩანართი"
+
+#: src/adap-tab-thumbnail.ui:39 src/adap-tab.ui:75
+msgid "Close Tab"
+msgstr "ჩანართის დახურვა"
+
+#: src/adap-toast-overlay.c:271
+#, c-format
+msgid "A toast appeared: %s, has a button: %s"
+msgstr "გამოჩნდა Toast: %s, აქვს ღილაკი: %s"
+
+#: src/adap-toast-overlay.c:274
+#, c-format
+msgid "A toast appeared: %s"
+msgstr "გამოჩნდა Toast: %s"
+
+#: src/adap-toast-overlay.c:276
+#, c-format
+msgid "A toast appeared, has a button: %s"
+msgstr "გამოჩნდა Toast. აქვს ღილაკი: %s"
+
+#: src/adap-toast-overlay.c:279
+msgid "A toast appeared"
+msgstr "გამოჩნდა Toast"
+
+#~ msgid "Search…"
+#~ msgstr "ძებნა…"
+
+#~ msgid "Hide Text"
+#~ msgstr "ტექსტის დამალვა"
+
+#~ msgid "Show Text"
+#~ msgstr "ტექსტის ჩვენება"
+
+#~ msgid "_Show Text"
+#~ msgstr "ტექსტის ჩვენება"
+
+#~ msgid "_Save"
+#~ msgstr "_შენახვა"
+
+#~ msgid "_Cancel"
+#~ msgstr "_გაუქმება"

@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Lanceur de la session NOOS (exécuté par GDM). Installé dans /usr/local/bin.
+#
+# Les binaires vivent dans le préfixe utilisateur (aucun sudo pour les mettre à jour) :
+#   ~/.local/opt/noos/{bin,lib,share}   ← scripts/install-user.sh
+set -u
+
+# Préfixe utilisateur (développement, scripts/install-user.sh) prioritaire ; sinon celui du
+# système installé par l'ISO (/opt/noos).
+if [ -z "${NOOS_PREFIX:-}" ]; then
+    if [ -x "$HOME/.local/opt/noos/bin/noos-comp" ]; then
+        NOOS_PREFIX="$HOME/.local/opt/noos"
+    else
+        NOOS_PREFIX=/opt/noos
+    fi
+fi
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/noos"
+mkdir -p "$STATE_DIR"
+LOG="$STATE_DIR/session.log"
+[ -f "$LOG" ] && mv -f "$LOG" "$LOG.old"
+exec >"$LOG" 2>&1
+
+echo "NOOS : démarrage de session $(date -Iseconds)"
+
+if [ ! -x "$NOOS_PREFIX/bin/noos-comp" ]; then
+    echo "ERREUR : $NOOS_PREFIX/bin/noos-comp introuvable."
+    echo "Lancez d'abord, dans le dépôt : toolbox run -c noos-dev ./scripts/install-user.sh"
+    exit 1
+fi
+
+export PATH="$NOOS_PREFIX/bin:$PATH"
+export LD_LIBRARY_PATH="$NOOS_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export NOOS_DATA_DIR="$NOOS_PREFIX/share/noos"
+export XDG_DATA_DIRS="$NOOS_PREFIX/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+
+export XDG_CURRENT_DESKTOP=NOOS
+export XDG_SESSION_DESKTOP=noos
+export XDG_SESSION_TYPE=wayland
+# Thème libAdapta de NOOS pour toutes les applis libAdapta de cette session uniquement.
+export ADAP_DEBUG_THEME_NAME=NOOS
+export MOZ_ENABLE_WAYLAND=1
+export QT_QPA_PLATFORM="wayland;xcb"
+export ELECTRON_OZONE_PLATFORM_HINT=auto
+export RUST_LOG="${RUST_LOG:-info,smithay=warn}"
+
+# Une session D-Bus est fournie par GDM ; sinon on en crée une.
+if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ] && command -v dbus-run-session >/dev/null; then
+    exec dbus-run-session -- noos-comp --drm
+fi
+exec noos-comp --drm

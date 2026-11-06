@@ -1,0 +1,15 @@
+[package]
+name = "noos-term"
+description = "Terminal NOOS : onglets, thèmes, taille de police, presse-papiers, barre latérale d'alias"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+noos-core.workspace = true
+gtk.workspace = true
+adap.workspace = true
+vte4 = { version = "0.10", features = ["v0_80", "gtk_v4_18"] }
+serde.workspace = true
+toml.workspace = true
+anyhow.workspace = true
