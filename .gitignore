@@ -1,3 +1,4 @@
 /target
 *.swp
 noos-iso/out/
+packaging/rpm/out/
