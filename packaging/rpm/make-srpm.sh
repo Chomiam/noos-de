@@ -34,8 +34,10 @@ sed -i "s|directory = \".*\"|directory = \"vendor\"|" "$WORK/vendor-root/vendor/
 tar -C "$WORK/vendor-root" -cJf "$WORK/SOURCES/noos-$VERSION-vendor.tar.xz" vendor
 
 echo "==> SRPM"
-rpmbuild -bs "$SPEC" \
+# Release écrite en dur dans le spec du paquet source : COPR (comme rpmbuild --rebuild)
+# relit le spec, une macro --define serait perdue et la version n'augmenterait plus.
+sed "s/^Release:.*/Release:        ${RELEASE}%{?dist}/" "$SPEC" > "$WORK/noos.spec"
+rpmbuild -bs "$WORK/noos.spec" \
     --define "_sourcedir $WORK/SOURCES" \
-    --define "_srcrpmdir $OUT" \
-    --define "noos_release $RELEASE"
+    --define "_srcrpmdir $OUT"
 ls -1 "$OUT"/*.src.rpm
