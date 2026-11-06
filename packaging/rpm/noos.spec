@@ -82,6 +82,9 @@ export RUSTFLAGS="%{?build_rustflags}"
 meson setup target/libadapta-build third_party/libadapta --buildtype=release --wrap-mode=nodownload \
     -Dintrospection=disabled -Dvapi=false -Dtests=false -Dexamples=false -Dgtk_doc=false
 ninja -C target/libadapta-build %{?_smp_mflags}
+# rpmbuild exporte son propre PKG_CONFIG_PATH (qui l'emporte sur .cargo/config.toml) :
+# on y ajoute le .pc « uninstalled » de libAdapta.
+export PKG_CONFIG_PATH="$PWD/target/libadapta-build/meson-uninstalled${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
 cargo build --release --offline $(for b in %{noos_bins}; do echo -n "-p $b "; done)
 
 %install
