@@ -408,15 +408,44 @@ fn install(ctx: &Ctx, c: &Choices) -> anyhow::Result<()> {
     }
 
     // ── 6. NOOS ──
+    // Paquet « noos » du dépôt COPR : dernière version, et mises à jour avec dnf ensuite.
+    // Sans accès au dépôt, copie de la version fournie avec l'ISO.
     ctx.step(6);
-    ctx.run("cp", &["-a", NOOS_PREFIX, &format!("{TARGET}/opt/")])?;
-    ctx.progress(0.6);
-    // Fichiers système préparés par la construction de l'ISO (session, greeter, plymouth…).
-    let system = format!("{NOOS_PREFIX}/share/noos/system/.");
-    if ctx.dry || Path::new(&system).exists() {
-        ctx.run("cp", &["-a", &system, &format!("{TARGET}/")])?;
-    } else {
-        ctx.line("(attention) fichiers système NOOS absents de l'ISO");
+    let from_copr = match copr_project() {
+        Some((owner, project)) => {
+            ctx.write(&format!("/etc/yum.repos.d/_copr:copr.fedorainfracloud.org:{owner}:{project}.repo"), &copr_repo(&owner, &project))?;
+            ctx.progress(0.2);
+            let res = ctx.run(
+                "dnf",
+                &[
+                    "install",
+                    "-y",
+                    &format!("--installroot={TARGET}"),
+                    &format!("--releasever={RELEASE}"),
+                    &format!("--setopt=cachedir={TARGET}/var/cache/noos-install"),
+                    "noos",
+                ],
+            );
+            match res {
+                Ok(()) => true,
+                Err(e) => {
+                    ctx.line(format!("(attention) paquet NOOS indisponible sur COPR ({e:#}) : version de l'ISO"));
+                    false
+                }
+            }
+        }
+        None => false,
+    };
+    if !from_copr {
+        ctx.run("cp", &["-a", NOOS_PREFIX, &format!("{TARGET}/opt/")])?;
+        ctx.progress(0.6);
+        // Fichiers système préparés par la construction de l'ISO (session, greeter, plymouth…).
+        let system = format!("{NOOS_PREFIX}/share/noos/system/.");
+        if ctx.dry || Path::new(&system).exists() {
+            ctx.run("cp", &["-a", &system, &format!("{TARGET}/")])?;
+        } else {
+            ctx.line("(attention) fichiers système NOOS absents de l'ISO");
+        }
     }
     ctx.progress(1.0);
 
@@ -461,7 +490,7 @@ fn install(ctx: &Ctx, c: &Choices) -> anyhow::Result<()> {
     ctx.line(format!("compte de l'écran de connexion : {greeter}"));
     ctx.write(
         "/etc/greetd/config.toml",
-        &format!("[terminal]\nvt = 1\n\n[default_session]\ncommand = \"/usr/local/bin/noos-greeter\"\nuser = \"{greeter}\"\n"),
+        &format!("[terminal]\nvt = 1\n\n[default_session]\ncommand = \"{}\"\nuser = \"{greeter}\"\n", greeter_command()),
     )?;
     ctx.run("mkdir", &["-p", &format!("{TARGET}/var/lib/noos-login")])?;
     ctx.chroot(&["chown", &format!("{greeter}:{greeter}"), "/var/lib/noos-login"])?;
@@ -525,6 +554,27 @@ fn install(ctx: &Ctx, c: &Choices) -> anyhow::Result<()> {
     ctx.run("umount", &["-R", TARGET])?;
     ctx.progress(1.0);
     Ok(())
+}
+
+/// Projet COPR de NOOS (« propriétaire/projet »), fourni par l'ISO.
+fn copr_project() -> Option<(String, String)> {
+    let text = std::fs::read_to_string(format!("{NOOS_PREFIX}/share/noos/install/copr")).ok()?;
+    let line = text.lines().map(str::trim).find(|l| !l.is_empty() && !l.starts_with('#'))?;
+    let (owner, project) = line.split_once('/')?;
+    Some((owner.to_string(), project.to_string()))
+}
+
+/// Fichier de dépôt COPR (identique à celui de `dnf copr enable`).
+fn copr_repo(owner: &str, project: &str) -> String {
+    let base = format!("https://download.copr.fedorainfracloud.org/results/{owner}/{project}");
+    format!(
+        "[copr:copr.fedorainfracloud.org:{owner}:{project}]\nname=Copr repo for {project} owned by {owner}\nbaseurl={base}/fedora-$releasever-$basearch/\ntype=rpm-md\nskip_if_unavailable=True\ngpgcheck=1\ngpgkey={base}/pubkey.gpg\nrepo_gpgcheck=0\nenabled=1\nenabled_metadata=1\n"
+    )
+}
+
+/// Lanceur de l'écran de connexion : paquet RPM (/usr/bin) ou copie de l'ISO (/usr/local/bin).
+fn greeter_command() -> &'static str {
+    if Path::new(&format!("{TARGET}/usr/bin/noos-greeter")).exists() { "/usr/bin/noos-greeter" } else { "/usr/local/bin/noos-greeter" }
 }
 
 /// Compte système de l'écran de connexion dans le système cible.

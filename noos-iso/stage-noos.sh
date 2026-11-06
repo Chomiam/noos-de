@@ -63,6 +63,10 @@ libs_pkgs() {
     echo "# Bibliothèques des binaires NOOS"
     libs_pkgs
 } | awk '!seen[$0]++' >"$PREFIX/share/noos/install/packages.txt"
+# Projet COPR d'où l'installateur télécharge le paquet « noos » (sinon : copie de l'ISO).
+if [ -s noos-iso/copr.txt ]; then
+    install -m644 noos-iso/copr.txt "$PREFIX/share/noos/install/copr"
+fi
 # Le système live a besoin des mêmes bibliothèques pour faire tourner l'installateur.
 libs_pkgs >"$DEST/live-libs.txt"
 

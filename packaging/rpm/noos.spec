@@ -28,6 +28,7 @@ BuildRequires:  gcc
 BuildRequires:  meson
 BuildRequires:  ninja-build
 BuildRequires:  python3
+BuildRequires:  sassc
 BuildRequires:  pkgconfig(gtk4)
 BuildRequires:  pkgconfig(appstream)
 BuildRequires:  pkgconfig(fribidi)
@@ -78,7 +79,7 @@ cat vendor/vendor-config.toml >> .cargo/config.toml
 %build
 export CARGO_HOME="$PWD/.cargo-home"
 export RUSTFLAGS="%{?build_rustflags}"
-meson setup target/libadapta-build third_party/libadapta --buildtype=release \
+meson setup target/libadapta-build third_party/libadapta --buildtype=release --wrap-mode=nodownload \
     -Dintrospection=disabled -Dvapi=false -Dtests=false -Dexamples=false -Dgtk_doc=false
 ninja -C target/libadapta-build %{?_smp_mflags}
 cargo build --release --offline $(for b in %{noos_bins}; do echo -n "-p $b "; done)
