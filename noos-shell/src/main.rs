@@ -8,6 +8,7 @@ mod apps;
 mod audio;
 mod net;
 mod notify;
+mod polkit;
 mod quick;
 mod startmenu;
 mod style;
@@ -66,6 +67,8 @@ pub struct Shell {
     pub start: RefCell<Option<Rc<startmenu::StartMenu>>>,
     pub quick: RefCell<Option<Rc<quick::QuickSettings>>>,
     pub notify: RefCell<Option<Rc<notify::Notifications>>>,
+    /// Agent d'authentification polkit (fenêtre d'élévation de privilèges).
+    pub polkit: RefCell<Option<Rc<polkit::PolkitAgent>>>,
     pub tray: RefCell<Option<Rc<tray::Tray>>>,
     pub net: RefCell<Option<Rc<net::NetFlyout>>>,
     pub audio: RefCell<Option<Rc<audio::AudioFlyout>>>,
@@ -160,7 +163,7 @@ impl Shell {
 
     fn apply_style(self: &Rc<Self>, cfg: &NoosConfig) {
         let dark = adap::StyleManager::default().is_dark();
-        self.css.load_from_string(&style::css(cfg, dark));
+        self.css.load_from_string(&format!("{}{}", style::css(cfg, dark), polkit::CSS));
         for t in self.taskbars.borrow().iter() {
             t.apply_config(cfg);
         }
@@ -318,6 +321,7 @@ fn main() -> glib::ExitCode {
             start: RefCell::new(None),
             quick: RefCell::new(None),
             notify: RefCell::new(None),
+            polkit: RefCell::new(None),
             tray: RefCell::new(None),
             net: RefCell::new(None),
             audio: RefCell::new(None),
@@ -328,6 +332,7 @@ fn main() -> glib::ExitCode {
         *shell.start.borrow_mut() = Some(startmenu::StartMenu::new(&shell));
         *shell.quick.borrow_mut() = Some(quick::QuickSettings::new(&shell));
         *shell.notify.borrow_mut() = Some(notify::Notifications::new(&shell));
+        *shell.polkit.borrow_mut() = Some(polkit::PolkitAgent::new(&shell));
         *shell.tray.borrow_mut() = Some(tray::Tray::new(&shell));
         *shell.net.borrow_mut() = Some(net::NetFlyout::new(&shell));
         *shell.audio.borrow_mut() = Some(audio::AudioFlyout::new(&shell));

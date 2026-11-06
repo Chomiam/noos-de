@@ -168,6 +168,18 @@ Une page s'ouvre directement avec `noos-settings <page>` (`display`, `power`, `f
 | Ctrl+, | Préférences |
 | F11 | Plein écran |
 
+## Élévation de privilèges (agent polkit)
+
+noos-shell est l'agent d'authentification polkit de la session : quand une application
+demande une action d'administration (écrire une ISO sur clé USB avec Popsicle via udisks,
+`pkexec`, installer un paquet…), une fenêtre « Contrôle de compte d'utilisateur » s'affiche
+par-dessus l'écran assombri (compte administrateur, mot de passe, Oui / Non). Le mot de passe
+est vérifié par l'assistant setuid de polkit (`polkit-agent-helper-1`, PAM) ; NOOS ne le
+conserve pas. Aperçu sans polkit : `NOOS_POLKIT_TEST=1 noos-shell`.
+
+Dans un terminal, `pkexec` garde sa propre invite texte (comme sous GNOME) ; ajoutez
+`--disable-internal-agent` pour passer par la fenêtre.
+
 ## Raccourcis
 
 | Raccourci | Action |
