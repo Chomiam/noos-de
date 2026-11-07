@@ -58,9 +58,10 @@ pub struct Appearance {
     pub slideshow: Slideshow,
     /// Police d'interface optionnelle (ex. `Inter 10`).
     pub font: String,
-    /// Écrit aussi les couleurs dans `~/.config/gtk-4.0/gtk.css` pour que les applis
-    /// libadwaita « classiques » (non libAdapta) suivent aussi le thème NOOS.
-    /// Attention : ce fichier est aussi lu dans vos autres sessions (GNOME…).
+    /// Écrit aussi les couleurs dans `~/.config/gtk-4.0/gtk.css` (applis libadwaita) et
+    /// `~/.config/gtk-3.0/gtk.css` (applis GTK3, thème adw-gtk3) pour que les applis tierces
+    /// suivent la palette NOOS. Activé par défaut. Ces fichiers sont aussi lus par vos
+    /// autres sessions (GNOME…).
     pub apply_to_all_apps: bool,
     /// Style des boutons de fenêtre : `mac` (pastilles colorées), `windows` (rectangulaires,
     /// fermeture rouge au survol) ou `theme` (celui du thème GTK, librement modifiable).
@@ -86,7 +87,7 @@ impl Default for Appearance {
             bing_daily: true,
             slideshow: Slideshow::default(),
             font: String::new(),
-            apply_to_all_apps: false,
+            apply_to_all_apps: true,
             button_style: "mac".into(),
             button_layout: "icon:minimize,maximize,close".into(),
             overrides: Default::default(),

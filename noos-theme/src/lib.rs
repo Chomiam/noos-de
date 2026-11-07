@@ -148,8 +148,98 @@ pub fn install_theme(app: &Appearance) -> anyhow::Result<PathBuf> {
         "[Desktop Entry]\nType=X-GNOME-Metatheme\nName=NOOS\nComment=Thème généré par NOOS\n\n[X-GNOME-Metatheme]\nGtkTheme=NOOS\n",
     )?;
 
+    apply_desktop_settings(app);
     apply_global_gtk_css(app)?;
+    apply_gtk3_css(app)?;
     Ok(theme_dir())
+}
+
+/// Le thème sombre est-il actif pour les applis tierces ? (`System` : réglage GNOME actuel.)
+fn wants_dark(app: &Appearance) -> bool {
+    match app.color_scheme {
+        ColorScheme::Dark => true,
+        ColorScheme::Light => false,
+        ColorScheme::System => interface_settings()
+            .is_some_and(|s| s.string("color-scheme") == "prefer-dark"),
+    }
+}
+
+fn interface_settings() -> Option<gio::Settings> {
+    let schema = gio::SettingsSchemaSource::default()?.lookup("org.gnome.desktop.interface", true)?;
+    Some(gio::Settings::new_full(&schema, None::<&gio::SettingsBackend>, None))
+}
+
+fn theme_exists(kind: &str, name: &str) -> bool {
+    let mut dirs = vec![paths::xdg_data_home()];
+    dirs.extend(glib::system_data_dirs());
+    dirs.iter().any(|d| d.join(kind).join(name).is_dir())
+        || (kind == "themes" && paths::home().join(".themes").join(name).is_dir())
+}
+
+/// Réglages lus par toutes les applis GTK3/GTK4/libadwaita (directement ou via le portail
+/// `org.freedesktop.appearance`) : mode sombre, thème d'icônes Papirus, thème GTK3.
+/// Sans cela, une installation neuve reste en Adwaita clair.
+pub fn apply_desktop_settings(app: &Appearance) {
+    let Some(settings) = interface_settings() else { return };
+    let dark = wants_dark(app);
+    let set = |key: &str, value: &str| {
+        if settings.settings_schema().is_some_and(|s| s.has_key(key)) && settings.string(key) != value {
+            let _ = settings.set_string(key, value);
+        }
+    };
+    match app.color_scheme {
+        ColorScheme::Dark => set("color-scheme", "prefer-dark"),
+        ColorScheme::Light => set("color-scheme", "prefer-light"),
+        ColorScheme::System => {}
+    }
+    let icons = if dark { "Papirus-Dark" } else { "Papirus-Light" };
+    if theme_exists("icons", icons) {
+        set("icon-theme", icons);
+    }
+    // adw-gtk3 : thème GTK3 qui lit les couleurs nommées de libadwaita (voir apply_gtk3_css).
+    let gtk3 = if dark { "adw-gtk3-dark" } else { "adw-gtk3" };
+    if theme_exists("themes", gtk3) {
+        set("gtk-theme", gtk3);
+    } else {
+        set("gtk-theme", if dark { "Adwaita-dark" } else { "Adwaita" });
+    }
+    gio::Settings::sync();
+}
+
+/// Applis GTK3 (thème adw-gtk3) : couleurs nommées dans `~/.config/gtk-3.0/gtk.css`.
+pub fn apply_gtk3_css(app: &Appearance) -> anyhow::Result<()> {
+    let path = paths::xdg_config_home().join("gtk-3.0").join("gtk.css");
+    let block = app.apply_to_all_apps.then(|| {
+        // Couleurs opaques : les fenêtres GTK3 ne sont pas floutées (Mica) par le compositeur.
+        let opaque = Appearance { panel_opacity: 1.0, ..app.clone() };
+        palette::named_colors(&opaque, wants_dark(app))
+            .into_iter()
+            .map(|(k, v)| format!("@define-color {k} {v};\n"))
+            .collect::<String>()
+    });
+    write_block(&path, block)
+}
+
+/// Remplace (ou retire, avec `None`) le bloc généré par NOOS dans un fichier CSS.
+fn write_block(path: &std::path::Path, block: Option<String>) -> anyhow::Result<()> {
+    let current = std::fs::read_to_string(path).unwrap_or_default();
+    let cleaned = match (current.find(GLOBAL_BEGIN), current.find(GLOBAL_END)) {
+        (Some(a), Some(b)) if b > a => {
+            format!("{}{}", &current[..a], &current[b + GLOBAL_END.len()..]).trim().to_string()
+        }
+        _ => current.trim().to_string(),
+    };
+    let out = match block {
+        Some(b) => format!("{cleaned}\n\n{GLOBAL_BEGIN}\n{b}{GLOBAL_END}\n"),
+        None => cleaned,
+    };
+    if out.trim() != current.trim() {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(path, out.trim_start())?;
+    }
+    Ok(())
 }
 
 fn write_if_changed(path: &std::path::Path, content: &str) -> std::io::Result<()> {
@@ -163,15 +253,7 @@ fn write_if_changed(path: &std::path::Path, content: &str) -> std::io::Result<()
 /// (option `apply_to_all_apps`). Le bloc est retiré quand l'option est désactivée.
 pub fn apply_global_gtk_css(app: &Appearance) -> anyhow::Result<()> {
     let path = paths::xdg_config_home().join("gtk-4.0").join("gtk.css");
-    let current = std::fs::read_to_string(&path).unwrap_or_default();
-    let cleaned = match (current.find(GLOBAL_BEGIN), current.find(GLOBAL_END)) {
-        (Some(a), Some(b)) if b > a => {
-            format!("{}{}", &current[..a], &current[b + GLOBAL_END.len()..]).trim().to_string()
-        }
-        _ => current.trim().to_string(),
-    };
-    let mut out = cleaned;
-    if app.apply_to_all_apps {
+    let block = app.apply_to_all_apps.then(|| {
         let vars = |dark: bool| {
             palette::named_colors(app, dark)
                 .into_iter()
@@ -179,20 +261,14 @@ pub fn apply_global_gtk_css(app: &Appearance) -> anyhow::Result<()> {
                 .map(|(k, v)| format!("  --{}: {};\n", k.replace('_', "-"), v))
                 .collect::<String>()
         };
-        out = format!(
-            "{out}\n\n{GLOBAL_BEGIN}\n:root {{\n{}  --window-radius: {}px;\n}}\n@media (prefers-color-scheme: dark) {{\n:root {{\n{}}}\n}}\n{GLOBAL_END}\n",
+        format!(
+            ":root {{\n{}  --window-radius: {}px;\n}}\n@media (prefers-color-scheme: dark) {{\n:root {{\n{}}}\n}}\n",
             vars(false),
             app.corner_radius,
             vars(true)
-        );
-    }
-    if out.trim() != current.trim() {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::write(&path, out.trim_start())?;
-    }
-    Ok(())
+        )
+    });
+    write_block(&path, block)
 }
 
 pub fn adap_color_scheme(scheme: ColorScheme) -> adap::ColorScheme {

@@ -7,6 +7,7 @@ license.workspace = true
 
 [dependencies]
 noos-core.workspace = true
+noos-theme.workspace = true
 gtk.workspace = true
 adap.workspace = true
 vte4 = { version = "0.10", features = ["v0_80", "gtk_v4_18"] }

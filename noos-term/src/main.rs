@@ -72,11 +72,22 @@ fn rgba(hex: &str, alpha: f64) -> gdk::RGBA {
 fn apply_terminal(term: &vte4::Terminal, cfg: &TermConfig) {
     let font = pango::FontDescription::from_string(&format!("{} {}", cfg.font_family, cfg.font_size));
     term.set_font(Some(&font));
-    let theme = themes::resolve(&cfg.theme, adap::StyleManager::default().is_dark());
+    let dark = adap::StyleManager::default().is_dark();
+    let theme = themes::resolve(&cfg.theme, dark);
+    let (mut fg, mut bg, mut cursor) = (theme.fg.to_string(), theme.bg.to_string(), theme.cursor.to_string());
+    if cfg.theme == "noos" {
+        // Thème « NOOS » : fond, texte et curseur pris dans la palette de Personnalisation
+        // (ex. Nuit saphir) ; seules les 16 couleurs ANSI restent celles de NOOS sombre/clair.
+        let app = noos_core::NoosConfig::load().appearance;
+        let v = noos_theme::palette::variant(&app, dark);
+        fg = v.window_fg.to_string();
+        bg = v.window_bg.to_string();
+        cursor = if app.accent.is_empty() { noos_theme::palette::palette(&app.palette).accent.to_string() } else { app.accent };
+    }
     let palette: Vec<gdk::RGBA> = theme.palette.iter().map(|c| rgba(c, 1.0)).collect();
     let refs: Vec<&gdk::RGBA> = palette.iter().collect();
-    term.set_colors(Some(&rgba(theme.fg, 1.0)), Some(&rgba(theme.bg, cfg.opacity.clamp(0.5, 1.0))), &refs);
-    term.set_color_cursor(Some(&rgba(theme.cursor, 1.0)));
+    term.set_colors(Some(&rgba(&fg, 1.0)), Some(&rgba(&bg, cfg.opacity.clamp(0.5, 1.0))), &refs);
+    term.set_color_cursor(Some(&rgba(&cursor, 1.0)));
     term.set_scrollback_lines(cfg.scrollback_lines as _);
     term.set_cursor_blink_mode(if cfg.cursor_blink { vte4::CursorBlinkMode::On } else { vte4::CursorBlinkMode::Off });
     term.set_bold_is_bright(true);
@@ -835,7 +846,11 @@ fn main() -> glib::ExitCode {
         let css = gtk::CssProvider::new();
         css.load_from_string(CSS);
         gtk::style_context_add_provider_for_display(&gdk::Display::default().unwrap(), &css, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
-        // Thème « NOOS » : suit le passage clair / sombre.
+        // Thème NOOS (palette, mode sombre forcé, rechargement à chaud de noos.toml) ; le
+        // thème « NOOS » du terminal suit le passage clair / sombre et la palette.
+        let theming = noos_theme::Theming::init();
+        theming.connect_changed(|_| apply_all());
+        std::mem::forget(theming);
         adap::StyleManager::default().connect_dark_notify(|_| apply_all());
     });
     app.connect_activate(|app| {

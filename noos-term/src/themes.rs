@@ -136,7 +136,7 @@ pub const THEMES: &[Theme] = &[
 
 /// Choix proposés dans le menu : « noos » (automatique) puis les thèmes fixes.
 pub fn choices() -> Vec<(&'static str, &'static str)> {
-    let mut v = vec![("noos", "NOOS (suit le mode clair/sombre)")];
+    let mut v = vec![("noos", "NOOS (suit la palette de Personnalisation)")];
     v.extend(THEMES.iter().filter(|t| !t.id.starts_with("noos-")).map(|t| (t.id, t.name)));
     v
 }

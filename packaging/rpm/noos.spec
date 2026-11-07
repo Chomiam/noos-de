@@ -46,6 +46,8 @@ BuildRequires:  pkgconfig(vte-2.91-gtk4)
 # Session, écran de connexion, démarrage.
 Requires:       greetd
 Requires:       plymouth-plugin-script
+# Image.Text du script Plymouth : sans ce greffon, plymouthd plante (SIGSEGV).
+Requires:       plymouth-plugin-label
 Requires:       polkit
 Requires:       dbus-tools
 Requires:       xdg-desktop-portal
@@ -56,6 +58,8 @@ Requires:       wireplumber
 Requires:       pipewire-utils
 Requires:       NetworkManager
 Requires:       papirus-icon-theme
+# Thème GTK3 qui suit les couleurs de la palette NOOS.
+Requires:       adw-gtk3-theme
 Recommends:     xwayland-satellite
 Recommends:     grim
 Recommends:     bluez

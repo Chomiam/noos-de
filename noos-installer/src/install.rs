@@ -226,6 +226,7 @@ fn packages(c: &Choices, uefi: bool) -> Vec<String> {
         // Liste de secours (ISO incomplète) : de quoi démarrer NOOS.
         for x in [
             "@core", "kernel", "linux-firmware", "btrfs-progs", "NetworkManager-wifi", "plymouth", "plymouth-plugin-script",
+            "plymouth-plugin-label", "adw-gtk3-theme",
             "greetd", "gtk4", "vte291-gtk4", "libseat", "gtk4-layer-shell", "pipewire", "wireplumber", "xdg-desktop-portal",
             "xdg-desktop-portal-gtk", "polkit", "papirus-icon-theme", "google-noto-sans-fonts", "mesa-dri-drivers",
         ] {

@@ -11,6 +11,8 @@ dosfstools
 e2fsprogs
 plymouth
 plymouth-plugin-script
+# Texte du thème Plymouth (Image.Text) : sans lui, plymouthd plante.
+plymouth-plugin-label
 mesa-dri-drivers
 # Chargés dynamiquement par GTK (invisibles pour ldd) : OpenGL ES / EGL, images.
 mesa-libEGL
@@ -33,6 +35,7 @@ dbus-tools
 systemd-pam
 xkeyboard-config
 papirus-icon-theme
+adw-gtk3-theme
 adwaita-icon-theme
 adwaita-cursor-theme
 google-noto-sans-fonts
