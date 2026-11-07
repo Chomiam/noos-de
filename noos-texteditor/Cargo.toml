@@ -1,0 +1,15 @@
+[package]
+name = "noos-texteditor"
+description = "Éditeur de texte et de code de NOOS : coloration de plus de 150 langages, recherche et remplacement, onglets, dossier de projet — GTK4 + libAdapta + GtkSourceView"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+noos-core.workspace = true
+noos-theme.workspace = true
+gtk.workspace = true
+adap.workspace = true
+sourceview5 = { version = "0.11", features = ["v5_12"] }
+serde.workspace = true
+toml.workspace = true

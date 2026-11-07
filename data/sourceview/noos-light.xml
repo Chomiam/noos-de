@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Thème de coloration de NOOS (Éditeur de texte), assorti au terminal « NOOS clair ». -->
+<style-scheme id="noos-light" name="NOOS clair" version="1.0">
+  <author>NOOS</author>
+  <description>Couleurs de la palette NOOS</description>
+  <color name="bg" value="#f6f7fb"/>
+  <color name="fg" value="#23252f"/>
+  <color name="bright" value="#000000"/>
+  <color name="cursor" value="#2f6fe4"/>
+  <color name="sel" value="#c9d9fb"/>
+  <color name="sel2" value="#dde4f3"/>
+  <color name="line" value="#eceef6"/>
+  <color name="gutter" value="#f6f7fb"/>
+  <color name="dim" value="#9a9fb3"/>
+  <color name="match" value="#d7def3"/>
+  <color name="search" value="#f6e3a1"/>
+  <color name="margin" value="#e2e5ee"/>
+  <color name="margin_bg" value="#f0f2f8"/>
+  <color name="space" value="#cdd1de"/>
+  <color name="comment" value="#7d8296"/>
+  <color name="red" value="#c4283c"/>
+  <color name="green" value="#1f8a4c"/>
+  <color name="yellow" value="#9a6a00"/>
+  <color name="orange" value="#b5550f"/>
+  <color name="blue" value="#2f6fe4"/>
+  <color name="purple" value="#8a3fd1"/>
+  <color name="cyan" value="#0f8a99"/>
+  <style name="text" foreground="fg" background="bg"/>
+  <style name="selection" background="sel"/>
+  <style name="selection-unfocused" background="sel2"/>
+  <style name="cursor" foreground="cursor"/>
+  <style name="current-line" background="line"/>
+  <style name="line-numbers" foreground="dim" background="gutter"/>
+  <style name="current-line-number" foreground="fg" background="line" bold="true"/>
+  <style name="bracket-match" foreground="bright" background="match" bold="true"/>
+  <style name="bracket-mismatch" foreground="red" underline="error"/>
+  <style name="search-match" background="search"/>
+  <style name="right-margin" foreground="margin" background="margin_bg"/>
+  <style name="draw-spaces" foreground="space"/>
+  <style name="background-pattern" background="line"/>
+  <style name="snippet-focus" background="match"/>
+  <style name="def:comment" foreground="comment" italic="true"/>
+  <style name="def:shebang" foreground="comment" bold="true"/>
+  <style name="def:doc-comment-element" foreground="comment" bold="true"/>
+  <style name="def:string" foreground="green"/>
+  <style name="def:special-char" foreground="cyan"/>
+  <style name="def:character" foreground="green"/>
+  <style name="def:keyword" foreground="purple" bold="true"/>
+  <style name="def:statement" foreground="purple"/>
+  <style name="def:type" foreground="cyan"/>
+  <style name="def:function" foreground="blue"/>
+  <style name="def:identifier" foreground="fg"/>
+  <style name="def:constant" foreground="yellow"/>
+  <style name="def:number" foreground="orange"/>
+  <style name="def:boolean" foreground="orange" bold="true"/>
+  <style name="def:builtin" foreground="red"/>
+  <style name="def:preprocessor" foreground="red"/>
+  <style name="def:operator" foreground="cyan"/>
+  <style name="def:decimal" foreground="orange"/>
+  <style name="def:floating-point" foreground="orange"/>
+  <style name="def:special-constant" foreground="orange" bold="true"/>
+  <style name="def:error" underline="error" underline-color="red"/>
+  <style name="def:warning" underline="error" underline-color="yellow"/>
+  <style name="def:note" foreground="yellow" bold="true"/>
+  <style name="def:net-address" foreground="blue" underline="single"/>
+  <style name="def:link-destination" foreground="blue" underline="single"/>
+  <style name="def:link-text" foreground="cyan"/>
+  <style name="def:heading" foreground="blue" bold="true"/>
+  <style name="def:emphasis" italic="true"/>
+  <style name="def:strong-emphasis" bold="true"/>
+  <style name="def:inline-code" foreground="green"/>
+  <style name="def:preformatted-section" foreground="green"/>
+  <style name="def:list-marker" foreground="purple" bold="true"/>
+  <style name="def:deletion" strikethrough="true"/>
+  <style name="def:insertion" underline="single"/>
+  <style name="diff:added-line" foreground="green"/>
+  <style name="diff:removed-line" foreground="red"/>
+  <style name="diff:changed-line" foreground="yellow"/>
+  <style name="diff:location" foreground="blue" bold="true"/>
+  <style name="diff:diff-file" foreground="purple" bold="true"/>
+  <style name="xml:attribute-name" foreground="yellow"/>
+  <style name="xml:element-name" foreground="blue"/>
+  <style name="xml:tags" foreground="blue"/>
+  <style name="xml:namespace" foreground="purple"/>
+  <style name="css:property-name" foreground="blue"/>
+  <style name="json:keyname" foreground="blue"/>
+  <style name="sh:variable" foreground="cyan"/>
+  <style name="rust:lifetime" foreground="orange" italic="true"/>
+  <style name="rust:attribute" foreground="yellow"/>
+  <style name="rust:macro" foreground="red"/>
+</style-scheme>

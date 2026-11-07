@@ -12,6 +12,7 @@ members = [
     "noos-pkg",
     "noos-save",
     "noos-photoview",
+    "noos-texteditor",
     "noos-software",
     "noos-snip",
     "noos-term",

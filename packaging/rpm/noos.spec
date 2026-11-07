@@ -8,7 +8,7 @@
 %global __provides_exclude_from ^/opt/noos/lib/.*$
 %global __requires_exclude ^libadapta-1\\.so.*$
 
-%global noos_bins noos-comp noos-shell noos-file noos-settings noos-software noos-pkg noos-snip noos-term noos-keys noos-save noos-photoview noos-login noos-installer
+%global noos_bins noos-comp noos-shell noos-file noos-settings noos-software noos-pkg noos-snip noos-term noos-keys noos-save noos-photoview noos-texteditor noos-login noos-installer
 
 Name:           noos
 Version:        0.1.0
@@ -42,6 +42,7 @@ BuildRequires:  pkgconfig(xkbcommon)
 BuildRequires:  pkgconfig(libdisplay-info)
 BuildRequires:  pkgconfig(gtk4-layer-shell-0)
 BuildRequires:  pkgconfig(vte-2.91-gtk4)
+BuildRequires:  pkgconfig(gtksourceview-5)
 
 # Session, écran de connexion, démarrage.
 Requires:       greetd
@@ -83,6 +84,8 @@ Requires:       fish
 Requires:       fastfetch
 # Profils d'énergie (Économie / Équilibré / Performances) : tuned + interface power-profiles.
 Requires:       tuned-ppd
+# Éditeur de texte (coloration syntaxique, plus de 150 langages).
+Requires:       gtksourceview5
 # Polices : courantes, équivalentes métriques des polices Microsoft (Liberation = Arial / Times /
 # Courier, Carlito = Calibri, Caladea = Cambria), CJK, emoji en couleur et symboles (fastfetch,
 # drapeaux), polices de code et d'icônes. cabextract : polices Microsoft d'origine à la demande.

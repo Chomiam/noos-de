@@ -137,6 +137,8 @@ impl Default for Taskbar {
                 "org.noos.Software",
                 "org.noos.Snip",
                 "org.noos.Terminal",
+                "org.noos.TextEditor",
+                "org.noos.PhotoView",
                 "firefox",
                 "org.mozilla.firefox",
                 "steam",

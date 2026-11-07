@@ -161,6 +161,15 @@ Instantanés Btrfs du système (snapper, configuration `root`) :
 Les dossiers personnels (`@home`) ne sont jamais concernés. Les opérations privilégiées passent
 par `/opt/noos/libexec/noos-save-helper` (polkit `org.noos.save.helper`).
 
+## Éditeur de texte (noos-texteditor)
+
+Éditeur de texte et de code (GTK4 + libAdapta + GtkSourceView 5) : coloration de plus de 160
+langages détectés par le nom et le contenu, numéros de ligne, mini-carte, onglets, panneau de
+dossier, recherche et remplacement (casse, mot entier, expressions régulières, compteur),
+autocomplétion des mots, commenter / dupliquer / déplacer / trier les lignes, casse, aller à la
+ligne, encodage et fins de ligne conservés, rechargement si un autre programme modifie le
+fichier, enregistrement automatique (option), session restaurée, thèmes NOOS clair / sombre.
+
 ## Réseau et Internet (Paramètres)
 
 - **État** de la connexion avec débit en direct (graphique), adresses IP, DNS et VPN en cours ;

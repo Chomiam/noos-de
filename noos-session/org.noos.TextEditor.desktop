@@ -1,0 +1,17 @@
+[Desktop Entry]
+Type=Application
+Name=Éditeur de texte
+GenericName=Éditeur de texte et de code
+Comment=Éditer du texte et du code : coloration de plus de 150 langages, recherche et remplacement
+Keywords=texte;code;éditeur;programmation;markdown;notes;txt;
+Icon=accessories-text-editor
+Exec=noos-texteditor %F
+Terminal=false
+StartupNotify=true
+Categories=Utility;TextEditor;Development;GTK;
+MimeType=text/plain;text/markdown;text/x-log;text/csv;text/tab-separated-values;text/x-readme;text/x-changelog;text/x-license;application/x-shellscript;text/x-shellscript;application/json;application/toml;application/xml;text/xml;application/x-yaml;text/x-yaml;application/x-desktop;text/x-python;text/x-python3;text/x-rust;text/x-csrc;text/x-chdr;text/x-c++src;text/x-c++hdr;text/x-csharp;text/x-java;text/x-go;text/x-kotlin;text/x-scala;text/x-swift;text/x-dart;text/x-php;application/x-php;text/x-ruby;application/x-ruby;text/x-perl;application/x-perl;text/x-lua;text/x-haskell;text/x-ocaml;text/x-erlang;text/x-elixir;text/x-clojure;text/x-common-lisp;text/x-scheme;text/x-r;text/x-julia;text/x-fortran;text/x-pascal;text/x-ada;text/x-vala;text/x-zig;text/x-nim;text/x-d;text/x-sql;application/sql;text/javascript;application/javascript;application/x-javascript;text/x-typescript;application/typescript;text/css;text/x-scss;text/x-sass;text/x-less;text/html;text/x-vue;text/x-svelte;text/x-makefile;text/x-cmake;text/x-meson;text/x-dockerfile;text/x-nix;text/x-gettext-translation;text/x-po;text/x-tex;text/x-bibtex;text/x-patch;text/x-diff;text/x-ini;text/x-systemd-unit;text/x-asm;text/x-gradle;text/x-groovy;text/x-protobuf;text/x-graphql;text/x-terraform;text/x-hcl;text/vnd.graphviz;text/x-csv;application/x-trash;text/x-matlab;text/x-octave;text/x-fish;application/x-fishscript;text/x-powershell;text/x-batch;application/x-sh;application/x-csh;
+Actions=new-window;
+
+[Desktop Action new-window]
+Name=Nouveau document
+Exec=noos-texteditor

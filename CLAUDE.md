@@ -37,6 +37,7 @@ Le `README.md` décrit les fonctionnalités ; ce fichier donne le contexte de tr
 | `noos-theme/` | Palettes, génération du thème libAdapta « NOOS » |
 | `noos-adapta/` | Bindings Rust de libAdapta ; sources C dans `third_party/libadapta/` |
 | `noos-session/` | Lanceur de session, fichiers .desktop, portails |
+| `noos-texteditor/` | Éditeur de texte et de code (GtkSourceView 5 : 160+ langages, recherche / remplacement, onglets, dossier, mini-carte, thèmes NOOS `data/sourceview/`) |
 | `noos-save/` | « Sauvegarder et Restaurer » : instantanés Btrfs (snapper), restauration au redémarrage ; `noos-save-helper` (root, pkexec + actions dnf5) |
 | `noos-grub/` | Thème GRUB (`generate.py` produit images et polices .pf2, déjà générées) ; `install.sh` le copie dans /boot |
 | `noos-system/` | Réglages système livrés par le paquet : Wi-Fi/Ethernet sans économie d'énergie, WirePlumber sans mise en veille, sudo `pwfeedback`, profil fastfetch (`/etc/xdg/fastfetch`), fish (`vendor_conf.d` : pas de message d'accueil, fastfetch à l'ouverture) |
@@ -90,6 +91,7 @@ On ne peut pas cliquer dans l'aperçu : utiliser les variables de test ci-dessou
 | `NOOS_SAVE_PAGE=settings` / `NOOS_SAVE_EXPAND=n` / `NOOS_SAVE_COMPARE=n` / `NOOS_SAVE_SCROLL=px` | noos-save : page Réglages, instantané n déplié, fenêtre « Comparer » de n, défilement |
 | `NOOS_NET_DEMO=1` (+ `NOOS_NET_MEASURE=1`) | noos-settings › Réseau : connexions, Wi-Fi, DNS, VPN fictifs, sans NetworkManager (+ mesure DNS lancée) ; pages directes `noos-settings network\|wifi\|dns\|vpn\|ip\|hotspot\|network-diagnostics` |
 | `NOOS_VPN_DEMO=1` | noos-shell : profils VPN fictifs, bouclier VPN dans la barre et son menu ouvert |
+| `NOOS_EDITOR_DEMO=1` (+ `NOOS_EDITOR_SEARCH=mot`) | noos-texteditor : dossier et fichiers d'exemple (Rust, Python, CSS, Markdown), recherche lancée ; lancer depuis le conteneur (gtksourceview5) |
 | `NOOS_FILE_MENU_DEMO=x,y` | noos-file ouvre le menu contextuel de la vue en icônes en (x, y) ; y < 0 = depuis le bas |
 | `NOOS_FILE_SELECT_DEMO=0,1,2` | noos-file sélectionne ces éléments puis rejoue un clic dans le vide (coin inférieur droit) |
 | `NOOS_PHOTOVIEW_DEMO=<image>;info;zoom=2.5;next;hide;slideshow` | noos-photoview : ouvre une image, panneau d'infos, zoom, suivante, commandes masquées, diaporama |
