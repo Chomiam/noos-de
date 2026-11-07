@@ -320,6 +320,7 @@ impl Win {
                     let p = p.clone();
                     glib::idle_add_local_once(move || p.unparent());
                 });
+                noos_theme::fit_popover(&pop);
                 pop.popup();
             });
         }

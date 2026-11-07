@@ -271,6 +271,20 @@ pub fn apply_global_gtk_css(app: &Appearance) -> anyhow::Result<()> {
     write_block(&path, block)
 }
 
+/// Corrige la taille d'un menu contextuel (popover) à son ouverture.
+///
+/// GTK sous-estime parfois la première mesure d'un `PopoverMenu` (d'une dizaine de pixels
+/// dans l'Explorateur et le Terminal) : le menu est alors créé trop petit, sa dernière entrée
+/// est coupée et il faut le faire défiler. Une nouvelle mesure, juste après l'affichage, donne
+/// la bonne taille et GTK repositionne le menu (xdg_popup.reposition).
+pub fn fit_popover(pop: &impl IsA<gtk::Popover>) {
+    let pop: &gtk::Popover = pop.as_ref();
+    pop.connect_map(|p| {
+        let p = p.clone();
+        glib::idle_add_local_once(move || p.queue_resize());
+    });
+}
+
 pub fn adap_color_scheme(scheme: ColorScheme) -> adap::ColorScheme {
     match scheme {
         ColorScheme::Light => adap::ColorScheme::ForceLight,

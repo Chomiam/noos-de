@@ -90,9 +90,12 @@ impl CompositorHandler for NoosState {
         }
 
         self.popups.commit(surface);
-        if let Some(PopupKind::Xdg(popup)) = self.popups.find_popup(surface) {
-            if !popup.is_initial_configure_sent() {
-                let _ = popup.send_configure();
+        if let Some(kind) = self.popups.find_popup(surface) {
+            debug!(geometry = ?kind.geometry(), "popup : commit");
+            if let PopupKind::Xdg(popup) = &kind {
+                if !popup.is_initial_configure_sent() {
+                    let _ = popup.send_configure();
+                }
             }
         }
 
@@ -253,8 +256,16 @@ impl XdgShellHandler for NoosState {
         self.space.map_element(window, loc, false);
     }
 
-    fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {
+    fn new_popup(&mut self, surface: PopupSurface, positioner: PositionerState) {
         self.unconstrain_popup(&surface);
+        debug!(
+            rect = ?positioner.rect_size,
+            anchor = ?positioner.anchor_rect,
+            adjust = ?positioner.constraint_adjustment,
+            reactive = positioner.reactive,
+            geometry = ?surface.with_pending_state(|s| s.geometry),
+            "popup : création"
+        );
         if let Err(err) = self.popups.track_popup(PopupKind::Xdg(surface)) {
             warn!("popup ignorée : {err}");
         }
@@ -266,6 +277,7 @@ impl XdgShellHandler for NoosState {
             state.positioner = positioner;
         });
         self.unconstrain_popup(&surface);
+        debug!(token, geometry = ?surface.with_pending_state(|s| s.geometry), "popup : repositionnement");
         surface.send_repositioned(token);
     }
 

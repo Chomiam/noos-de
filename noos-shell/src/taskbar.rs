@@ -28,6 +28,10 @@ pub struct Taskbar {
     /// le relâchement (sinon le bouton cliqué est détruit et le clic est perdu).
     pressed: std::rc::Rc<Cell<bool>>,
     pending: std::rc::Rc<std::cell::RefCell<Option<(Vec<WindowInfo>, NoosConfig)>>>,
+    /// Un menu contextuel d'icône est ouvert : la reconstruction attend sa fermeture (sinon
+    /// le bouton, et donc son menu, est détruit, par exemple quand l'ouverture du menu retire
+    /// le focus à la fenêtre active et que la liste des fenêtres change).
+    menu_open: std::rc::Rc<Cell<bool>>,
     /// Dernier contenu affiché (évite de tout reconstruire si rien n'a changé).
     shown: std::cell::RefCell<String>,
     logo: gtk::Image,
@@ -355,6 +359,7 @@ impl Taskbar {
             tasks,
             pressed: std::rc::Rc::new(Cell::new(false)),
             pending: std::rc::Rc::new(std::cell::RefCell::new(None)),
+            menu_open: std::rc::Rc::new(Cell::new(false)),
             shown: std::cell::RefCell::new(String::new()),
             logo,
             height: Cell::new(cfg.taskbar.height as i32),
@@ -422,7 +427,7 @@ impl Taskbar {
     }
 
     pub fn update(&self, windows: &[WindowInfo], cfg: &NoosConfig) {
-        if self.pressed.get() {
+        if self.pressed.get() || self.menu_open.get() {
             *self.pending.borrow_mut() = Some((windows.to_vec(), cfg.clone()));
             return;
         }
@@ -460,7 +465,8 @@ impl Taskbar {
         let size = icon_size(self.height.get());
         for item in items {
             let (pinned, app_id) = (item.pinned, item.app_id.clone());
-            let button = task_button(item, size, &self.shell);
+            let hold = Hold { menu_open: self.menu_open.clone(), pending: self.pending.clone() };
+            let button = task_button(item, size, &self.shell, hold);
             if pinned {
                 // Glisser-déposer pour changer l'ordre des épinglées.
                 crate::reorder::attach(&button, &app_id, &self.tasks, &self.shell);
@@ -526,7 +532,13 @@ fn clock_box_tooltip(label: &gtk::Label, now: &glib::DateTime) {
     }
 }
 
-fn task_button(item: Item, icon_px: i32, shell: &Weak<Shell>) -> gtk::Button {
+/// De quoi suspendre la reconstruction de la barre pendant qu'un menu d'icône est ouvert.
+struct Hold {
+    menu_open: std::rc::Rc<Cell<bool>>,
+    pending: std::rc::Rc<std::cell::RefCell<Option<(Vec<WindowInfo>, NoosConfig)>>>,
+}
+
+fn task_button(item: Item, icon_px: i32, shell: &Weak<Shell>, hold: Hold) -> gtk::Button {
     let button = gtk::Button::new();
     button.add_css_class("task");
     let focused = item.windows.iter().any(|w| w.focused && !w.minimized);
@@ -577,8 +589,29 @@ fn task_button(item: Item, icon_px: i32, shell: &Weak<Shell>) -> gtk::Button {
     popover.set_parent(&button);
     popover.set_has_arrow(false);
     {
-        let popover = popover.clone();
-        button.connect_destroy(move |_| popover.unparent());
+        let (popover, menu_open) = (popover.clone(), hold.menu_open.clone());
+        button.connect_destroy(move |_| {
+            // Bouton détruit menu ouvert : ne jamais laisser la barre figée.
+            menu_open.set(false);
+            popover.unparent();
+        });
+    }
+    noos_theme::fit_popover(&popover);
+    {
+        // Menu fermé : la barre peut de nouveau être reconstruite (liste de fenêtres reçue
+        // entre-temps).
+        let (menu_open, pending, shell) = (hold.menu_open.clone(), hold.pending.clone(), shell.clone());
+        popover.connect_closed(move |_| {
+            menu_open.set(false);
+            if pending.borrow_mut().take().is_some() {
+                let shell = shell.clone();
+                glib::idle_add_local_once(move || {
+                    if let Some(shell) = shell.upgrade() {
+                        shell.refresh_tasks();
+                    }
+                });
+            }
+        });
     }
     let menu = gtk::Box::new(gtk::Orientation::Vertical, 2);
     let entry = |label: &str, icon: &str| {
@@ -649,7 +682,11 @@ fn task_button(item: Item, icon_px: i32, shell: &Weak<Shell>) -> gtk::Button {
     gesture.set_button(3);
     {
         let popover = popover.clone();
-        gesture.connect_pressed(move |_, _, _, _| popover.popup());
+        let menu_open = hold.menu_open.clone();
+        gesture.connect_pressed(move |_, _, _, _| {
+            menu_open.set(true);
+            popover.popup();
+        });
     }
     button.add_controller(gesture);
     // Clic du milieu : nouvelle instance.

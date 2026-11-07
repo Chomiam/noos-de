@@ -879,14 +879,23 @@ impl Explorer {
             s2.append(Some("Actualiser"), Some("win.refresh"));
             menu.append_section(None, &s2);
         }
+        // Le menu est rattaché au contenu de la fenêtre, pas à la vue : en CSS, il serait sinon
+        // un descendant de la grille (gridview, .view) et hériterait de règles qui faussent la
+        // mesure de sa hauteur (dernière entrée coupée, menu à faire défiler).
+        let host = self.window.content().unwrap_or_else(|| parent.clone());
+        let (hx, hy) = parent
+            .compute_point(&host, &gtk::graphene::Point::new(x as f32, y as f32))
+            .map(|p| (p.x() as i32, p.y() as i32))
+            .unwrap_or((x as i32, y as i32));
         let pop = gtk::PopoverMenu::from_model(Some(&menu));
-        pop.set_parent(parent);
+        pop.set_parent(&host);
         pop.set_has_arrow(false);
-        pop.set_pointing_to(Some(&gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
+        pop.set_pointing_to(Some(&gdk::Rectangle::new(hx, hy, 1, 1)));
         pop.connect_closed(|p| {
             let p = p.clone();
             glib::idle_add_local_once(move || p.unparent());
         });
+        noos_theme::fit_popover(&pop);
         pop.popup();
     }
 }
