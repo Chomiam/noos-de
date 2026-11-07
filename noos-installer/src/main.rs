@@ -6,6 +6,7 @@
 
 mod account;
 mod disk;
+mod hardware;
 mod install;
 mod keyboard;
 mod model;
@@ -242,6 +243,15 @@ impl Installer {
         }
         let start = page.parse().unwrap_or(0usize);
         self.show(start.min(self.pages.borrow().len() - 1));
+        // NOOS_INSTALLER_SCROLL=bottom : page affichée défilée jusqu'en bas (captures).
+        if std::env::var("NOOS_INSTALLER_SCROLL").is_ok_and(|v| v == "bottom") {
+            if let Some(sc) = self.stack.visible_child().and_downcast::<gtk::ScrolledWindow>() {
+                glib::timeout_add_local_once(std::time::Duration::from_millis(800), move || {
+                    let adj = sc.vadjustment();
+                    adj.set_value(adj.upper());
+                });
+            }
+        }
     }
 
     fn show(self: &Rc<Self>, i: usize) {
@@ -1040,8 +1050,8 @@ impl Installer {
         let g2 = adap::PreferencesGroup::new();
         g2.set_title("Logiciels");
         let fusion = adap::SwitchRow::new();
-        fusion.set_title("Dépôts RPM Fusion (libre et non libre)");
-        fusion.set_subtitle("Codecs multimédias, pilotes NVIDIA, Steam… (configurés ensuite dans NOOS)");
+        fusion.set_title("Pilotes et codecs propriétaires (RPM Fusion)");
+        fusion.set_subtitle("Pilote NVIDIA, codecs H.264/H.265, AAC, MP3, DVD, décodage vidéo matériel, Steam…");
         fusion.set_active(true);
         g2.add(&fusion);
         let base = adap::ActionRow::new();
@@ -1049,6 +1059,41 @@ impl Installer {
         base.set_subtitle("Plymouth NOOS, écran de connexion noos-login, GRUB");
         g2.add(&base);
         v.append(&g2);
+        // Matériel détecté : ce qui sera installé pour lui (mis à jour avec RPM Fusion).
+        let hw = Rc::new(hardware::detect());
+        let g3 = adap::PreferencesGroup::new();
+        g3.set_title("Matériel détecté");
+        let hw_list = gtk::ListBox::new();
+        hw_list.add_css_class("boxed-list");
+        hw_list.set_selection_mode(gtk::SelectionMode::None);
+        g3.add(&hw_list);
+        v.append(&g3);
+        let fill_hw = {
+            let (hw, hw_list) = (hw.clone(), hw_list.clone());
+            move |rpmfusion: bool| {
+                while let Some(c) = hw_list.first_child() {
+                    hw_list.remove(&c);
+                }
+                for line in hardware::plan(&hw, rpmfusion).summary {
+                    let (title, sub) = line.split_once(" : ").map(|(a, b)| (a.to_string(), b.to_string())).unwrap_or((line.clone(), String::new()));
+                    let r = adap::ActionRow::new();
+                    r.set_use_markup(false);
+                    r.set_title(&title);
+                    r.set_subtitle(&sub);
+                    let icon = if title.starts_with("Codecs") {
+                        "audio-x-generic-symbolic"
+                    } else if title.starts_with("Machine virtuelle") {
+                        "computer-symbolic"
+                    } else {
+                        "video-display-symbolic"
+                    };
+                    r.add_prefix(&gtk::Image::from_icon_name(icon));
+                    hw_list.append(&r);
+                }
+            }
+        };
+        fill_hw(true);
+        let fill_hw = Rc::new(fill_hw);
         let warn = gtk::Label::new(None);
         warn.add_css_class("installer-warning");
         warn.set_wrap(true);
@@ -1056,7 +1101,11 @@ impl Installer {
         v.append(&warn);
         {
             let c = self.choices.clone();
-            fusion.connect_active_notify(move |s| c.borrow_mut().rpmfusion = s.is_active());
+            let fill_hw = fill_hw.clone();
+            fusion.connect_active_notify(move |s| {
+                c.borrow_mut().rpmfusion = s.is_active();
+                fill_hw(s.is_active());
+            });
         }
         let c = self.choices.clone();
         Page {

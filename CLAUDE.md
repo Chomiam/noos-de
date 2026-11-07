@@ -81,6 +81,7 @@ On ne peut pas cliquer dans l'aperçu : utiliser les variables de test ci-dessou
 | `NOOS_INSTALLER_PAGE=n` / `install` | page n de l'installateur / installation simulée de bout en bout |
 | `NOOS_INSTALL_DRYRUN=1` | installateur en simulation (commandes affichées, rien d'exécuté) |
 | `NOOS_INSTALLER_DISK=/dev/sdX` | disque présélectionné |
+| `NOOS_INSTALLER_SCROLL=bottom` | page de l'installateur défilée jusqu'en bas (ex. matériel détecté du récapitulatif) |
 | `NOOS_POLKIT_TEST=1` | noos-shell affiche une fenêtre d'élévation d'exemple |
 | `NOOS_SOFTWARE_PAGE=repos` | noos-software s'ouvre sur une page (`explore`, `installed`, `updates`, `repos`) |
 | `NOOS_SOFTWARE_SEARCH=gimp` | noos-software lance une recherche au démarrage |

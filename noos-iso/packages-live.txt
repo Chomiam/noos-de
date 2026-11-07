@@ -5,3 +5,7 @@ util-linux
 gdisk
 libtimezonemap
 grub2-tools
+# Clés GPG de RPM Fusion (paquets pilotes et codecs installés dans le système cible).
+distribution-gpg-keys
+# Noms des cartes graphiques (détection du matériel par l'installateur).
+hwdata

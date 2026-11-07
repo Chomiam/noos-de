@@ -17,6 +17,7 @@ use std::{
 use anyhow::{Context, bail};
 
 use crate::{
+    hardware,
     disk::{self, MIB, Role},
     model::{self, Choices},
 };
@@ -34,7 +35,7 @@ pub const STEPS: &[&str] = &[
     "Formatage",
     "Sous-volumes Btrfs",
     "Téléchargement et installation de Fedora",
-    "Dépôts RPM Fusion",
+    "Pilotes graphiques et codecs",
     "Installation de NOOS",
     "Configuration du système",
     "Chargeur d'amorçage GRUB",
@@ -275,6 +276,12 @@ fn install(ctx: &Ctx, c: &Choices) -> anyhow::Result<()> {
     ctx.line(format!("Démarrage {} · disque {} ({})", if uefi { "UEFI" } else { "BIOS" }, dev, disk::human(target_disk.size)));
     ctx.run("curl", &["-sSfI", "--max-time", "20", "-o", "/dev/null", "https://mirrors.fedoraproject.org/"])
         .context("pas d'accès à Internet : l'installation réseau télécharge Fedora depuis les miroirs officiels")?;
+    // Matériel graphique : pilotes et codecs installés à l'étape 5, arguments du noyau ci-dessous.
+    let hw = hardware::detect();
+    let hw_plan = hardware::plan(&hw, c.rpmfusion);
+    for line in &hw_plan.summary {
+        ctx.line(format!("Matériel : {line}"));
+    }
 
     // ── 1. Partitionnement ──
     ctx.step(1);
@@ -357,11 +364,15 @@ fn install(ctx: &Ctx, c: &Choices) -> anyhow::Result<()> {
         fstab.push_str(&format!("UUID={} none   swap  defaults 0 0\n", uuid(ctx, &swap)?));
     }
     ctx.write("/etc/fstab", &fstab)?;
-    let cmdline = format!("root=UUID={root_uuid} rootflags=subvol=@ ro rhgb quiet");
+    // Arguments propres au matériel (pilote NVIDIA : KMS, nouveau écarté).
+    let extra = hw_plan.kernel_args.iter().map(|a| format!(" {a}")).collect::<String>();
+    let cmdline = format!("root=UUID={root_uuid} rootflags=subvol=@ ro rhgb quiet{extra}");
     ctx.write("/etc/kernel/cmdline", &format!("{cmdline}\n"))?;
     ctx.write(
         "/etc/default/grub",
-        "GRUB_TIMEOUT=3\nGRUB_DISTRIBUTOR=\"NOOS\"\nGRUB_DEFAULT=saved\nGRUB_DISABLE_SUBMENU=true\nGRUB_TERMINAL_OUTPUT=\"gfxterm\"\nGRUB_CMDLINE_LINUX=\"rootflags=subvol=@ rhgb quiet\"\nGRUB_DISABLE_RECOVERY=\"true\"\nGRUB_ENABLE_BLSCFG=true\n",
+        &format!(
+            "GRUB_TIMEOUT=3\nGRUB_DISTRIBUTOR=\"NOOS\"\nGRUB_DEFAULT=saved\nGRUB_DISABLE_SUBMENU=true\nGRUB_TERMINAL_OUTPUT=\"gfxterm\"\nGRUB_CMDLINE_LINUX=\"rootflags=subvol=@ rhgb quiet{extra}\"\nGRUB_DISABLE_RECOVERY=\"true\"\nGRUB_ENABLE_BLSCFG=true\n"
+        ),
     )?;
     ctx.run("systemd-machine-id-setup", &["--root", TARGET])?;
 
@@ -405,8 +416,72 @@ fn install(ctx: &Ctx, c: &Choices) -> anyhow::Result<()> {
             &["install", "-y", &format!("--installroot={TARGET}"), &format!("--releasever={RELEASE}"), "--use-host-config", "--nogpgcheck", &free, &nonfree],
         )?;
     } else {
-        ctx.line("RPM Fusion non demandé : étape ignorée.");
+        ctx.line("RPM Fusion non demandé : pilotes et codecs libres seulement.");
     }
+    ctx.progress(0.2);
+    // Clés de RPM Fusion importées dans la base RPM du système cible : avec --installroot, dnf
+    // cherche sinon les fichiers de clés sur le système live, où ils n'existent pas.
+    if c.rpmfusion {
+        let dir = format!("{TARGET}/usr/share/pki/rpm-gpg");
+        let keys: Vec<String> = std::fs::read_dir(&dir)
+            .map(|rd| {
+                rd.flatten()
+                    .map(|e| e.path())
+                    .filter(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("RPM-GPG-KEY-rpmfusion-")))
+                    .map(|p| p.to_string_lossy().to_string())
+                    .collect()
+            })
+            .unwrap_or_default();
+        if !keys.is_empty() {
+            let mut a: Vec<&str> = vec!["--root", TARGET, "--import"];
+            a.extend(keys.iter().map(String::as_str));
+            ctx.try_run("rpm", &a);
+        }
+    }
+    // Dépôts du système cible (RPM Fusion compris) : pas --use-host-config.
+    let root_args = [
+        "-y".to_string(),
+        format!("--installroot={TARGET}"),
+        format!("--releasever={RELEASE}"),
+        format!("--setopt=cachedir={TARGET}/var/cache/noos-install"),
+    ];
+    if hw_plan.tainted {
+        let mut a: Vec<String> = vec!["install".into()];
+        a.extend(root_args.iter().cloned());
+        a.extend(["rpmfusion-free-release-tainted".into(), "rpmfusion-nonfree-release-tainted".into()]);
+        let refs: Vec<&str> = a.iter().map(String::as_str).collect();
+        ctx.try_run("dnf", &refs);
+    }
+    ctx.line(format!("Pilotes et codecs : {}", hw_plan.packages.join(" ")));
+    {
+        // --allowerasing : ffmpeg remplace ffmpeg-free, mesa-va-drivers-freeworld remplace
+        // mesa-va-drivers ; --skip-unavailable : un paquet absent ne bloque pas le reste.
+        let mut a: Vec<String> = vec!["install".into()];
+        a.extend(root_args.iter().cloned());
+        a.extend(["--allowerasing".into(), "--skip-unavailable".into()]);
+        a.extend(hw_plan.packages.iter().cloned());
+        let refs: Vec<&str> = a.iter().map(String::as_str).collect();
+        let tx = ctx.tx.clone();
+        if let Err(e) = ctx.run_with("dnf", &refs, None, &move |line: &str| {
+            if let Some((n, m)) = dnf_counter(line) {
+                let _ = tx.send_blocking(Event::Progress(0.2 + 0.6 * n as f64 / m.max(1) as f64));
+            }
+        }) {
+            ctx.line(format!("(attention) pilotes et codecs incomplets : {e:#}"));
+        }
+    }
+    if hw_plan.akmods {
+        // Module NVIDIA compilé maintenant, pour chaque noyau installé : sinon le premier
+        // démarrage attendrait la compilation (écran noir plusieurs minutes).
+        ctx.line("Compilation du module NVIDIA (akmods)… quelques minutes.");
+        let kernels: Vec<String> = std::fs::read_dir(format!("{TARGET}/lib/modules"))
+            .map(|rd| rd.flatten().map(|e| e.file_name().to_string_lossy().to_string()).collect())
+            .unwrap_or_default();
+        for k in kernels {
+            ctx.try_run("chroot", &[TARGET, "akmods", "--force", "--kernels", &k]);
+        }
+    }
+    ctx.progress(1.0);
 
     // ── 6. NOOS ──
     // Paquet « noos » du dépôt COPR : dernière version, et mises à jour avec dnf ensuite.
