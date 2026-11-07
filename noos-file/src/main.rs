@@ -382,6 +382,30 @@ impl Explorer {
             ex.navigate(file, true);
         });
 
+        // Clic dans le vide (hors de tout élément, sans glisser) : désélectionner tout.
+        for view in [grid.clone().upcast::<gtk::Widget>(), details.clone().upcast::<gtk::Widget>()] {
+            let click = gtk::GestureClick::new();
+            click.set_button(gdk::BUTTON_PRIMARY);
+            let pressed_at = Rc::new(std::cell::Cell::new((0.0, 0.0)));
+            {
+                let pressed_at = pressed_at.clone();
+                click.connect_pressed(move |_, _, x, y| pressed_at.set((x, y)));
+            }
+            let (ex, v) = (self.clone(), view.clone());
+            click.connect_released(move |g, n, x, y| {
+                let (px, py) = pressed_at.get();
+                let moved = (x - px).abs() > 4.0 || (y - py).abs() > 4.0;
+                let mods = g.current_event_state();
+                if n != 1 || moved || mods.intersects(gdk::ModifierType::CONTROL_MASK | gdk::ModifierType::SHIFT_MASK) {
+                    return;
+                }
+                if !on_item(&v, x, y) {
+                    ex.selection.unselect_all();
+                }
+            });
+            view.add_controller(click);
+        }
+
         // Menu contextuel (clic droit) sur les vues.
         for view in [grid.clone().upcast::<gtk::Widget>(), details.clone().upcast::<gtk::Widget>()] {
             let gesture = gtk::GestureClick::new();
@@ -396,6 +420,37 @@ impl Explorer {
         }
 
         self.install_actions();
+
+        // Test visuel sans souris : NOOS_FILE_SELECT_DEMO=0,1,2 sélectionne ces éléments, puis
+        // (4 s plus tard) rejoue un clic dans le coin inférieur droit de la vue en icônes.
+        if let Ok(list) = std::env::var("NOOS_FILE_SELECT_DEMO") {
+            let (ex, g) = (self.clone(), grid.clone().upcast::<gtk::Widget>());
+            glib::timeout_add_local_once(std::time::Duration::from_millis(1500), move || {
+                for i in list.split(',').filter_map(|v| v.trim().parse::<u32>().ok()) {
+                    ex.selection.select_item(i, false);
+                }
+                glib::timeout_add_local_once(std::time::Duration::from_secs(4), move || {
+                    let (x, y) = (g.width() as f64 - 20.0, g.height() as f64 - 20.0);
+                    let hit = on_item(&g, x, y);
+                    eprintln!("noos-file : démo clic vide ({x}, {y}) sur un élément : {hit}");
+                    if !hit {
+                        ex.selection.unselect_all();
+                    }
+                });
+            });
+        }
+
+        // Test visuel sans souris : NOOS_FILE_MENU_DEMO=x,y ouvre le menu contextuel de la vue
+        // en icônes à cette position (y négatif : depuis le bas de la vue).
+        if let Ok(pos) = std::env::var("NOOS_FILE_MENU_DEMO") {
+            let (ex, g) = (self.clone(), grid.clone().upcast::<gtk::Widget>());
+            glib::timeout_add_local_once(std::time::Duration::from_millis(1500), move || {
+                let mut it = pos.split(',').filter_map(|v| v.trim().parse::<f64>().ok());
+                let (x, y) = (it.next().unwrap_or(100.0), it.next().unwrap_or(100.0));
+                let y = if y < 0.0 { g.height() as f64 + y } else { y };
+                ex.context_menu(&g, x, y);
+            });
+        }
     }
 
     fn install_actions(self: &Rc<Self>) {
@@ -868,14 +923,32 @@ fn file_icon(info: &gio::FileInfo, image: &gtk::Image) {
     }
 }
 
+/// Le point (x, y) de la vue est-il sur un élément (case de grille ou ligne de liste) ?
+fn on_item(view: &gtk::Widget, x: f64, y: f64) -> bool {
+    let mut w = view.pick(x, y, gtk::PickFlags::DEFAULT);
+    while let Some(cur) = w {
+        if &cur == view {
+            return false;
+        }
+        if matches!(cur.css_name().as_str(), "child" | "row" | "cell") {
+            return true;
+        }
+        w = cur.parent();
+    }
+    false
+}
+
 fn build_grid(selection: &gtk::MultiSelection) -> gtk::GridView {
     let factory = gtk::SignalListItemFactory::new();
     factory.connect_setup(|_, item| {
         let item = item.downcast_ref::<gtk::ListItem>().unwrap();
-        let v = gtk::Box::new(gtk::Orientation::Vertical, 6);
-        v.set_margin_top(8);
-        v.set_margin_bottom(8);
-        v.set_size_request(96, -1);
+        // Tuile de taille fixe, centrée dans la case : c'est elle qui porte le surlignage de
+        // sélection (la case, elle, s'étire sur toute la largeur de la colonne).
+        let v = gtk::Box::new(gtk::Orientation::Vertical, 4);
+        v.add_css_class("tile");
+        v.set_halign(gtk::Align::Center);
+        v.set_valign(gtk::Align::Start);
+        v.set_size_request(92, -1);
         let image = gtk::Image::new();
         image.set_pixel_size(64);
         let label = gtk::Label::new(None);
@@ -990,6 +1063,14 @@ const CSS: &str = r#"
 .address-bar:hover { background-color: alpha(@window_fg_color, 0.09); }
 .address-bar button { min-height: 26px; padding: 0 8px; border-radius: 6px; }
 .address-bar entry.address-entry { background: none; border: none; box-shadow: none; outline: none; min-height: 30px; }
+/* Vue en icônes : surlignage ajusté à l'icône et au nom, pas à toute la case. */
+gridview > child { padding: 2px; margin: 0; background: none; box-shadow: none; outline: none; }
+gridview > child:hover, gridview > child:selected, gridview > child:selected:hover { background: none; }
+gridview .tile { padding: 6px 4px; border-radius: 8px; }
+gridview > child:hover .tile { background-color: alpha(@window_fg_color, 0.06); }
+gridview > child:selected .tile { background-color: alpha(@accent_bg_color, 0.22); box-shadow: inset 0 0 0 1px alpha(@accent_bg_color, 0.45); }
+gridview > child:selected:hover .tile { background-color: alpha(@accent_bg_color, 0.30); }
+gridview > child:focus-visible .tile { outline: 2px solid alpha(@accent_color, 0.6); outline-offset: -2px; }
 "#;
 
 fn main() -> glib::ExitCode {

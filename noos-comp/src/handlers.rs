@@ -410,7 +410,14 @@ impl NoosState {
             let Some(output) = self.output_for_window(&window) else { return };
             let Some(output_geo) = self.space.output_geometry(&output) else { return };
             let Some(window_geo) = self.space.element_geometry(&window) else { return };
-            let mut target = output_geo;
+            // Zone utile de l'écran (hors barre des tâches et autres zones exclusives) : la barre
+            // est dessinée au-dessus des fenêtres, un menu qui passe dessous serait tronqué.
+            let zone = layer_map_for_output(&output).non_exclusive_zone();
+            let mut target = if zone.size.w > 0 && zone.size.h > 0 {
+                smithay::utils::Rectangle::new(output_geo.loc + zone.loc, zone.size)
+            } else {
+                output_geo
+            };
             target.loc -= get_popup_toplevel_coords(&PopupKind::Xdg(popup.clone()));
             target.loc -= window_geo.loc;
             popup.with_pending_state(|state| {
