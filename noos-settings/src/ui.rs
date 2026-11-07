@@ -330,5 +330,23 @@ button.current-wallpaper .wallpaper-preview { outline: 2px solid @accent_color; 
 checkbutton.selection-check check { background-color: alpha(black, 0.4); border: 2px solid white; min-width: 18px; min-height: 18px; }
 checkbutton.selection-check check:checked { background-color: @accent_bg_color; border-color: @accent_bg_color; }
 picture.no-wallpaper { background: linear-gradient(155deg, shade(@accent_bg_color, 0.45) 0%, @window_bg_color 55%, shade(@window_bg_color, 0.8) 100%); }
+/* ── Réseau ── */
+.net-hero-icon { border-radius: 999px; min-width: 72px; min-height: 72px; }
+.net-hero-icon.net-ok { background: alpha(#3ccf72, 0.15); }
+.net-hero-icon.net-bad { background: alpha(#f0564a, 0.15); }
+.net-hero-icon.net-idle { background: alpha(@window_fg_color, 0.08); }
+.net-ok { color: #3ccf72; } .net-bad { color: #f0564a; } .net-idle { color: alpha(@window_fg_color, 0.6); }
+.net-badge { border-radius: 999px; padding: 2px 10px; font-size: 0.8em; font-weight: 700; }
+.net-badge.net-ok { background: alpha(#3ccf72, 0.16); }
+.net-badge.net-mid { background: alpha(#ffb43c, 0.16); color: #ffb43c; }
+.net-badge.net-bad { background: alpha(#f0564a, 0.16); }
+.net-badge.net-filter { background: alpha(#c39bff, 0.18); color: #c39bff; }
+.net-badge.net-vpn { background: alpha(@accent_bg_color, 0.2); color: @accent_color; }
+.net-flag { font-size: 22px; min-width: 32px; }
+.net-flag-big { font-size: 52px; }
+.net-speed { font-size: 0.85em; font-weight: 700; color: alpha(@window_fg_color, 0.65); }
+.net-speed.net-fastest { color: #3ccf72; }
+.net-down { color: #4cc2ff; } .net-up { color: #ff8fb1; }
+.net-graph { background: alpha(@window_fg_color, 0.03); border-radius: 6px; }
 .swatch { min-width: 30px; min-height: 30px; border-radius: 99px; padding: 0; }
 "#;

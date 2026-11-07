@@ -34,6 +34,8 @@ pub struct StatusIcons {
     pub net_tooltip: String,
     pub vol_icon: String,
     pub vol_tooltip: String,
+    /// Profils VPN (bouton affiché dans la barre quand l'un d'eux est actif).
+    pub vpns: Vec<net::Vpn>,
 }
 
 impl Default for StatusIcons {
@@ -43,6 +45,7 @@ impl Default for StatusIcons {
             net_tooltip: "Réseau".into(),
             vol_icon: "audio-volume-high-symbolic".into(),
             vol_tooltip: "Volume".into(),
+            vpns: vec![],
         }
     }
 }
@@ -56,7 +59,7 @@ fn read_status_icons() -> StatusIcons {
         ),
         None => ("audio-volume-muted-symbolic".into(), "Aucune sortie audio".into()),
     };
-    StatusIcons { net_icon: net::status_icon(&net).into(), net_tooltip: net::status_tooltip(&net), vol_icon, vol_tooltip }
+    StatusIcons { net_icon: net::status_icon(&net).into(), net_tooltip: net::status_tooltip(&net), vol_icon, vol_tooltip, vpns: net::read_vpns() }
 }
 
 pub struct Shell {

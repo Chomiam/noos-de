@@ -88,6 +88,8 @@ On ne peut pas cliquer dans l'aperçu : utiliser les variables de test ci-dessou
 | `NOOS_REORDER_DEMO=1` | noos-shell fait glisser la 1re icône épinglée de 2 crans (sans enregistrer) |
 | `NOOS_SAVE_DEMO=1` (+ `NOOS_SAVE_DEMO_PENDING=1`, `NOOS_SAVE_DEMO_BOOT=n`) | noos-save affiche des instantanés fictifs (restauration en attente, démarrage sur l'instantané n), sans rien exécuter |
 | `NOOS_SAVE_PAGE=settings` / `NOOS_SAVE_EXPAND=n` / `NOOS_SAVE_COMPARE=n` / `NOOS_SAVE_SCROLL=px` | noos-save : page Réglages, instantané n déplié, fenêtre « Comparer » de n, défilement |
+| `NOOS_NET_DEMO=1` (+ `NOOS_NET_MEASURE=1`) | noos-settings › Réseau : connexions, Wi-Fi, DNS, VPN fictifs, sans NetworkManager (+ mesure DNS lancée) ; pages directes `noos-settings network\|wifi\|dns\|vpn\|ip\|hotspot\|network-diagnostics` |
+| `NOOS_VPN_DEMO=1` | noos-shell : profils VPN fictifs, bouclier VPN dans la barre et son menu ouvert |
 | `NOOS_FILE_MENU_DEMO=x,y` | noos-file ouvre le menu contextuel de la vue en icônes en (x, y) ; y < 0 = depuis le bas |
 | `NOOS_FILE_SELECT_DEMO=0,1,2` | noos-file sélectionne ces éléments puis rejoue un clic dans le vide (coin inférieur droit) |
 | `NOOS_PHOTOVIEW_DEMO=<image>;info;zoom=2.5;next;hide;slideshow` | noos-photoview : ouvre une image, panneau d'infos, zoom, suivante, commandes masquées, diaporama |

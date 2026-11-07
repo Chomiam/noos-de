@@ -200,6 +200,43 @@ pub fn read_status() -> NetStatus {
     parse_status(&devices, &radio, &list)
 }
 
+/// Profil VPN (WireGuard ou greffon VPN de NetworkManager).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Vpn {
+    pub name: String,
+    pub uuid: String,
+    pub active: bool,
+}
+
+pub fn parse_vpns(text: &str) -> Vec<Vpn> {
+    text.lines()
+        .map(split_terse)
+        .filter(|f| f.len() >= 4 && (f[2] == "wireguard" || f[2] == "vpn"))
+        .map(|f| Vpn { name: f[0].clone(), uuid: f[1].clone(), active: f[3] == "yes" })
+        .collect()
+}
+
+pub fn read_vpns() -> Vec<Vpn> {
+    if std::env::var_os("NOOS_VPN_DEMO").is_some() {
+        return parse_vpns("Proton Suisse:a:wireguard:yes\nMullvad Paris:b:wireguard:no\nBureau:c:vpn:no\n");
+    }
+    parse_vpns(&run("nmcli", &["-t", "-f", "NAME,UUID,TYPE,ACTIVE", "connection", "show"]).unwrap_or_default())
+}
+
+/// Active le profil `uuid` (en coupant les autres VPN), ou coupe tout si `None`.
+pub fn switch_vpn(uuid: Option<&str>) -> Result<(), String> {
+    for v in read_vpns().into_iter().filter(|v| v.active && Some(v.uuid.as_str()) != uuid) {
+        let _ = run("nmcli", &["connection", "down", &v.uuid]);
+    }
+    if let Some(u) = uuid {
+        let out = Command::new("nmcli").args(["connection", "up", u]).output().map_err(|e| e.to_string())?;
+        if !out.status.success() {
+            return Err(String::from_utf8_lossy(&out.stderr).trim().trim_start_matches("Error: ").to_string());
+        }
+    }
+    Ok(())
+}
+
 pub fn scan_wifi(rescan: bool) -> Vec<AccessPoint> {
     let list = run(
         "nmcli",

@@ -45,6 +45,10 @@ pub struct Taskbar {
     bell_badge: gtk::Label,
     net_btn: gtk::Button,
     net_icon: gtk::Image,
+    /// VPN actif : bouclier dans la zone d'état, menu pour changer de profil.
+    vpn_btn: gtk::MenuButton,
+    vpn_list: gtk::Box,
+    vpn_shown: std::cell::RefCell<Vec<crate::net::Vpn>>,
     vol_btn: gtk::Button,
     vol_icon: gtk::Image,
 }
@@ -249,9 +253,25 @@ impl Taskbar {
                 }
             });
         }
+        let vpn_btn = gtk::MenuButton::new();
+        vpn_btn.set_valign(gtk::Align::Center);
+        vpn_btn.set_icon_name("network-vpn-symbolic");
+        vpn_btn.set_always_show_arrow(false);
+        vpn_btn.set_direction(gtk::ArrowType::Up);
+        vpn_btn.add_css_class("status-icon");
+        vpn_btn.add_css_class("vpn-active");
+        vpn_btn.set_visible(false);
+        let vpn_list = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        vpn_list.add_css_class("vpn-menu");
+        let vpn_pop = gtk::Popover::new();
+        vpn_pop.set_has_arrow(false);
+        vpn_pop.set_child(Some(&vpn_list));
+        vpn_btn.set_popover(Some(&vpn_pop));
+        noos_theme::fit_popover(&vpn_pop);
         let status_group = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         status_group.add_css_class("status-group");
         status_group.set_valign(gtk::Align::Center);
+        status_group.append(&vpn_btn);
         status_group.append(&net_btn);
         status_group.append(&vol_btn);
         status_group.append(&quick_btn);
@@ -371,6 +391,9 @@ impl Taskbar {
             bell_badge,
             net_btn,
             net_icon,
+            vpn_btn,
+            vpn_list,
+            vpn_shown: std::cell::RefCell::new(Vec::new()),
             vol_btn,
             vol_icon,
         };
@@ -484,6 +507,109 @@ impl Taskbar {
         self.net_btn.set_tooltip_text(Some(&st.net_tooltip));
         self.vol_icon.set_icon_name(Some(&st.vol_icon));
         self.vol_btn.set_tooltip_text(Some(&st.vol_tooltip));
+        self.update_vpn(&st.vpns);
+    }
+
+    /// Bouclier VPN : visible quand un profil est actif ; son menu liste les profils.
+    fn update_vpn(&self, vpns: &[crate::net::Vpn]) {
+        let active = vpns.iter().find(|v| v.active);
+        self.vpn_btn.set_visible(active.is_some());
+        if let Some(a) = active {
+            self.vpn_btn.set_tooltip_text(Some(&format!("VPN : {}", a.name)));
+        }
+        // Menu ouvert : on ne le reconstruit pas sous le pointeur.
+        if *self.vpn_shown.borrow() == vpns || self.vpn_btn.popover().is_some_and(|p| p.is_visible()) {
+            return;
+        }
+        *self.vpn_shown.borrow_mut() = vpns.to_vec();
+        while let Some(c) = self.vpn_list.first_child() {
+            self.vpn_list.remove(&c);
+        }
+        let title = gtk::Label::new(Some("Profil VPN"));
+        title.add_css_class("vpn-menu-title");
+        title.set_xalign(0.0);
+        self.vpn_list.append(&title);
+        let pop = self.vpn_btn.popover();
+        let act = {
+            let (shell, pop) = (self.shell.clone(), pop.clone());
+            move |uuid: Option<String>| {
+                if let Some(p) = &pop {
+                    p.popdown();
+                }
+                let (tx, rx) = async_channel::bounded(1);
+                std::thread::spawn(move || {
+                    let _ = tx.send_blocking(crate::net::switch_vpn(uuid.as_deref()));
+                });
+                let shell = shell.clone();
+                glib::spawn_future_local(async move {
+                    if let Ok(Err(e)) = rx.recv().await {
+                        eprintln!("noos-shell : VPN : {e}");
+                    }
+                    if let Some(s) = shell.upgrade() {
+                        s.refresh_status_soon();
+                    }
+                });
+            }
+        };
+        let item = |icon: &str, text: &str| {
+            let b = gtk::Button::new();
+            b.add_css_class("flat");
+            b.add_css_class("vpn-item");
+            let h = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+            h.append(&gtk::Image::from_icon_name(icon));
+            let l = gtk::Label::new(Some(text));
+            l.set_xalign(0.0);
+            l.set_hexpand(true);
+            h.append(&l);
+            b.set_child(Some(&h));
+            b
+        };
+        for v in vpns {
+            let b = gtk::Button::new();
+            b.add_css_class("flat");
+            b.add_css_class("vpn-item");
+            let h = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+            let icon = gtk::Image::from_icon_name(if v.active { "object-select-symbolic" } else { "network-vpn-symbolic" });
+            if v.active {
+                icon.add_css_class("vpn-check");
+            }
+            h.append(&icon);
+            let l = gtk::Label::new(Some(&v.name));
+            l.set_xalign(0.0);
+            l.set_hexpand(true);
+            h.append(&l);
+            b.set_child(Some(&h));
+            b.set_tooltip_text(Some(if v.active { "Profil actif" } else { "Basculer sur ce profil" }));
+            let (act, uuid, active) = (act.clone(), v.uuid.clone(), v.active);
+            b.connect_clicked(move |_| {
+                if !active {
+                    act(Some(uuid.clone()));
+                }
+            });
+            self.vpn_list.append(&b);
+        }
+        self.vpn_list.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+        let off = item("network-vpn-disconnected-symbolic", "Se déconnecter du VPN");
+        {
+            let act = act.clone();
+            off.connect_clicked(move |_| act(None));
+        }
+        self.vpn_list.append(&off);
+        let settings = item("emblem-system-symbolic", "Paramètres VPN…");
+        {
+            let pop = pop.clone();
+            settings.connect_clicked(move |_| {
+                if let Some(p) = &pop {
+                    p.popdown();
+                }
+                let _ = std::process::Command::new("noos-settings").arg("vpn").spawn();
+            });
+        }
+        self.vpn_list.append(&settings);
+        if std::env::var_os("NOOS_VPN_DEMO").is_some() {
+            let b = self.vpn_btn.clone();
+            glib::timeout_add_local_once(std::time::Duration::from_millis(1500), move || b.popup());
+        }
     }
 
     /// Zone de notification et cloche.

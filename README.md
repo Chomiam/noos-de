@@ -161,6 +161,19 @@ Instantanés Btrfs du système (snapper, configuration `root`) :
 Les dossiers personnels (`@home`) ne sont jamais concernés. Les opérations privilégiées passent
 par `/opt/noos/libexec/noos-save-helper` (polkit `org.noos.save.helper`).
 
+## Réseau et Internet (Paramètres)
+
+- **État** de la connexion avec débit en direct (graphique), adresses IP, DNS et VPN en cours ;
+- **DNS** : fournisseurs proposés avec pays, juridiction, journalisation, filtrage et appréciation
+  de confidentialité (Quad9, FDN, AdGuard, DNS4EU, Cloudflare, Google, OpenDNS…), mesure du temps
+  de réponse, **DNS over TLS** (obligatoire / si possible), serveurs personnalisés, appliqué à un
+  réseau ou à tous ;
+- **VPN WireGuard** : import d'un fichier `.conf` (bouton ou glisser-déposer) avec aperçu,
+  connexion, démarrage automatique, vérification de l'IP publique ; dans la barre des tâches, un
+  bouclier apparaît quand un VPN est actif et son menu change de profil en un clic ;
+- **Wi-Fi** (mot de passe enregistré, adresse MAC aléatoire), **adresse IP fixe**, **point
+  d'accès mobile** et **diagnostic** guidé.
+
 ## Logiciels (noos-software / noos-pkg)
 
 NOOS est basé sur Fedora : Logiciels gère les **paquets Fedora (dnf)** et les **applications

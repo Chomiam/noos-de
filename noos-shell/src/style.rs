@@ -104,6 +104,14 @@ picture.no-wallpaper {{ background: linear-gradient(155deg, shade(@accent_bg_col
 
 /* ── Réseau, volume, réglages rapides ── */
 .noos-taskbar button.status-icon {{ padding: {pad_v}px 7px; min-width: 0; }}
+.noos-taskbar menubutton.status-icon > button {{ padding: {pad_v}px 7px; min-width: 0; }}
+.noos-taskbar menubutton.vpn-active > button image {{ color: #3ccf72; }}
+.vpn-menu {{ padding: 6px; min-width: 240px; }}
+.vpn-menu .vpn-menu-title {{ font-weight: 700; opacity: 0.7; font-size: 0.85em; margin: 2px 8px 6px 8px; }}
+.vpn-menu button.vpn-item {{ border-radius: 6px; padding: 8px 10px; }}
+.vpn-menu button.vpn-item label {{ font-weight: normal; }}
+.vpn-menu .vpn-check {{ color: #3ccf72; }}
+.vpn-menu separator {{ margin: 4px 6px; }}
 .audio-flyout .section-title, .net-flyout .section-title {{ margin-top: 4px; }}
 .net-flyout .net-status {{ padding: 4px 0 8px 0; border-bottom: 1px solid alpha(@window_fg_color, 0.08); }}
 .noos-flyout list.boxed-list {{ background-color: alpha(@window_fg_color, 0.04); }}

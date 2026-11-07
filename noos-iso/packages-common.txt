@@ -23,6 +23,9 @@ glycin-loaders
 gdk-pixbuf2-modules-extra
 # Photos RAW des appareils (visionneuse, miniatures)
 libopenraw-pixbuf-loader
+# VPN WireGuard (Paramètres › Réseau › VPN)
+wireguard-tools
+google-noto-color-emoji-fonts
 mesa-vulkan-drivers
 vulkan-loader
 libinput

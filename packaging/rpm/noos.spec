@@ -81,10 +81,15 @@ Requires:       grub2-tools
 # Shell par défaut des comptes NOOS (fastfetch à l'ouverture d'un terminal).
 Requires:       fish
 Requires:       fastfetch
-# Visionneuse d'images : photos RAW (NEF, CR2/CR3, ARW, DNG…) ; HEIC des iPhone (décodeur HEVC,
-# RPM Fusion : recommandé seulement, pour ne pas bloquer les systèmes sans RPM Fusion).
+# Visionneuse d'images : photos RAW (NEF, CR2/CR3, ARW, DNG…) ; HEIC des iPhone (décodeur HEVC
+# de RPM Fusion). Dépendance conditionnelle : obligatoire seulement si RPM Fusion est configuré
+# (un simple Recommends n'est pas installé lors d'une mise à jour de noos).
 Requires:       libopenraw-pixbuf-loader
-Recommends:     libheif-freeworld
+Requires:       (libheif-freeworld if rpmfusion-free-release)
+# Réseau : VPN WireGuard (NetworkManager le gère nativement ; wg pour l'état des tunnels).
+Requires:       wireguard-tools
+# Drapeaux des pays (Paramètres › Réseau › DNS).
+Requires:       google-noto-color-emoji-fonts
 Recommends:     libtimezonemap
 Recommends:     curl
 
