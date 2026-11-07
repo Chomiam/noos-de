@@ -104,12 +104,25 @@ pub fn root(app: &Rc<App>) -> adap::NavigationPage {
     let holder = gtk::Box::new(gtk::Orientation::Vertical, 24);
     holder.append(&spinner());
     content.append(&holder);
-    let task = background(overview);
-    let app = app.clone();
-    glib::spawn_future_local(async move {
-        let ov = task.await;
-        clear(&holder);
-        render_root(&app, &holder, &ov);
+    let load = {
+        let (app, holder) = (app.clone(), holder.clone());
+        move || {
+            let task = background(overview);
+            let (app, holder) = (app.clone(), holder.clone());
+            glib::spawn_future_local(async move {
+                let ov = task.await;
+                clear(&holder);
+                render_root(&app, &holder, &ov);
+            });
+        }
+    };
+    load();
+    // Retour sur la page (après DNS, VPN, Wi-Fi…) : l'état est relu.
+    let first = std::cell::Cell::new(true);
+    p.connect_showing(move |_| {
+        if !first.replace(false) {
+            load();
+        }
     });
     p
 }

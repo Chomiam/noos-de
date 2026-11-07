@@ -366,6 +366,9 @@ button.da-tile .da-tile-app { font-weight: 700; }
 .net-badge.net-filter { background: alpha(#c39bff, 0.18); color: #c39bff; }
 .net-badge.net-vpn { background: alpha(@accent_bg_color, 0.2); color: @accent_color; }
 .net-flag { font-size: 22px; min-width: 32px; }
+.net-block { padding: 6px 10px; border-radius: 8px; font-size: 0.9em; }
+.net-block.on { background: alpha(#3ccf72, 0.14); color: #3ccf72; font-weight: 600; }
+.net-block.off { background: alpha(@window_fg_color, 0.05); color: alpha(@window_fg_color, 0.55); }
 .net-flag-big { font-size: 52px; }
 .net-speed { font-size: 0.85em; font-weight: 700; color: alpha(@window_fg_color, 0.65); }
 .net-speed.net-fastest { color: #3ccf72; }

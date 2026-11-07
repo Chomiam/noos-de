@@ -267,7 +267,6 @@ pub struct Provider {
     /// Droit applicable / remarques sur la juridiction.
     pub jurisdiction: &'static str,
     pub logging: &'static str,
-    pub filtering: &'static str,
     /// 3 = excellente, 2 = bonne, 1 = moyenne (appréciation de NOOS).
     pub privacy: u8,
     pub no_logs: bool,
@@ -289,7 +288,6 @@ pub const PROVIDERS: &[Provider] = &[
         country: "Suisse",
         jurisdiction: "Droit suisse (protection des données parmi les plus strictes) ; applique aussi le RGPD",
         logging: "Aucune adresse IP enregistrée ; seulement des statistiques globales anonymes",
-        filtering: "Bloque les domaines malveillants (hameçonnage, logiciels malveillants)",
         privacy: 3,
         no_logs: true,
         blocks: Some("Menaces"),
@@ -306,7 +304,6 @@ pub const PROVIDERS: &[Provider] = &[
         country: "France",
         jurisdiction: "Droit français et RGPD ; association militante pour la neutralité du Net",
         logging: "Pas de journalisation des requêtes",
-        filtering: "Aucun filtrage ni censure",
         privacy: 3,
         no_logs: true,
         blocks: None,
@@ -323,7 +320,6 @@ pub const PROVIDERS: &[Provider] = &[
         country: "Chypre",
         jurisdiction: "Droit chypriote et RGPD",
         logging: "Pas de journaux nominatifs ; statistiques anonymes agrégées",
-        filtering: "Bloque publicités, traqueurs et hameçonnage pour tout l'ordinateur",
         privacy: 2,
         no_logs: true,
         blocks: Some("Pubs et traqueurs"),
@@ -340,7 +336,6 @@ pub const PROVIDERS: &[Provider] = &[
         country: "Union européenne (Tchéquie)",
         jurisdiction: "Droit européen (RGPD), serveurs dans l'UE",
         logging: "Journaux limités, conformes au RGPD",
-        filtering: "Aucun (version « sans filtrage »)",
         privacy: 2,
         no_logs: false,
         blocks: None,
@@ -357,7 +352,6 @@ pub const PROVIDERS: &[Provider] = &[
         country: "États-Unis",
         jurisdiction: "Droit américain (Cloud Act : accès possible des autorités américaines)",
         logging: "Adresse IP jamais écrite sur disque ; journaux anonymisés effacés sous 25 h ; audit indépendant",
-        filtering: "Aucun filtrage",
         privacy: 2,
         no_logs: true,
         blocks: None,
@@ -374,7 +368,6 @@ pub const PROVIDERS: &[Provider] = &[
         country: "États-Unis",
         jurisdiction: "Droit américain (Cloud Act)",
         logging: "Comme Cloudflare : journaux anonymisés effacés sous 25 h",
-        filtering: "Bloque logiciels malveillants et contenus pour adultes (contrôle parental)",
         privacy: 2,
         no_logs: true,
         blocks: Some("Adultes et menaces"),
@@ -391,7 +384,6 @@ pub const PROVIDERS: &[Provider] = &[
         country: "États-Unis",
         jurisdiction: "Droit américain (Cloud Act)",
         logging: "Adresse IP complète conservée 24 à 48 h ; journaux permanents sans IP (ville, opérateur)",
-        filtering: "Aucun filtrage",
         privacy: 1,
         no_logs: false,
         blocks: None,
@@ -408,7 +400,6 @@ pub const PROVIDERS: &[Provider] = &[
         country: "États-Unis",
         jurisdiction: "Droit américain (Cloud Act)",
         logging: "Requêtes journalisées et utilisées pour des statistiques",
-        filtering: "Bloque l'hameçonnage",
         privacy: 1,
         no_logs: false,
         blocks: Some("Hameçonnage"),
@@ -418,6 +409,95 @@ pub const PROVIDERS: &[Provider] = &[
         tls_only: false,
     },
 ];
+
+/// Catégories de blocage affichées pour chaque fournisseur.
+pub const BLOCK_CATEGORIES: [(&str, &str); 6] = [
+    ("Logiciels malveillants", "Sites qui diffusent virus, rançongiciels ou chevaux de Troie"),
+    ("Hameçonnage", "Faux sites (banque, impôts, livraison…) qui volent identifiants et cartes"),
+    ("Publicités", "Bannières et vidéos publicitaires dans les sites et les applications"),
+    ("Traqueurs", "Mesure d'audience et pistage publicitaire d'un site à l'autre"),
+    ("Contenus pour adultes", "Sites pornographiques (contrôle parental)"),
+    ("Recherche sécurisée", "Google, Bing et YouTube forcés en mode « SafeSearch »"),
+];
+
+/// Ce que bloque un fournisseur, d'où viennent ses listes, ses variantes.
+pub struct Blocking {
+    /// Dans l'ordre de `BLOCK_CATEGORIES`.
+    pub categories: [bool; 6],
+    pub extra: &'static str,
+    pub lists: &'static str,
+    /// (adresse, description) des autres adresses du même service.
+    pub variants: &'static [(&'static str, &'static str)],
+    pub report: &'static str,
+}
+
+pub fn blocking(id: &str) -> Blocking {
+    const NONE: [bool; 6] = [false; 6];
+    match id {
+        "quad9" => Blocking {
+            categories: [true, true, false, false, false, false],
+            extra: "Aussi : réseaux de machines zombies (botnets), serveurs de commande de logiciels malveillants, minage de cryptomonnaie à votre insu. Rien d'autre : pas de censure, ni publicités ni traqueurs.",
+            lists: "Renseignements sur les menaces fournis par une vingtaine d'organismes de cybersécurité, mis à jour en continu",
+            variants: &[("9.9.9.10", "Sans aucun blocage"), ("9.9.9.11", "Avec blocage, et transmet une partie de votre adresse (ECS) pour des serveurs de contenu plus proches")],
+            report: "Formulaire de signalement sur quad9.net (« Report a false positive »)",
+        },
+        "fdn" => Blocking {
+            categories: NONE,
+            extra: "Aucun blocage volontaire : toutes les réponses sont transmises telles quelles.",
+            lists: "Aucune",
+            variants: &[],
+            report: "",
+        },
+        "adguard" => Blocking {
+            categories: [true, true, true, true, false, false],
+            extra: "Bloque aussi les domaines de pistage des applications et des appareils connectés. Conséquence possible : certains liens d'affiliation ou de suivi de colis cessent de fonctionner.",
+            lists: "Filtre AdGuard DNS : listes publiques (dont EasyList, EasyPrivacy) et listes d'AdGuard, mises à jour régulièrement",
+            variants: &[("94.140.14.15", "Familles : ajoute contenus pour adultes et recherche sécurisée"), ("94.140.14.140", "Sans aucun blocage")],
+            report: "Signalement sur reports.adguard.com",
+        },
+        "dns4eu" => Blocking {
+            categories: NONE,
+            extra: "Version sans filtrage : rien n'est bloqué.",
+            lists: "Aucune pour cette version",
+            variants: &[
+                ("86.54.11.1", "Protection : logiciels malveillants et hameçonnage"),
+                ("86.54.11.12", "Protection + enfants : ajoute les contenus pour adultes"),
+                ("86.54.11.13", "Protection + publicités"),
+                ("86.54.11.11", "Protection + enfants + publicités"),
+            ],
+            report: "",
+        },
+        "cloudflare" => Blocking {
+            categories: NONE,
+            extra: "Aucun filtrage sur 1.1.1.1.",
+            lists: "Aucune",
+            variants: &[("1.1.1.2", "Logiciels malveillants et hameçonnage"), ("1.1.1.3", "Familles : ajoute les contenus pour adultes")],
+            report: "",
+        },
+        "cloudflare-family" => Blocking {
+            categories: [true, true, false, false, true, false],
+            extra: "La recherche sécurisée n'est pas imposée : à activer dans le moteur de recherche si besoin.",
+            lists: "Renseignements sur les menaces de Cloudflare et classement des sites pour adultes",
+            variants: &[("1.1.1.1", "Sans aucun blocage"), ("1.1.1.2", "Logiciels malveillants seulement")],
+            report: "Formulaire sur radar.cloudflare.com (catégorie d'un domaine)",
+        },
+        "google" => Blocking {
+            categories: NONE,
+            extra: "Aucun filtrage annoncé.",
+            lists: "Aucune",
+            variants: &[],
+            report: "",
+        },
+        "opendns" => Blocking {
+            categories: [false, true, false, false, false, false],
+            extra: "Attention : Cisco a suspendu OpenDNS en France en 2024 (décisions de justice contre le piratage) ; le service peut ne pas répondre depuis la France.",
+            lists: "Listes d'hameçonnage de Cisco",
+            variants: &[("208.67.222.123", "FamilyShield : ajoute les contenus pour adultes")],
+            report: "",
+        },
+        _ => Blocking { categories: NONE, extra: "", lists: "", variants: &[], report: "" },
+    }
+}
 
 /// Mode de chiffrement des requêtes (connection.dns-over-tls).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -229,6 +229,10 @@ fn render(app: &Rc<App>, holder: &gtk::Box, st: Rc<State>) {
             r.add_suffix(&badge("Sans journaux", "net-ok"));
         }
         let is_current = matches!(&dns.choice, DnsChoice::Provider(id) if *id == p.id);
+        // Tests (captures) : `NOOS_NET_EXPAND=quad9` déplie ce fournisseur.
+        if std::env::var("NOOS_NET_EXPAND").is_ok_and(|v| v.split(',').any(|x| x == p.id)) {
+            r.set_expanded(true);
+        }
         if is_current {
             r.add_suffix(&current_mark());
         }
@@ -236,7 +240,23 @@ fn render(app: &Rc<App>, holder: &gtk::Box, st: Rc<State>) {
         r.add_row(&info("Pays et société", &format!("{} {} — {}", p.flag, p.country, p.company)));
         r.add_row(&info("Juridiction", p.jurisdiction));
         r.add_row(&info("Journalisation", p.logging));
-        r.add_row(&info("Filtrage", p.filtering));
+        r.add_row(&blocking_row(p.id));
+        let b = nm::blocking(p.id);
+        if !b.extra.is_empty() {
+            r.add_row(&info("Précisions", b.extra));
+        }
+        if !b.lists.is_empty() && b.lists != "Aucune" {
+            r.add_row(&info("Listes utilisées", b.lists));
+        }
+        if !b.variants.is_empty() {
+            r.add_row(&info(
+                "Autres versions du même service",
+                &b.variants.iter().map(|(a, d)| format!("{a} — {d}")).collect::<Vec<_>>().join("\n"),
+            ));
+        }
+        if !b.report.is_empty() {
+            r.add_row(&info("Site bloqué à tort ?", b.report));
+        }
         let mut addrs = p.v4.join(", ");
         if !p.v6.is_empty() {
             addrs.push_str(&format!("\n{}", p.v6.join(", ")));
@@ -344,4 +364,40 @@ fn current_mark() -> gtk::Image {
     i.add_css_class("net-ok");
     i.set_tooltip_text(Some("Utilisé actuellement"));
     i
+}
+
+/// Tableau « Ce qui est bloqué » : une pastille par catégorie (bloqué / non bloqué).
+fn blocking_row(id: &str) -> gtk::ListBoxRow {
+    let b = nm::blocking(id);
+    let v = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    v.set_margin_top(10);
+    v.set_margin_bottom(10);
+    v.set_margin_start(12);
+    v.set_margin_end(12);
+    let t = label("Ce qui est bloqué", &["dim-label", "caption"]);
+    v.append(&t);
+    let flow = gtk::FlowBox::new();
+    flow.set_selection_mode(gtk::SelectionMode::None);
+    flow.set_homogeneous(true);
+    flow.set_min_children_per_line(2);
+    flow.set_max_children_per_line(3);
+    flow.set_column_spacing(6);
+    flow.set_row_spacing(6);
+    for ((name, desc), on) in nm::BLOCK_CATEGORIES.iter().zip(b.categories) {
+        let h = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        h.add_css_class("net-block");
+        h.add_css_class(if on { "on" } else { "off" });
+        let i = gtk::Image::from_icon_name(if on { "object-select-symbolic" } else { "window-close-symbolic" });
+        h.append(&i);
+        let l = label(name, &[]);
+        l.set_ellipsize(gtk::pango::EllipsizeMode::End);
+        h.append(&l);
+        h.set_tooltip_text(Some(&format!("{} — {desc}", if on { "Bloqué" } else { "Non bloqué" })));
+        flow.append(&h);
+    }
+    v.append(&flow);
+    let row = gtk::ListBoxRow::new();
+    row.set_activatable(false);
+    row.set_child(Some(&v));
+    row
 }
