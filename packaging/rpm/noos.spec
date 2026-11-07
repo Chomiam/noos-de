@@ -133,13 +133,14 @@ install -d %{buildroot}%{_datadir}/plymouth/themes/noos
 %{_prefix}/lib/NetworkManager/conf.d/90-noos-powersave.conf
 %{_prefix}/lib/udev/rules.d/90-noos-net-powersave.rules
 %{_datadir}/wireplumber/wireplumber.conf.d/90-noos-no-suspend.conf
+%attr(0440,root,root) %config(noreplace) %{_sysconfdir}/sudoers.d/90-noos-pwfeedback
 %{_datadir}/polkit-1/actions/org.noos.save.policy
 %config(noreplace) %{_sysconfdir}/dnf/libdnf5-plugins/actions.d/noos-save.actions
 install -m644 noos-plymouth/noos/*.png noos-plymouth/noos/noos.plymouth noos-plymouth/noos/noos.script \
     %{buildroot}%{_datadir}/plymouth/themes/noos/
 
 # Réglages système : Wi-Fi et cartes réseau sans économie d'énergie, WirePlumber sans
-# mise en veille des sorties audio (coupures de son).
+# mise en veille des sorties audio (coupures de son), « * » à la saisie du mot de passe sudo.
 ./noos-system/install.sh %{buildroot}
 
 # Sauvegarder et Restaurer : script privilégié, actions dnf5, règle polkit.

@@ -444,6 +444,8 @@ fn install(ctx: &Ctx, c: &Choices) -> anyhow::Result<()> {
         let system = format!("{NOOS_PREFIX}/share/noos/system/.");
         if ctx.dry || Path::new(&system).exists() {
             ctx.run("cp", &["-a", &system, &format!("{TARGET}/")])?;
+            // sudo refuse un fichier de sudoers.d qui n'appartient pas à root.
+            ctx.try_run("chown", &["-R", "root:root", &format!("{TARGET}/etc/sudoers.d")]);
         } else {
             ctx.line("(attention) fichiers système NOOS absents de l'ISO");
         }

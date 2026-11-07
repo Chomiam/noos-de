@@ -1,0 +1,3 @@
+# NOOS : affiche un « * » par caractère tapé quand sudo demande le mot de passe dans le
+# terminal (par défaut, rien ne s'affiche et on ne sait pas si la frappe est prise en compte).
+Defaults pwfeedback

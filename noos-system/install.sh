@@ -6,10 +6,14 @@
 # - NetworkManager : Wi-Fi sans économie d'énergie
 # - udev : pas de mise en veille automatique des cartes réseau (Ethernet, Wi-Fi)
 # - WirePlumber : pas de mise en veille des nœuds audio (coupures de son au réveil)
+# - sudo : « * » affichés pendant la saisie du mot de passe (pwfeedback)
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="${1:-/}"
 cd "$HERE/root"
 find . -type f | while read -r f; do
-    install -Dm644 "$f" "$ROOT/${f#./}"
+    case "$f" in
+    ./etc/sudoers.d/*) install -Dm440 "$f" "$ROOT/${f#./}" ;;   # sudo refuse un autre mode
+    *) install -Dm644 "$f" "$ROOT/${f#./}" ;;
+    esac
 done
