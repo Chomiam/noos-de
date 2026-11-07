@@ -17,7 +17,11 @@ run_host() { if [ -f /run/.containerenv ] || [ -n "${FLATPAK_ID:-}" ]; then flat
 
 if [ "${1:-}" != "--no-stage" ]; then
     echo "==> Compilation et préparation de NOOS (toolbox noos-dev)"
-    run_host toolbox run -c noos-dev "$ROOT/noos-iso/stage-noos.sh" "$OUT/stage"
+    if run_host sh -c 'command -v toolbox' >/dev/null 2>&1; then
+        run_host toolbox run -c noos-dev "$ROOT/noos-iso/stage-noos.sh" "$OUT/stage"
+    else
+        run_host distrobox enter noos-dev -- "$ROOT/noos-iso/stage-noos.sh" "$OUT/stage"
+    fi
 fi
 
 echo "==> Construction de l'ISO (conteneur Fedora 45)"

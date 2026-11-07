@@ -41,7 +41,7 @@ impl Default for TermConfig {
             theme: "noos".into(),
             opacity: 1.0,
             copy_on_select: false,
-            sidebar: true,
+            sidebar: false,
             scrollback_lines: 10_000,
             cursor_blink: true,
             aliases: vec![
