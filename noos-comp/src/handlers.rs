@@ -527,6 +527,12 @@ impl SeatHandler for NoosState {
         set_data_device_focus(dh, seat, client.clone());
         set_primary_focus(dh, seat, client);
     }
+    /// Verr Num / Verr Maj / Arrêt Défil : on répercute l'état xkb sur les voyants des claviers.
+    fn led_state_changed(&mut self, _seat: &Seat<Self>, led_state: smithay::input::keyboard::LedState) {
+        if let crate::backend::Backend::Udev(data) = &mut self.backend {
+            data.set_leds(led_state);
+        }
+    }
 }
 
 impl smithay::input::tablet::TabletSeatHandler for NoosState {

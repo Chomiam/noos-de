@@ -124,12 +124,23 @@ pub struct UdevData {
     primary_gpu: DrmNode,
     gpu: Option<Gpu>,
     libinput: Libinput,
+    /// Claviers branchés : leurs voyants (Verr Num, Verr Maj, Arrêt Défil) suivent l'état xkb.
+    keyboards: Vec<smithay::reexports::input::Device>,
     cursor: Cursor,
     cursor_cache: Vec<(xcursor::parser::Image, MemoryRenderBuffer)>,
     ten_bit: bool,
 }
 
 impl UdevData {
+    /// Allume / éteint les voyants de tous les claviers (le noyau ne le fait pas tout seul :
+    /// c'est au compositeur de répercuter l'état de xkb).
+    pub fn set_leds(&mut self, leds: smithay::input::keyboard::LedState) {
+        let leds = led_flags(leds);
+        for kb in &mut self.keyboards {
+            kb.led_update(leds);
+        }
+    }
+
     pub fn seat_name(&self) -> String {
         self.session.seat()
     }
@@ -284,6 +295,7 @@ pub fn run() -> anyhow::Result<()> {
         primary_gpu,
         gpu: None,
         libinput: libinput.clone(),
+        keyboards: Vec::new(),
         cursor: Cursor::load(),
         cursor_cache: Vec::new(),
         ten_bit: config.gaming.ten_bit,
@@ -295,8 +307,26 @@ pub fn run() -> anyhow::Result<()> {
     event_loop
         .handle()
         .insert_source(LibinputInputBackend::new(libinput.clone()), |mut event, _, state| {
-            if let InputEvent::DeviceAdded { device } = &mut event {
-                configure_device(device, &state.config);
+            match &mut event {
+                InputEvent::DeviceAdded { device } => {
+                    configure_device(device, &state.config);
+                    if device.has_capability(smithay::reexports::input::DeviceCapability::Keyboard) {
+                        // Nouveau clavier (ou reprise après changement de VT) : voyants à jour.
+                        if let Some(kb) = state.seat.get_keyboard() {
+                            device.led_update(led_flags(kb.led_state()));
+                        }
+                        if let Backend::Udev(data) = &mut state.backend {
+                            data.keyboards.retain(|d| d.sysname() != device.sysname());
+                            data.keyboards.push(device.clone());
+                        }
+                    }
+                }
+                InputEvent::DeviceRemoved { device } => {
+                    if let Backend::Udev(data) = &mut state.backend {
+                        data.keyboards.retain(|d| d.sysname() != device.sysname());
+                    }
+                }
+                _ => {}
             }
             state.process_input_event(event);
         })
@@ -371,6 +401,21 @@ pub fn run() -> anyhow::Result<()> {
         let _ = state.display_handle.flush_clients();
     })?;
     Ok(())
+}
+
+fn led_flags(leds: smithay::input::keyboard::LedState) -> smithay::reexports::input::Led {
+    use smithay::reexports::input::Led;
+    let mut flags = Led::empty();
+    if leds.num == Some(true) {
+        flags |= Led::NUMLOCK;
+    }
+    if leds.caps == Some(true) {
+        flags |= Led::CAPSLOCK;
+    }
+    if leds.scroll == Some(true) {
+        flags |= Led::SCROLLLOCK;
+    }
+    flags
 }
 
 fn configure_device(device: &mut smithay::reexports::input::Device, config: &NoosConfig) {
