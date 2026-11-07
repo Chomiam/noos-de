@@ -378,6 +378,61 @@ pub fn group(snaps: Vec<Snapshot>) -> Vec<Entry> {
     entries
 }
 
+/// Champ simple d'un info.xml de snapper (`<num>3</num>`).
+fn xml_field(text: &str, tag: &str) -> Option<String> {
+    let start = text.find(&format!("<{tag}>"))? + tag.len() + 2;
+    let end = text[start..].find(&format!("</{tag}>"))? + start;
+    Some(text[start..end].replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&").replace("&quot;", "\"").replace("&apos;", "'"))
+}
+
+/// Instantané décrit par `<dir>/<n>/info.xml` (date UTC convertie en heure locale, comme snapper).
+pub fn parse_info(text: &str) -> Option<Snapshot> {
+    let number = xml_field(text, "num")?.trim().parse().ok()?;
+    let kind = match xml_field(text, "type").as_deref() {
+        Some("pre") => Kind::Pre,
+        Some("post") => Kind::Post,
+        _ => Kind::Single,
+    };
+    let date = xml_field(text, "date")
+        .and_then(|d| {
+            let utc = glib::DateTime::from_iso8601(&format!("{}Z", d.trim().replace(' ', "T")), None).ok()?;
+            utc.to_local().ok()?.format("%Y-%m-%d %H:%M:%S").ok().map(|s| s.to_string())
+        })
+        .unwrap_or_default();
+    let mut userdata = HashMap::new();
+    let mut rest = text;
+    while let Some(i) = rest.find("<userdata>") {
+        let chunk = &rest[i..];
+        let end = chunk.find("</userdata>").unwrap_or(chunk.len());
+        let u = &chunk[..end];
+        if let (Some(k), Some(v)) = (xml_field(u, "key"), xml_field(u, "value")) {
+            userdata.insert(k, v);
+        }
+        rest = &chunk[end.min(chunk.len())..];
+        if end == chunk.len() {
+            break;
+        }
+        rest = &rest["</userdata>".len().min(rest.len())..];
+    }
+    Some(Snapshot {
+        number,
+        kind,
+        pre_number: xml_field(text, "pre_num").and_then(|n| n.trim().parse().ok()),
+        date,
+        description: xml_field(text, "description").unwrap_or_default(),
+        cleanup: xml_field(text, "cleanup").unwrap_or_default(),
+        userdata,
+    })
+}
+
+fn read_info_dir(dir: &Path) -> Vec<Snapshot> {
+    let mut v: Vec<Snapshot> = std::fs::read_dir(dir)
+        .map(|rd| rd.flatten().filter_map(|e| std::fs::read_to_string(e.path().join("info.xml")).ok()).filter_map(|t| parse_info(&t)).collect())
+        .unwrap_or_default();
+    v.sort_by_key(|s| s.number);
+    v
+}
+
 fn fstype(path: &str) -> String {
     Command::new("findmnt")
         .args(["-no", "FSTYPE", "-T", path])
@@ -394,7 +449,16 @@ pub fn read() -> Status {
     let configured = Path::new("/etc/snapper/configs/root").exists();
     let config = read_kv("/etc/snapper/configs/root").unwrap_or_default();
     let save = read_kv("/etc/noos/save.conf").unwrap_or_default();
-    let entries = if configured {
+    let boot_snapshot: Option<u32> = std::fs::read_to_string("/proc/cmdline")
+        .ok()
+        .and_then(|c| c.split_whitespace().find_map(|a| a.strip_prefix("noos.snapshot=").and_then(|n| n.parse().ok())));
+    let entries = if !configured {
+        Ok(vec![])
+    } else if boot_snapshot.is_some() {
+        // Démarré sur un instantané : la racine est un overlay, snapper refuse de lister
+        // (« not a btrfs subvolume ») ; on lit directement les fichiers info.xml.
+        Ok(group(read_info_dir(Path::new("/.snapshots"))))
+    } else {
         Command::new("snapper")
             .args(["--jsonout", "-c", "root", "list", "--disable-used-space"])
             .env("LC_ALL", "C.UTF-8")
@@ -407,12 +471,7 @@ pub fn read() -> Status {
                     Err(String::from_utf8_lossy(&o.stderr).trim().to_string())
                 }
             })
-    } else {
-        Ok(vec![])
     };
-    let boot_snapshot = std::fs::read_to_string("/proc/cmdline")
-        .ok()
-        .and_then(|c| c.split_whitespace().find_map(|a| a.strip_prefix("noos.snapshot=").and_then(|n| n.parse().ok())));
     // Démarré sur un instantané, la racine est un overlay : le Btrfs est celui de /home.
     let btrfs = btrfs || (boot_snapshot.is_some() && fstype("/home") == "btrfs");
     let fs_dir = if boot_snapshot.is_some() { "/home" } else { "/" };
@@ -530,6 +589,18 @@ mod tests {
         assert_eq!(e[0].post.as_ref().unwrap().number, 3);
         assert_eq!(e[0].numbers(), [2, 3]);
         assert!(e[1].main.manual());
+    }
+
+    #[test]
+    fn info_xml() {
+        let x = "<?xml version=\"1.0\"?>\n<snapshot>\n  <type>post</type>\n  <num>4</num>\n  <pre_num>3</pre_num>\n  <date>2026-11-07 22:27:20</date>\n  <description>dnf5 reinstall -y nano</description>\n  <cleanup>number</cleanup>\n  <userdata>\n    <key>noos</key>\n    <value>dnf</value>\n  </userdata>\n  <userdata>\n    <key>important</key>\n    <value>yes</value>\n  </userdata>\n</snapshot>\n";
+        let s = parse_info(x).unwrap();
+        assert_eq!(s.number, 4);
+        assert_eq!(s.kind, Kind::Post);
+        assert_eq!(s.pre_number, Some(3));
+        assert_eq!(s.userdata["noos"], "dnf");
+        assert!(s.important());
+        assert!(!s.date.is_empty());
     }
 
     #[test]
