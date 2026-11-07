@@ -78,6 +78,9 @@ Requires:       btrfs-progs
 Requires:       grubby
 # Thème GRUB NOOS (grub2-mkconfig).
 Requires:       grub2-tools
+# Shell par défaut des comptes NOOS (fastfetch à l'ouverture d'un terminal).
+Requires:       fish
+Requires:       fastfetch
 Recommends:     libtimezonemap
 Recommends:     curl
 
@@ -158,6 +161,15 @@ fi
 if [ "$(findmnt -no FSTYPE / 2>/dev/null)" = btrfs ]; then
     /opt/noos/libexec/noos-save-helper setup >/dev/null 2>&1 || :
 fi
+# Nouveaux comptes créés ensuite (useradd) : fish par défaut, une seule fois.
+if [ ! -e /var/lib/noos/useradd-fish ] && [ -x /usr/bin/fish ] && [ -f /etc/default/useradd ]; then
+    if grep -q '^SHELL=' /etc/default/useradd; then
+        sed -i 's|^SHELL=.*|SHELL=/usr/bin/fish|' /etc/default/useradd
+    else
+        echo 'SHELL=/usr/bin/fish' >>/etc/default/useradd
+    fi
+    mkdir -p /var/lib/noos && touch /var/lib/noos/useradd-fish
+fi
 # Thème GRUB : fichiers mis à jour à chaque fois ; grub.cfg régénéré à la première installation.
 if [ -d /boot/grub2 ]; then
     if grep -q '^GRUB_THEME=' /etc/default/grub 2>/dev/null; then
@@ -182,6 +194,8 @@ fi
 %{_prefix}/lib/NetworkManager/conf.d/90-noos-powersave.conf
 %{_prefix}/lib/udev/rules.d/90-noos-net-powersave.rules
 %{_datadir}/wireplumber/wireplumber.conf.d/90-noos-no-suspend.conf
+%{_datadir}/fish/vendor_conf.d/noos.fish
+%config(noreplace) %{_sysconfdir}/xdg/fastfetch/config.jsonc
 %attr(0440,root,root) %config(noreplace) %{_sysconfdir}/sudoers.d/90-noos-pwfeedback
 %{_datadir}/polkit-1/actions/org.noos.save.policy
 %config(noreplace) %{_sysconfdir}/dnf/libdnf5-plugins/actions.d/noos-save.actions

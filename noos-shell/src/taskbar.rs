@@ -84,7 +84,8 @@ impl Taskbar {
         let start_btn = gtk::Button::new();
         start_btn.set_tooltip_text(Some("Démarrer"));
         let logo = gtk::Image::from_file(paths::data_dir().join("noos-start.svg"));
-        logo.set_pixel_size(icon_size(cfg.taskbar.height as i32) + 2);
+        // Logo un peu plus grand que les icônes d'applis (repère du bouton Démarrer).
+        logo.set_pixel_size(icon_size(cfg.taskbar.height as i32) + 6);
         start_btn.set_child(Some(&logo));
         {
             let shell = shell.clone();
@@ -413,7 +414,7 @@ impl Taskbar {
         self.window.set_default_size(-1, h);
         self.window.set_size_request(-1, h);
         self.window.set_exclusive_zone(h);
-        self.logo.set_pixel_size(icon_size(h) + 2);
+        self.logo.set_pixel_size(icon_size(h) + 6);
         if changed {
             self.window.queue_resize();
         }

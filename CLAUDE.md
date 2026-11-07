@@ -38,7 +38,7 @@ Le `README.md` décrit les fonctionnalités ; ce fichier donne le contexte de tr
 | `noos-session/` | Lanceur de session, fichiers .desktop, portails |
 | `noos-save/` | « Sauvegarder et Restaurer » : instantanés Btrfs (snapper), restauration au redémarrage ; `noos-save-helper` (root, pkexec + actions dnf5) |
 | `noos-grub/` | Thème GRUB (`generate.py` produit images et polices .pf2, déjà générées) ; `install.sh` le copie dans /boot |
-| `noos-system/` | Réglages système livrés par le paquet : Wi-Fi/Ethernet sans économie d'énergie, WirePlumber sans mise en veille |
+| `noos-system/` | Réglages système livrés par le paquet : Wi-Fi/Ethernet sans économie d'énergie, WirePlumber sans mise en veille, sudo `pwfeedback`, profil fastfetch (`/etc/xdg/fastfetch`), fish (`vendor_conf.d` : pas de message d'accueil, fastfetch à l'ouverture) |
 
 ## Environnement de développement
 

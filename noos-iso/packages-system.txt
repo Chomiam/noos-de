@@ -24,7 +24,8 @@ gvfs
 flatpak
 firefox
 bash-completion
-# Outils de l'utilisateur (première installation)
+# Outils de l'utilisateur (première installation) ; fish = shell par défaut des comptes
+fish
 git
 gh
 fastfetch

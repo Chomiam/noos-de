@@ -475,7 +475,13 @@ fn install(ctx: &Ctx, c: &Choices) -> anyhow::Result<()> {
     ctx.write("/etc/hostname", &format!("{}\n", c.hostname))?;
     ctx.progress(0.2);
     // Compte administrateur (groupe wheel) ; root verrouillé.
-    ctx.chroot(&["useradd", "-m", "-G", "wheel", "-c", &c.full_name, "-s", "/bin/bash", &c.username])?;
+    // fish (fastfetch à l'ouverture d'un terminal) s'il est installé, sinon bash ; il devient
+    // aussi le shell des comptes créés plus tard.
+    let shell = if ctx.dry || Path::new(&format!("{TARGET}/usr/bin/fish")).exists() { "/usr/bin/fish" } else { "/bin/bash" };
+    if shell == "/usr/bin/fish" {
+        ctx.try_run("chroot", &[TARGET, "useradd", "-D", "-s", "/usr/bin/fish"]);
+    }
+    ctx.chroot(&["useradd", "-m", "-G", "wheel", "-c", &c.full_name, "-s", shell, &c.username])?;
     ctx.line(format!("$ chroot {TARGET} chpasswd   (mot de passe masqué)"));
     if !ctx.dry {
         let mut child = Command::new("chroot").args([TARGET, "chpasswd"]).stdin(Stdio::piped()).stderr(Stdio::piped()).spawn()?;

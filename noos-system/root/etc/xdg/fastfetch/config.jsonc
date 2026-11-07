@@ -1,0 +1,39 @@
+// Profil fastfetch de NOOS (pour tous les comptes). Pour le personnaliser :
+//   fastfetch --gen-config   → ~/.config/fastfetch/config.jsonc (prioritaire sur ce fichier)
+{
+  "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
+  "logo": {
+    "type": "data",
+    "source": "$1      ▄██████▄              ▄██████▄\n$1    ▄██▀      ▀██▄        ▄██▀      ▀██▄\n$2   ██▀          ▀██▄    ▄██▀          ▀██\n$2   ██              ▀████▀              ██\n$3   ██▄          ▄██▀    ▀██▄          ▄██\n$3    ▀██▄      ▄██▀        ▀██▄      ▄██▀\n$3      ▀██████▀              ▀██████▀\n\n$4              N   O   O   S",
+    "color": {
+      "1": "38;2;137;180;250",
+      "2": "38;2;203;166;247",
+      "3": "38;2;243;139;168",
+      "4": "1;38;2;205;214;244"
+    },
+    "padding": { "top": 1, "left": 2, "right": 4 }
+  },
+  "display": {
+    "separator": "  ",
+    "color": { "keys": "38;2;137;180;250", "title": "38;2;203;166;247" },
+    "key": { "width": 16 }
+  },
+  "modules": [
+    "title",
+    { "type": "separator", "string": "─" },
+    { "type": "os", "key": "Système", "format": "NOOS (basé sur Fedora Linux {version-id}) {arch}" },
+    { "type": "host", "key": "Machine" },
+    { "type": "kernel", "key": "Noyau" },
+    { "type": "uptime", "key": "Allumé depuis" },
+    { "type": "packages", "key": "Paquets" },
+    { "type": "shell", "key": "Shell" },
+    { "type": "de", "key": "Bureau" },
+    { "type": "terminal", "key": "Terminal" },
+    { "type": "cpu", "key": "Processeur" },
+    { "type": "gpu", "key": "Carte graphique" },
+    { "type": "memory", "key": "Mémoire" },
+    { "type": "disk", "key": "Disque", "folders": "/" },
+    "break",
+    { "type": "colors", "symbol": "circle" }
+  ]
+}
