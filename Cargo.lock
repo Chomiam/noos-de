@@ -1331,6 +1331,7 @@ dependencies = [
 name = "noos-file"
 version = "0.1.0"
 dependencies = [
+ "async-channel",
  "gtk4",
  "libadapta",
  "noos-core",

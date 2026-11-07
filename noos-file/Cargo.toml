@@ -1,6 +1,6 @@
 [package]
 name = "noos-file"
-description = "Explorateur de fichiers NOOS (GTK4 + libAdapta)"
+description = "Explorateur de fichiers NOOS : accueil, miniatures, aperçu, glisser-déposer (GTK4 + libAdapta)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,3 +10,4 @@ noos-core.workspace = true
 noos-theme.workspace = true
 gtk.workspace = true
 adap.workspace = true
+async-channel.workspace = true

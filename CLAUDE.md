@@ -87,6 +87,7 @@ On ne peut pas cliquer dans l'aperçu : utiliser les variables de test ci-dessou
 | `NOOS_SAVE_DEMO=1` (+ `NOOS_SAVE_DEMO_PENDING=1`) | noos-save affiche des instantanés fictifs (et une restauration en attente), sans rien exécuter |
 | `NOOS_FILE_MENU_DEMO=x,y` | noos-file ouvre le menu contextuel de la vue en icônes en (x, y) ; y < 0 = depuis le bas |
 | `NOOS_FILE_SELECT_DEMO=0,1,2` | noos-file sélectionne ces éléments puis rejoue un clic dans le vide (coin inférieur droit) |
+| `NOOS_FILE_DEMO=<dossier>;details;list;select=0,2;look;zoom=3;sort=size;copy=<source>` | noos-file : ouvre un dossier, volet de détails, vue Détails, sélection, aperçu rapide, zoom, tri, copie suivie |
 
 ### Règles de sécurité (erreurs déjà commises)
 

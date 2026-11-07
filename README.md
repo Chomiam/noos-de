@@ -13,7 +13,7 @@ et, surtout, **un thème entièrement personnalisable** grâce à **GTK4 + libAd
 |---|---|
 | `noos-comp/` | **Compositeur** Wayland (Smithay) : DRM/KMS + libinput (session réelle) ou fenêtre imbriquée (winit), gestion des fenêtres façon Windows 11, VRR, IPC |
 | `noos-shell/` | Barre des tâches centrée, menu Démarrer, réglages rapides, centre de notifications, zone des applis actives, fond d'écran (layer-shell) |
-| `noos-file/` | Explorateur de fichiers (grille / détails, fil d'Ariane, corbeille, copier-coller) |
+| `noos-file/` | Explorateur de fichiers : accueil, miniatures, volet de détails, aperçu rapide, glisser-déposer, copies suivies, corbeille |
 | `noos-settings/` | Paramètres : personnalisation, barre des tâches, écrans (HDR/VRR), jeux, entrées |
 | `noos-software/` | **Logiciels** : vitrine Flathub, recherche multi-sources, mises à jour, dépôts |
 | `noos-pkg/` | Bibliothèque + CLI `noos-pkg` : dnf et Flatpak, sources regroupées, rapprochement AppStream |
@@ -100,6 +100,24 @@ sur l'hôte : compilation dans le toolbox, système live dans un conteneur podma
   `/opt/noos`, greetd + noos-login, Plymouth NOOS, SELinux étiqueté à l'installation, journal
   copié dans `/var/log/noos-install.log`.
 - Testé dans QEMU (UEFI et BIOS) : installation complète, connexion, bureau.
+
+## Explorateur de fichiers (noos-file)
+
+- **Accueil** façon Windows 11 : accès rapide aux dossiers, disques avec espace libre, fichiers
+  récents (avec miniatures) ; « Dossier personnel » à part dans la barre latérale.
+- **Barre de commandes** : Nouveau (dossier, document texte), couper / copier / coller, renommer,
+  supprimer, Trier (nom, date, taille, type, ordre décroissant), Affichage (icônes / détails,
+  zoom, fichiers cachés, volet de détails).
+- **Miniatures** des images (gdk-pixbuf) et des vidéos (`ffmpegthumbnailer` s'il est installé),
+  dans le cache partagé `~/.cache/thumbnails/large` ; zoom des icônes (Ctrl+molette, Ctrl+±).
+- **Volet de détails** (Alt+P) : aperçu, taille, dimensions des images, date, emplacement,
+  contenu des dossiers, début des fichiers texte. **Aperçu rapide** : Espace.
+- **Glisser-déposer** vers un dossier, la vue, la barre latérale ou le fil d'Ariane (déplacer ;
+  Ctrl : copier ; entre deux disques : copie). Déposer sur la Corbeille : mettre à la corbeille.
+- **Copies et déplacements suivis** : une carte par opération (pourcentage, éléments, octets,
+  vitesse, temps restant, fichier en cours, Annuler), sans bloquer l'interface.
+- « Ouvrir avec », corbeille complète (restaurer, supprimer définitivement, vider), Suppr /
+  Maj+Suppr, F2, Ctrl+A, Ctrl+F, Ctrl+1 / Ctrl+2, page « dossier vide ».
 
 ## Sauvegarder et Restaurer (noos-save)
 
