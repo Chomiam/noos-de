@@ -8,7 +8,7 @@
 %global __provides_exclude_from ^/opt/noos/lib/.*$
 %global __requires_exclude ^libadapta-1\\.so.*$
 
-%global noos_bins noos-comp noos-shell noos-file noos-settings noos-software noos-pkg noos-snip noos-term noos-keys noos-save noos-photoview noos-texteditor noos-lock noos-login noos-installer
+%global noos_bins noos-comp noos-shell noos-file noos-settings noos-software noos-pkg noos-snip noos-term noos-keys noos-save noos-photoview noos-texteditor noos-lock noos-archive noos-login noos-installer
 
 Name:           noos
 Version:        0.1.0
@@ -85,6 +85,16 @@ Requires:       fish
 Requires:       fastfetch
 # Profils d'énergie (Économie / Équilibré / Performances) : tuned + interface power-profiles.
 Requires:       tuned-ppd
+# Archives : 7-Zip (7z, zip, iso, dmg, wim, cab, msi…), libarchive (tar.*), unar (rar, sit…),
+# xorriso (images ISO), compresseurs ; udisks pour monter les images disque.
+Requires:       7zip
+Requires:       bsdtar
+Requires:       unar
+Requires:       xorriso
+Requires:       zstd
+Requires:       lz4
+Requires:       lzip
+Requires:       udisks2
 # Éditeur de texte (coloration syntaxique, plus de 150 langages).
 Requires:       gtksourceview5
 # Polices : courantes, équivalentes métriques des polices Microsoft (Liberation = Arial / Times /

@@ -170,6 +170,20 @@ autocomplétion des mots, commenter / dupliquer / déplacer / trier les lignes, 
 ligne, encodage et fins de ligne conservés, rechargement si un autre programme modifie le
 fichier, enregistrement automatique (option), session restaurée, thèmes NOOS clair / sombre.
 
+## Archives (noos-archive)
+
+Parcourir, extraire, créer, tester, modifier et convertir des archives de plus de 60 formats :
+7z, zip et dérivés (jar, apk, epub, cbz…), rar (dont RAR5), tar.gz / .xz / .zst / .bz2 / .lz4 /
+.lz, iso, dmg, wim, cab, msi, deb, rpm, cpio, squashfs, images de disques virtuels, arj, lzh,
+StuffIt, ALZ… (moteurs : 7-Zip, libarchive, unar). Création : 7z (AES-256, noms chiffrés),
+zip, tar.zst, tar.xz, tar.gz, tar.bz2, tar.lz4, tar.lz, tar, wim, image ISO ; niveau de
+compression, volumes (CD, DVD, FAT32…), archive solide, exclusions. Progression avec vitesse
+et temps restant, annulation, notification ; fichiers ouverts d'un double-clic depuis l'archive.
+
+Explorateur : clic droit → Extraire ici, Extraire vers…, Compresser (ZIP, 7z, plus d'options),
+Monter / Démonter une image disque. Dans une image montée, un bandeau propose de la démonter ;
+supprimer une image encore montée affiche une alerte (« Démonter et continuer »).
+
 ## Écran de verrouillage (noos-lock)
 
 Verrouillage de session (`ext-session-lock-v1`) : Super+L, menu Démarrer, inactivité, avant la

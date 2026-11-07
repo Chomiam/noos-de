@@ -15,7 +15,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DEST="${1:-$ROOT/noos-iso/out/stage}"
 PREFIX="$DEST/opt/noos"
-BINS=(noos-comp noos-shell noos-file noos-settings noos-software noos-pkg noos-snip noos-term noos-keys noos-save noos-photoview noos-texteditor noos-lock noos-login noos-installer)
+BINS=(noos-comp noos-shell noos-file noos-settings noos-software noos-pkg noos-snip noos-term noos-keys noos-save noos-photoview noos-texteditor noos-lock noos-archive noos-login noos-installer)
 
 "$ROOT/scripts/build-libadapta.sh"
 cd "$ROOT"

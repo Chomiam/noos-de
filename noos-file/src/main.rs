@@ -80,6 +80,9 @@ struct Explorer {
     up_btn: gtk::Button,
     sidebar: gtk::ListBox,
     clipboard: RefCell<Option<(ClipOp, Vec<gio::File>)>>,
+    /// Bandeau « image disque montée » (dossier courant dans une ISO montée).
+    image_banner: adap::Banner,
+    image_shown: RefCell<Option<std::path::PathBuf>>,
 }
 
 fn file_of(obj: &glib::Object) -> Option<gio::File> {
@@ -344,6 +347,9 @@ impl Explorer {
 
         let content_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
         main_row.set_vexpand(true);
+        let image_banner = adap::Banner::new("");
+        image_banner.set_button_label(Some("Démonter"));
+        content_box.append(&image_banner);
         content_box.append(&main_row);
         content_box.append(&status_bar);
 
@@ -394,6 +400,8 @@ impl Explorer {
             up_btn,
             sidebar,
             clipboard: RefCell::new(None),
+            image_banner,
+            image_shown: RefCell::new(None),
         });
         EXPLORER.with(|e| *e.borrow_mut() = Some(ex.clone()));
 
@@ -654,6 +662,7 @@ impl Explorer {
             }));
         }
         // NOOS_FILE_DEMO=<chemin>[;details][;list][;select=0,2][;look][;zoom=3][;sort=size][;copy=<source>]
+        //                [;menu][;mount][;trash]
         if let Ok(spec) = std::env::var("NOOS_FILE_DEMO") {
             let ex = self.clone();
             after(300, Box::new(move || {
@@ -678,6 +687,19 @@ impl Explorer {
                             });
                         }
                         None if part == "details" => ex.activate("details-pane", None),
+                        // Tests : menu contextuel de la sélection, monter l'image, corbeille.
+                        // (après la sélection, faite à 1,2 s)
+                        None if matches!(part, "menu" | "mount" | "trash") => {
+                            let (ex, part) = (ex.clone(), part.to_string());
+                            glib::timeout_add_local_once(std::time::Duration::from_millis(2000), move || match part.as_str() {
+                                "menu" => {
+                                    let g = ex.grid.clone().upcast::<gtk::Widget>();
+                                    ex.context_menu(&g, 220.0, 120.0);
+                                }
+                                "mount" => ex.mount_selected(),
+                                _ => ex.trash_selected(),
+                            });
+                        }
                         None if part == "list" => ex.activate("view", Some(&"details".to_variant())),
                         None if part == "look" => {
                             let ex = ex.clone();
@@ -700,6 +722,14 @@ impl Explorer {
 
     fn install_actions(self: &Rc<Self>) {
         let app = self.window.application().unwrap();
+        self.image_banner.connect_button_clicked(|_| {
+            if let Some(ex) = explorer() {
+                let img = ex.image_shown.borrow().clone();
+                if let Some(img) = img {
+                    ex.unmount_image(img);
+                }
+            }
+        });
         let add = |name: &str, accels: &[&str], f: Box<dyn Fn(&Rc<Explorer>)>| {
             let action = gio::SimpleAction::new(name, None);
             let ex = self.clone();
@@ -715,6 +745,18 @@ impl Explorer {
         add("new-folder", &["<Ctrl><Shift>n"], Box::new(|ex| ex.new_item(true)));
         add("new-text", &[], Box::new(|ex| ex.new_item(false)));
         add("trash", &[], Box::new(|ex| ex.trash_selected()));
+        add("extract-here", &[], Box::new(|ex| ex.archive_tool("--extract-here", false)));
+        add("extract-to", &[], Box::new(|ex| ex.archive_tool("--extract-to", false)));
+        add("open-archive", &[], Box::new(|ex| ex.archive_tool("", false)));
+        add("compress", &[], Box::new(|ex| ex.archive_tool("--compress", true)));
+        add("compress-zip", &[], Box::new(|ex| ex.archive_tool("--quick zip", true)));
+        add("compress-7z", &[], Box::new(|ex| ex.archive_tool("--quick 7z", true)));
+        add("mount-image", &[], Box::new(|ex| ex.mount_selected()));
+        add("unmount-image", &[], Box::new(|ex| {
+            if let Some(p) = ex.selected_files().first().and_then(|f| f.path()) {
+                ex.unmount_image(p);
+            }
+        }));
         add("rename", &["F2"], Box::new(|ex| ex.rename_selected()));
         add("copy", &["<Ctrl>c"], Box::new(|ex| ex.clip(ClipOp::Copy)));
         add("cut", &["<Ctrl>x"], Box::new(|ex| ex.clip(ClipOp::Cut)));
@@ -866,6 +908,125 @@ impl Explorer {
         self.update_details();
         let title = self.folder_title.title();
         self.window.set_title(Some(&format!("{title} — Explorateur de fichiers")));
+        self.check_image(&file);
+    }
+
+    /// Dossier dans une image disque montée : bandeau avec « Démonter ».
+    fn check_image(&self, dir: &gio::File) {
+        let Some(path) = dir.path() else {
+            self.image_banner.set_revealed(false);
+            return;
+        };
+        glib::spawn_future_local(async move {
+            let found = gio::spawn_blocking(move || noos_core::disk_image::image_for_dir(&path)).await.ok().flatten();
+            let Some(ex) = explorer() else { return };
+            match found {
+                Some(m) => {
+                    let name = m.image.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                    ex.image_banner.set_title(&format!("Image disque « {name} » montée (lecture seule)"));
+                    ex.image_banner.set_revealed(true);
+                    *ex.image_shown.borrow_mut() = Some(m.image);
+                }
+                None => {
+                    ex.image_banner.set_revealed(false);
+                    ex.image_shown.borrow_mut().take();
+                }
+            }
+        });
+    }
+
+    /// Lance l'application Archives sur la sélection (`mode` : options de ligne de commande).
+    fn archive_tool(&self, mode: &str, _create: bool) {
+        let files: Vec<String> = self.selected_files().iter().filter_map(|f| f.path()).map(|p| p.to_string_lossy().into_owned()).collect();
+        if files.is_empty() {
+            return;
+        }
+        let mut cmd = std::process::Command::new("noos-archive");
+        cmd.args(mode.split_whitespace()).args(&files);
+        if let Err(e) = cmd.spawn() {
+            self.toast(&format!("Archives introuvable : {e}"));
+        }
+    }
+
+    fn mount_selected(&self) {
+        let Some(path) = self.selected_files().first().and_then(|f| f.path()) else { return };
+        self.toast("Montage de l'image…");
+        glib::spawn_future_local(async move {
+            let res = gio::spawn_blocking(move || noos_core::disk_image::mount(&path)).await;
+            let Some(ex) = explorer() else { return };
+            match res {
+                Ok(Ok(m)) => {
+                    if let Some(mp) = m.mountpoints.first() {
+                        ex.navigate(gio::File::for_path(mp), true);
+                    }
+                }
+                Ok(Err(e)) => ex.toast(&format!("Montage impossible : {e}")),
+                Err(_) => {}
+            }
+        });
+    }
+
+    /// Démonte l'image ; si on était dedans, revient au dossier de l'image.
+    fn unmount_image(&self, image: std::path::PathBuf) {
+        let inside = self.image_shown.borrow().as_ref() == Some(&image);
+        glib::spawn_future_local(async move {
+            let img = image.clone();
+            let res = gio::spawn_blocking(move || noos_core::disk_image::unmount(&img)).await;
+            let Some(ex) = explorer() else { return };
+            match res {
+                Ok(Ok(())) => {
+                    ex.toast("Image démontée");
+                    if inside {
+                        if let Some(parent) = image.parent() {
+                            ex.navigate(gio::File::for_path(parent), true);
+                        }
+                    }
+                    ex.image_banner.set_revealed(false);
+                }
+                Ok(Err(e)) => ex.toast(&format!("Démontage impossible : {e}")),
+                Err(_) => {}
+            }
+        });
+    }
+
+    /// Images disque montées parmi `files` : alerte avant suppression, puis `then`.
+    fn guard_mounted_images(&self, files: Vec<gio::File>, then: impl Fn(Vec<gio::File>) + 'static) {
+        let mounted: Vec<std::path::PathBuf> = files
+            .iter()
+            .filter_map(|f| f.path())
+            .filter(|p| noos_core::disk_image::is_disk_image(p) && noos_core::disk_image::mounted(p).is_some())
+            .collect();
+        if mounted.is_empty() {
+            return then(files);
+        }
+        let names = mounted.iter().map(|p| format!("« {} »", p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default())).collect::<Vec<_>>().join(", ");
+        let d = adap::AlertDialog::new(
+            Some(if mounted.len() > 1 { "Images encore montées" } else { "Image encore montée" }),
+            Some(&format!("{names} {} encore {}. Démontez avant de supprimer : sinon le système garderait le fichier ouvert et l'espace ne serait pas libéré.", if mounted.len() > 1 { "sont" } else { "est" }, if mounted.len() > 1 { "montées" } else { "montée" })),
+        );
+        d.add_responses(&[("cancel", "Annuler"), ("unmount", "Démonter et continuer")]);
+        d.set_response_appearance("unmount", adap::ResponseAppearance::Destructive);
+        d.set_default_response(Some("cancel"));
+        let then = std::rc::Rc::new(then);
+        d.connect_response(None, move |_, r| {
+            if r != "unmount" {
+                return;
+            }
+            let (files, mounted, then) = (files.clone(), mounted.clone(), then.clone());
+            glib::spawn_future_local(async move {
+                let res = gio::spawn_blocking(move || mounted.iter().try_for_each(|p| noos_core::disk_image::unmount(p))).await;
+                let Some(ex) = explorer() else { return };
+                match res {
+                    Ok(Ok(())) => {
+                        ex.image_banner.set_revealed(false);
+                        then(files);
+                    }
+                    Ok(Err(e)) => ex.toast(&format!("Démontage impossible : {e}")),
+                    Err(_) => {}
+                }
+            });
+        });
+        d.present(Some(&self.window));
     }
 
     fn go_back(&self) {
@@ -1192,7 +1353,11 @@ impl Explorer {
         }
         let files = self.selected_files();
         if !files.is_empty() {
-            self.trash_files(&files);
+            self.guard_mounted_images(files, |files| {
+                if let Some(ex) = explorer() {
+                    ex.trash_files(&files);
+                }
+            });
         }
     }
 
@@ -1212,6 +1377,14 @@ impl Explorer {
     fn delete_forever_selected(&self) {
         let files = self.selected_files();
         if files.is_empty() {
+            return;
+        }
+        if files.iter().filter_map(|f| f.path()).any(|p| noos_core::disk_image::is_disk_image(&p) && noos_core::disk_image::mounted(&p).is_some()) {
+            self.guard_mounted_images(files, |_| {
+                if let Some(ex) = explorer() {
+                    ex.delete_forever_selected();
+                }
+            });
             return;
         }
         let n = files.len();
@@ -1436,6 +1609,37 @@ impl Explorer {
                 }
             }
             menu.append_section(None, &open);
+            // Archives et images disque.
+            let paths: Vec<std::path::PathBuf> = self.selected_files().iter().filter_map(|f| f.path()).collect();
+            let arch = gio::Menu::new();
+            let plain_archive = |p: &std::path::Path| {
+                noos_core::archive::is_archive(p)
+                    && !matches!(p.extension().and_then(|e| e.to_str()).map(str::to_lowercase).as_deref(), Some("docx" | "xlsx" | "pptx" | "odt" | "ods" | "odp" | "epub"))
+            };
+            if !paths.is_empty() && paths.iter().all(|p| p.is_file() && plain_archive(p)) {
+                arch.append(Some("Extraire ici"), Some("win.extract-here"));
+                arch.append(Some("Extraire vers…"), Some("win.extract-to"));
+                if paths.len() == 1 {
+                    arch.append(Some("Ouvrir avec Archives"), Some("win.open-archive"));
+                }
+            }
+            if let [one] = paths.as_slice() {
+                if noos_core::disk_image::is_disk_image(one) {
+                    if noos_core::disk_image::mounted(one).is_some() {
+                        arch.append(Some("Démonter l'image"), Some("win.unmount-image"));
+                    } else {
+                        arch.append(Some("Monter l'image"), Some("win.mount-image"));
+                    }
+                }
+            }
+            if !paths.is_empty() {
+                let comp = gio::Menu::new();
+                comp.append(Some("En fichier ZIP"), Some("win.compress-zip"));
+                comp.append(Some("En fichier 7z"), Some("win.compress-7z"));
+                comp.append(Some("Plus d'options…"), Some("win.compress"));
+                arch.append_submenu(Some("Compresser"), &comp);
+            }
+            menu.append_section(None, &arch);
             menu.append_section(
                 None,
                 &section(&[("Couper", "win.cut"), ("Copier", "win.copy"), ("Renommer", "win.rename"), ("Copier le chemin", "win.copy-path")]),

@@ -1,0 +1,16 @@
+[package]
+name = "noos-archive"
+description = "Archives : créer, parcourir, extraire, tester et convertir des archives (7-Zip, libarchive, unar, xorriso) — GTK4 + libAdapta"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+noos-core.workspace = true
+noos-theme.workspace = true
+gtk.workspace = true
+adap.workspace = true
+async-channel.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true

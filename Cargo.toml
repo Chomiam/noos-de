@@ -15,6 +15,7 @@ members = [
     "noos-texteditor",
     "noos-shader",
     "noos-lock",
+    "noos-archive",
     "noos-software",
     "noos-snip",
     "noos-term",

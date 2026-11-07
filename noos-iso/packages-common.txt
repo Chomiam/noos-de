@@ -74,3 +74,12 @@ cascadia-fonts-all
 ibm-plex-fonts-all
 fontawesome-fonts-all
 cabextract
+# Archives (noos-archive)
+7zip
+bsdtar
+unar
+xorriso
+zstd
+lz4
+lzip
+udisks2

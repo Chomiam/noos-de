@@ -66,7 +66,8 @@ pub const CATEGORIES: &[(&str, &str, &str, &[&str])] = &[
         "ZIP, TAR, 7z, RAR…",
         &[
             "application/zip", "application/x-tar", "application/x-compressed-tar", "application/x-xz-compressed-tar",
-            "application/x-7z-compressed", "application/vnd.rar", "application/x-rar", "application/gzip",
+            "application/x-zstd-compressed-tar", "application/x-bzip-compressed-tar", "application/x-7z-compressed", "application/vnd.rar",
+            "application/x-rar", "application/gzip", "application/x-cd-image", "application/x-iso9660-image", "application/x-apple-diskimage",
         ],
     ),
     ("Courriel", "mail-unread-symbolic", "Liens « mailto: »", &["x-scheme-handler/mailto"]),
@@ -83,7 +84,7 @@ fn suggestion(category: &str) -> &'static str {
         "Vidéos" => "vlc",
         "Documents PDF" => "pdf",
         "Texte et code" => "éditeur de texte",
-        "Archives" => "archives",
+        "Archives" => "archive",
         _ => "",
     }
 }

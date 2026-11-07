@@ -37,9 +37,11 @@ Le `README.md` décrit les fonctionnalités ; ce fichier donne le contexte de tr
 | `noos-theme/` | Palettes, génération du thème libAdapta « NOOS » |
 | `noos-adapta/` | Bindings Rust de libAdapta ; sources C dans `third_party/libadapta/` |
 | `noos-session/` | Lanceur de session, fichiers .desktop, portails |
+| `noos-core/src/disk_image.rs` | Images disque : montage / démontage par udisks (sans mot de passe), détection (`losetup -J`) ; Explorateur : bandeau « Démonter », alerte avant suppression |
 | `noos-texteditor/` | Éditeur de texte et de code (GtkSourceView 5 : 160+ langages, recherche / remplacement, onglets, dossier, mini-carte, thèmes NOOS `data/sourceview/`) |
 | `noos-lock/` | Écran de verrouillage (ext-session-lock via gtk4-session-lock, PAM service `noos-lock`) : animation, horloge, mot de passe ; `--preview [animation]` sans verrouiller |
 | `noos-shader/` | Animations GLSL format Shadertoy (GLArea, libepoxy chargée à l'exécution) : intégrées, bibliothèque `~/.local/share/noos/shaders`, API Shadertoy (clé de l'utilisateur dans `~/.config/noos/shadertoy-key`) |
+| `noos-archive/` | « Archives » : parcourir, extraire, créer, tester, convertir (7-Zip, bsdtar, unar, xorriso) ; modes `--extract-here`, `--extract-to`, `--compress`, `--quick zip\|7z` pour le menu de l'Explorateur |
 | `noos-save/` | « Sauvegarder et Restaurer » : instantanés Btrfs (snapper), restauration au redémarrage ; `noos-save-helper` (root, pkexec + actions dnf5) |
 | `noos-grub/` | Thème GRUB (`generate.py` produit images et polices .pf2, déjà générées) ; `install.sh` le copie dans /boot |
 | `noos-system/` | Réglages système livrés par le paquet : Wi-Fi/Ethernet sans économie d'énergie, WirePlumber sans mise en veille, sudo `pwfeedback`, profil fastfetch (`/etc/xdg/fastfetch`), fish (`vendor_conf.d` : pas de message d'accueil, fastfetch à l'ouverture) |
@@ -99,7 +101,8 @@ On ne peut pas cliquer dans l'aperçu : utiliser les variables de test ci-dessou
 | `NOOS_FILE_MENU_DEMO=x,y` | noos-file ouvre le menu contextuel de la vue en icônes en (x, y) ; y < 0 = depuis le bas |
 | `NOOS_FILE_SELECT_DEMO=0,1,2` | noos-file sélectionne ces éléments puis rejoue un clic dans le vide (coin inférieur droit) |
 | `NOOS_PHOTOVIEW_DEMO=<image>;info;zoom=2.5;next;hide;slideshow` | noos-photoview : ouvre une image, panneau d'infos, zoom, suivante, commandes masquées, diaporama |
-| `NOOS_FILE_DEMO=<dossier>;details;list;select=0,2;look;zoom=3;sort=size;copy=<source>` | noos-file : ouvre un dossier, volet de détails, vue Détails, sélection, aperçu rapide, zoom, tri, copie suivie |
+| `NOOS_ARCHIVE_DEMO=<archive>\|create` | noos-archive : ouvre une archive / la page de création préremplie |
+| `NOOS_FILE_DEMO=<dossier>;details;list;select=0,2;look;zoom=3;sort=size;copy=<source>;menu;mount;trash` | noos-file : ouvre un dossier, volet de détails, vue Détails, sélection, aperçu rapide, zoom, tri, copie suivie |
 
 ### Règles de sécurité (erreurs déjà commises)
 
@@ -109,6 +112,8 @@ On ne peut pas cliquer dans l'aperçu : utiliser les variables de test ci-dessou
   se tue elle-même, code 144). Chercher le PID avec `ps`/`awk`, puis `kill`.
 - Ne jamais lancer une appli « unique » (noos-term, noos-settings) dans l'aperçu sans
   `dbus-run-session` : elle s'ouvrirait dans la vraie session.
+- Variables de démo contenant « ; » : le compositeur lance la commande du kiosque avec `sh -c` ;
+  mettre l'argument entre apostrophes (sinon le reste est exécuté comme des commandes).
 - Ne jamais mettre de gros fichiers (disque de VM, ISO) dans `/tmp` : c'est de la RAM.
 
 ## ISO, VM de test, COPR
