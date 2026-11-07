@@ -1446,6 +1446,7 @@ dependencies = [
  "gtk4",
  "libadapta",
  "noos-core",
+ "noos-theme",
  "serde",
  "toml",
  "vte4",
