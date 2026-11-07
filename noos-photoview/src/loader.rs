@@ -60,6 +60,9 @@ pub async fn decode(path: PathBuf, rotation: u32, flip: bool) -> Result<Decoded,
 const EXTENSIONS: &[&str] = &[
     "jpg", "jpeg", "jpe", "png", "webp", "gif", "bmp", "tif", "tiff", "svg", "svgz", "avif", "heic", "heif", "jxl", "ico", "tga",
     "ppm", "pgm", "pbm", "pnm", "xpm", "qoi",
+    // Photos RAW des appareils (libopenraw-pixbuf-loader) : Nikon, Canon, Sony, Adobe DNG,
+    // Fujifilm, Olympus, Panasonic, Pentax, Samsung, Minolta, Sigma, Kodak, Hasselblad…
+    "nef", "nrw", "cr2", "cr3", "crw", "arw", "sr2", "srf", "dng", "raf", "orf", "rw2", "pef", "srw", "mrw", "x3f", "dcr", "kdc", "3fr", "erf", "mef", "mos",
 ];
 
 pub fn is_image(path: &Path) -> bool {

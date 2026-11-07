@@ -81,6 +81,10 @@ Requires:       grub2-tools
 # Shell par défaut des comptes NOOS (fastfetch à l'ouverture d'un terminal).
 Requires:       fish
 Requires:       fastfetch
+# Visionneuse d'images : photos RAW (NEF, CR2/CR3, ARW, DNG…) ; HEIC des iPhone (décodeur HEVC,
+# RPM Fusion : recommandé seulement, pour ne pas bloquer les systèmes sans RPM Fusion).
+Requires:       libopenraw-pixbuf-loader
+Recommends:     libheif-freeworld
 Recommends:     libtimezonemap
 Recommends:     curl
 

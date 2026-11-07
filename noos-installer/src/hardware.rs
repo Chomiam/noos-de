@@ -2,7 +2,7 @@
 //!
 //! | Matériel                                   | Installé (avec RPM Fusion)                               |
 //! |--------------------------------------------|----------------------------------------------------------|
-//! | tous                                       | codecs complets : ffmpeg, GStreamer bad-freeworld / ugly / libav, OpenH264, x264, x265, LAME, libdvdcss (tainted) |
+//! | tous                                       | codecs complets : ffmpeg, GStreamer bad-freeworld / ugly / libav, OpenH264, x264, x265, LAME, libdvdcss (tainted), HEIC (libheif-freeworld) |
 //! | AMD                                        | VA-API complet (`mesa-va-drivers-freeworld`)              |
 //! | Intel                                      | VA-API (`intel-media-driver`, `libva-intel-driver`)       |
 //! | NVIDIA Turing et + (GTX 16xx, RTX…)        | pilote NVIDIA actuel (`akmod-nvidia`), CUDA, VA-API       |
@@ -156,9 +156,9 @@ pub fn plan(hw: &Hardware, rpmfusion: bool) -> Plan {
         p.tainted = true;
         push(
             &mut p.packages,
-            &["ffmpeg", "gstreamer1-plugins-bad-freeworld", "gstreamer1-plugins-ugly", "x264", "x265", "libdvdcss"],
+            &["ffmpeg", "gstreamer1-plugins-bad-freeworld", "gstreamer1-plugins-ugly", "x264", "x265", "libdvdcss", "libheif-freeworld"],
         );
-        p.summary.push("Codecs complets : H.264/H.265, AAC, MP3, DVD (ffmpeg, GStreamer, RPM Fusion)".into());
+        p.summary.push("Codecs complets : H.264/H.265, AAC, MP3, DVD, photos HEIC d'iPhone (ffmpeg, GStreamer, libheif, RPM Fusion)".into());
     } else {
         p.summary.push("Codecs libres de Fedora (RPM Fusion désactivé : pas de H.265 ni de pilote NVIDIA)".into());
     }

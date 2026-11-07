@@ -21,6 +21,8 @@ libglvnd-gles
 libglvnd-egl
 glycin-loaders
 gdk-pixbuf2-modules-extra
+# Photos RAW des appareils (visionneuse, miniatures)
+libopenraw-pixbuf-loader
 mesa-vulkan-drivers
 vulkan-loader
 libinput
