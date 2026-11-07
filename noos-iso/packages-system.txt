@@ -17,6 +17,9 @@ grim
 vte291-gtk4
 polkit
 oo7-daemon
+# Déverrouillage du trousseau à la connexion (greetd) et fenêtre de saisie du mot de passe.
+pam_oo7
+gcr3
 gvfs
 flatpak
 firefox

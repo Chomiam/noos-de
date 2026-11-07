@@ -63,7 +63,12 @@ Requires:       adw-gtk3-theme
 Recommends:     xwayland-satellite
 Recommends:     grim
 Recommends:     bluez
-Recommends:     oo7-daemon
+# Trousseau : oo7 + pam_oo7 (déverrouillé à la connexion par greetd, déjà prévu dans
+# /usr/lib/pam.d/greetd) + gcr-prompter (fenêtre de saisie org.gnome.keyring.SystemPrompter,
+# sans laquelle oo7 ne peut jamais demander le mot de passe).
+Requires:       oo7-daemon
+Requires:       pam_oo7
+Requires:       gcr3
 Recommends:     libtimezonemap
 Recommends:     curl
 
