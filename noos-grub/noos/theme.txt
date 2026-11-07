@@ -1,0 +1,60 @@
+# Thème GRUB NOOS — palette « Nuit saphir ». Images et polices : noos-grub/generate.py.
+title-text: ""
+desktop-image: "background.png"
+desktop-color: "#11111b"
+terminal-font: "NOOS Regular 16"
+terminal-left: "10%"
+terminal-top: "10%"
+terminal-width: "80%"
+terminal-height: "80%"
+terminal-box: "menu_*.png"
+message-font: "NOOS Regular 16"
+message-color: "#cdd6f4"
+message-bg-color: "#1e1e2e"
+
++ image {
+    left = 50%-172
+    top = 15%
+    file = "logo.png"
+}
+
++ boot_menu {
+    left = 50%-400
+    top = 38%
+    width = 800
+    height = 36%
+    menu_pixmap_style = "menu_*.png"
+    item_font = "NOOS Regular 20"
+    item_color = "#cdd6f4"
+    selected_item_font = "NOOS SemiBold Regular 20"
+    selected_item_color = "#11111b"
+    selected_item_pixmap_style = "select_*.png"
+    item_height = 40
+    item_padding = 24
+    item_spacing = 18
+    icon_width = 0
+    icon_height = 0
+    item_icon_space = 0
+    scrollbar = false
+}
+
++ label {
+    id = "__timeout__"
+    left = 0
+    top = 80%
+    width = 100%
+    align = "center"
+    font = "NOOS Regular 16"
+    color = "#a6adc8"
+    text = "Démarrage automatique dans %d s"
+}
+
++ label {
+    left = 0
+    top = 86%
+    width = 100%
+    align = "center"
+    font = "NOOS Regular 16"
+    color = "#6c7086"
+    text = "Flèches : choisir    ·    Entrée : démarrer    ·    e : modifier    ·    c : console"
+}

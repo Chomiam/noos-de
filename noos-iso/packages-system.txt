@@ -24,3 +24,11 @@ gvfs
 flatpak
 firefox
 bash-completion
+# Outils de l'utilisateur (première installation)
+git
+gh
+fastfetch
+# Sauvegarder et Restaurer : instantanés Btrfs avant / après chaque transaction dnf
+snapper
+libdnf5-plugin-actions
+btrfs-progs

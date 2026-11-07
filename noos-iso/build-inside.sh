@@ -107,6 +107,7 @@ set timeout=5
 insmod all_video
 insmod gfxterm
 insmod png
+insmod gfxmenu
 insmod part_gpt
 insmod iso9660
 search --no-floppy --set=root --label $LABEL
@@ -115,6 +116,12 @@ set gfxmode=auto
 terminal_output gfxterm
 set menu_color_normal=light-gray/black
 set menu_color_highlight=white/blue
+# Thème NOOS (noos-grub), comme sur le système installé.
+loadfont (\$root)/boot/grub2/themes/noos/noos-16.pf2
+loadfont (\$root)/boot/grub2/themes/noos/noos-20.pf2
+loadfont (\$root)/boot/grub2/themes/noos/noos-semibold-20.pf2
+loadfont (\$root)/boot/grub2/themes/noos/noos-semibold-28.pf2
+set theme=(\$root)/boot/grub2/themes/noos/theme.txt
 
 menuentry "Installer NOOS" --class noos {
     linux /boot/vmlinuz root=live:CDLABEL=$LABEL rd.live.image selinux=0 quiet rhgb
@@ -144,8 +151,9 @@ echo "$GRUBCFG" >"$ISO/boot/grub2/grub.cfg"
 cp /boot/efi/EFI/fedora/shimx64.efi "$ISO/EFI/BOOT/BOOTX64.EFI"
 cp /boot/efi/EFI/fedora/grubx64.efi "$ISO/EFI/BOOT/grubx64.efi"
 cp /boot/efi/EFI/fedora/mmx64.efi "$ISO/EFI/BOOT/mmx64.efi" 2>/dev/null || true
-mkdir -p "$ISO/boot/grub2/fonts"
+mkdir -p "$ISO/boot/grub2/fonts" "$ISO/boot/grub2/themes/noos"
 cp /usr/share/grub/unicode.pf2 "$ISO/boot/grub2/fonts/"
+cp "$SRC"/noos-grub/noos/* "$ISO/boot/grub2/themes/noos/"
 # Image FAT d'amorçage UEFI (sans montage : mtools).
 EFIIMG="$ISO/images/efiboot.img"
 truncate -s 12M "$EFIIMG"

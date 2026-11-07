@@ -101,6 +101,20 @@ sur l'hôte : compilation dans le toolbox, système live dans un conteneur podma
   copié dans `/var/log/noos-install.log`.
 - Testé dans QEMU (UEFI et BIOS) : installation complète, connexion, bureau.
 
+## Sauvegarder et Restaurer (noos-save)
+
+Instantanés Btrfs du système (snapper, configuration `root`) :
+
+- **avant et après chaque transaction dnf** (greffon actions de dnf5 : `noos-save.actions`) ;
+- **manuels**, jamais supprimés automatiquement, et **réguliers** (horaires, désactivés par
+  défaut) avec un nombre conservé par période ;
+- **restauration au prochain redémarrage** : l'état actuel est gardé (`@.avant-restauration-…`)
+  et la restauration s'annule tant qu'on n'a pas redémarré ; le noyau par défaut est choisi
+  pour correspondre à l'instantané (/boot est séparé).
+
+Les dossiers personnels (`@home`) ne sont jamais concernés. Les opérations privilégiées passent
+par `/opt/noos/libexec/noos-save-helper` (polkit `org.noos.save.helper`).
+
 ## Logiciels (noos-software / noos-pkg)
 
 NOOS est basé sur Fedora : Logiciels gère les **paquets Fedora (dnf)** et les **applications

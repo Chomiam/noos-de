@@ -519,6 +519,11 @@ fn install(ctx: &Ctx, c: &Choices) -> anyhow::Result<()> {
         &[TARGET, "flatpak", "remote-add", "--system", "--if-not-exists", "flathub", "/opt/noos/share/noos/flathub.flatpakrepo"],
     );
     ctx.try_run("chroot", &[TARGET, "flatpak", "remote-modify", "--system", "--no-filter", "--enable", "flathub"]);
+    // Thème GRUB NOOS (grub.cfg est régénéré à l'étape GRUB).
+    ctx.try_run("chroot", &[TARGET, "/usr/share/noos-grub/install.sh"]);
+    // Instantanés Btrfs (snapper) : configuration de / et instantanés avant / après dnf.
+    ctx.line("Configuration des instantanés du système (Sauvegarder et Restaurer)…");
+    ctx.try_run("chroot", &[TARGET, "/opt/noos/libexec/noos-save-helper", "setup"]);
     // SELinux : le système live tourne sans SELinux (selinux=0), les fichiers créés ici
     // (comptes, /opt/noos, configuration) n'ont pas d'étiquette. Étiquetage complet hors
     // ligne avec la politique du système installé (sinon systemd ne démarre pas en
@@ -528,6 +533,10 @@ fn install(ctx: &Ctx, c: &Choices) -> anyhow::Result<()> {
         "setfiles", "-F", "-e", "/proc", "-e", "/sys", "-e", "/dev", "-e", "/run", "-e", "/boot/efi",
         "/etc/selinux/targeted/contexts/files/file_contexts", "/",
     ])?;
+    // Premier instantané, une fois le système étiqueté (sinon le restaurer donnerait un
+    // système sans étiquettes SELinux) ; seuls ses fichiers de suivi sont étiquetés ensuite.
+    ctx.try_run("chroot", &[TARGET, "/opt/noos/libexec/noos-save-helper", "create", "Installation de NOOS"]);
+    ctx.try_run("chroot", &[TARGET, "sh", "-c", "restorecon -F /.snapshots /.snapshots/* /.snapshots/*/info.xml 2>/dev/null || true"]);
     ctx.progress(1.0);
 
     // ── 8. GRUB ──

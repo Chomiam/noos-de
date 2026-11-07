@@ -36,6 +36,9 @@ Le `README.md` décrit les fonctionnalités ; ce fichier donne le contexte de tr
 | `noos-theme/` | Palettes, génération du thème libAdapta « NOOS » |
 | `noos-adapta/` | Bindings Rust de libAdapta ; sources C dans `third_party/libadapta/` |
 | `noos-session/` | Lanceur de session, fichiers .desktop, portails |
+| `noos-save/` | « Sauvegarder et Restaurer » : instantanés Btrfs (snapper), restauration au redémarrage ; `noos-save-helper` (root, pkexec + actions dnf5) |
+| `noos-grub/` | Thème GRUB (`generate.py` produit images et polices .pf2, déjà générées) ; `install.sh` le copie dans /boot |
+| `noos-system/` | Réglages système livrés par le paquet : Wi-Fi/Ethernet sans économie d'énergie, WirePlumber sans mise en veille |
 
 ## Environnement de développement
 
@@ -81,6 +84,7 @@ On ne peut pas cliquer dans l'aperçu : utiliser les variables de test ci-dessou
 | `NOOS_SOFTWARE_PAGE=repos` | noos-software s'ouvre sur une page (`explore`, `installed`, `updates`, `repos`) |
 | `NOOS_SOFTWARE_SEARCH=gimp` | noos-software lance une recherche au démarrage |
 | `NOOS_REORDER_DEMO=1` | noos-shell fait glisser la 1re icône épinglée de 2 crans (sans enregistrer) |
+| `NOOS_SAVE_DEMO=1` (+ `NOOS_SAVE_DEMO_PENDING=1`) | noos-save affiche des instantanés fictifs (et une restauration en attente), sans rien exécuter |
 
 ### Règles de sécurité (erreurs déjà commises)
 
@@ -131,6 +135,13 @@ On ne peut pas cliquer dans l'aperçu : utiliser les variables de test ci-dessou
 - **rpmbuild** exporte son propre `PKG_CONFIG_PATH` (prioritaire sur `.cargo/config.toml`) ;
   libAdapta a besoin de `sassc` et meson doit être en `--wrap-mode=nodownload`.
 - dnf dans `--installroot` : télécharger dans le disque cible (`--setopt=cachedir=…`), pas en RAM.
+- **Restauration Btrfs** : la racine est montée par son nom (`subvol=@`, fstab + rootflags), donc
+  `snapper rollback` (qui change le sous-volume par défaut) est sans effet. `noos-save-helper
+  rollback` renomme `@` en `@.avant-restauration-…`, crée `@` depuis l'instantané, déplace
+  `.snapshots`, et choisit avec grubby le noyau le plus récent dont les modules existent dans
+  l'instantané (/boot est hors instantanés). Premier instantané **après** `setfiles` (SELinux).
+- **Thème GRUB** : tester avec `grub2-mkrescue` + `qemu-system-x86_64 -display none` et
+  `screendump` sur le moniteur ; les .pf2 doivent être chargés (`loadfont`) avant `set theme`.
 
 ## Reste à faire / idées
 

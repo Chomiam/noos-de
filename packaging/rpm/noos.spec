@@ -8,7 +8,7 @@
 %global __provides_exclude_from ^/opt/noos/lib/.*$
 %global __requires_exclude ^libadapta-1\\.so.*$
 
-%global noos_bins noos-comp noos-shell noos-file noos-settings noos-software noos-pkg noos-snip noos-term noos-keys noos-login noos-installer
+%global noos_bins noos-comp noos-shell noos-file noos-settings noos-software noos-pkg noos-snip noos-term noos-keys noos-save noos-login noos-installer
 
 Name:           noos
 Version:        0.1.0
@@ -71,6 +71,13 @@ Recommends:     bluez
 Requires:       oo7-daemon
 Requires:       pam_oo7
 Requires:       gcr3
+# Sauvegarder et Restaurer : instantanés Btrfs (snapper) avant / après chaque transaction dnf.
+Requires:       snapper
+Requires:       libdnf5-plugin-actions
+Requires:       btrfs-progs
+Requires:       grubby
+# Thème GRUB NOOS (grub2-mkconfig).
+Requires:       grub2-tools
 Recommends:     libtimezonemap
 Recommends:     curl
 
@@ -122,8 +129,26 @@ echo /opt/noos/lib > %{buildroot}%{_sysconfdir}/ld.so.conf.d/noos.conf
 
 # Thème Plymouth (images générées, présentes dans le dépôt).
 install -d %{buildroot}%{_datadir}/plymouth/themes/noos
+%{_datadir}/noos-grub
+%{_prefix}/lib/NetworkManager/conf.d/90-noos-powersave.conf
+%{_prefix}/lib/udev/rules.d/90-noos-net-powersave.rules
+%{_datadir}/wireplumber/wireplumber.conf.d/90-noos-no-suspend.conf
+%{_datadir}/polkit-1/actions/org.noos.save.policy
+%config(noreplace) %{_sysconfdir}/dnf/libdnf5-plugins/actions.d/noos-save.actions
 install -m644 noos-plymouth/noos/*.png noos-plymouth/noos/noos.plymouth noos-plymouth/noos/noos.script \
     %{buildroot}%{_datadir}/plymouth/themes/noos/
+
+# Réglages système : Wi-Fi et cartes réseau sans économie d'énergie, WirePlumber sans
+# mise en veille des sorties audio (coupures de son).
+./noos-system/install.sh %{buildroot}
+
+# Sauvegarder et Restaurer : script privilégié, actions dnf5, règle polkit.
+./noos-save/install-system.sh %{buildroot} /opt/noos
+
+# Thème GRUB : sources ici, copiées dans /boot/grub2/themes/noos par %post.
+install -d %{buildroot}%{_datadir}/noos-grub
+install -m644 noos-grub/noos/* %{buildroot}%{_datadir}/noos-grub/
+install -m755 noos-grub/install.sh %{buildroot}%{_datadir}/noos-grub/install.sh
 
 %post
 /sbin/ldconfig
@@ -133,6 +158,19 @@ if [ ! -e /var/lib/noos/flathub-added ] && command -v flatpak >/dev/null 2>&1; t
     flatpak remote-add --system --if-not-exists flathub /opt/noos/share/noos/flathub.flatpakrepo >/dev/null 2>&1 || :
     flatpak remote-modify --system --no-filter --enable flathub >/dev/null 2>&1 || :
     mkdir -p /var/lib/noos && touch /var/lib/noos/flathub-added
+fi
+# Instantanés Btrfs de / (snapper) : configurés si la racine est en Btrfs ; les réglages
+# choisis ensuite dans « Sauvegarder et Restaurer » sont conservés aux mises à jour.
+if [ "$(findmnt -no FSTYPE / 2>/dev/null)" = btrfs ]; then
+    /opt/noos/libexec/noos-save-helper setup >/dev/null 2>&1 || :
+fi
+# Thème GRUB : fichiers mis à jour à chaque fois ; grub.cfg régénéré à la première installation.
+if [ -d /boot/grub2 ]; then
+    if grep -q '^GRUB_THEME=' /etc/default/grub 2>/dev/null; then
+        %{_datadir}/noos-grub/install.sh >/dev/null 2>&1 || :
+    else
+        %{_datadir}/noos-grub/install.sh --mkconfig >/dev/null 2>&1 || :
+    fi
 fi
 
 %postun -p /sbin/ldconfig

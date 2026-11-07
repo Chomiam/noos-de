@@ -1,0 +1,3 @@
+# NOOS : pas de mise en veille automatique (runtime PM) des cartes réseau, Ethernet et Wi-Fi,
+# PCI comme USB : évite les coupures et les pertes de lien après quelques secondes d'inactivité.
+ACTION=="add|change", SUBSYSTEM=="net", KERNEL=="en*|eth*|wl*", TEST=="device/power/control", ATTR{device/power/control}="on"

@@ -1387,6 +1387,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "noos-save"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-channel",
+ "gtk4",
+ "libadapta",
+ "noos-theme",
+ "serde_json",
+]
+
+[[package]]
 name = "noos-settings"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <vendor>NOOS</vendor>
+  <vendor_url>https://github.com/Chomiam/noos-de</vendor_url>
+  <action id="org.noos.save.helper">
+    <description>Manage system snapshots</description>
+    <description xml:lang="fr">Gérer les instantanés du système</description>
+    <message>Authentication is required to manage system snapshots</message>
+    <message xml:lang="fr">Une authentification est nécessaire pour gérer les instantanés du système</message>
+    <icon_name>document-revert</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/opt/noos/libexec/noos-save-helper</annotate>
+  </action>
+</policyconfig>

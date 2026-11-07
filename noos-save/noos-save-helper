@@ -1,0 +1,190 @@
+#!/usr/bin/env bash
+# noos-save-helper — partie privilégiée de « Sauvegarder et Restaurer » (noos-save).
+# Lancé en root : par pkexec depuis l'application (polkit org.noos.save.helper), par dnf5 (greffon
+# actions, avant / après chaque transaction), par l'installateur et par le paquet RPM.
+#
+#   setup                     configure snapper pour / (Btrfs) : config « root », nettoyage
+#   create <description>      instantané manuel (jamais supprimé automatiquement)
+#   delete <n>…               supprime des instantanés
+#   set <CLÉ> <valeur>        réglage snapper (liste blanche ci-dessous)
+#   dnf on|off                instantanés avant / après chaque transaction dnf
+#   rollback <n>              restaure l'instantané n au prochain redémarrage
+#   cancel                    annule la restauration en attente
+#   delete-old <nom>          supprime une ancienne racine (@.avant-restauration-…)
+#   dnf-pre <pid> / dnf-post <n> <pid>   appelés par dnf5 (noos-save.actions)
+#
+# Disposition attendue (installateur NOOS) : racine = sous-volume @ monté par son nom
+# (fstab et rootflags=subvol=@), /home = @home, /boot séparé. `snapper rollback` change le
+# sous-volume par défaut, sans effet ici : la restauration remplace donc @ lui-même.
+set -euo pipefail
+export LC_ALL=C.UTF-8 PATH=/usr/sbin:/usr/bin:/sbin:/bin
+
+CONF=/etc/noos/save.conf
+STATE=/var/lib/noos-save
+SNAPPER=(snapper --no-dbus -c root)
+
+die() { echo "noos-save : $*" >&2; exit 1; }
+need_root() { [ "$(id -u)" = 0 ] || die "à lancer en root"; }
+in_chroot() { systemd-detect-virt --quiet --chroot 2>/dev/null; }
+configured() { [ -e /etc/snapper/configs/root ]; }
+is_number() { [[ "${1:-}" =~ ^[0-9]+$ ]]; }
+
+root_device() { findmnt -no SOURCE / | sed 's/\[.*//'; }
+root_subvol() { findmnt -no OPTIONS / | tr ',' '\n' | sed -n 's|^subvol=/\{0,1\}||p'; }
+
+# Monte la racine du système de fichiers Btrfs (subvolid=5) dans $TOP.
+TOP=""
+mount_top() {
+    [ "$(findmnt -no FSTYPE /)" = btrfs ] || die "la racine n'est pas en Btrfs"
+    [ "$(root_subvol)" = "@" ] || [ -e "$STATE/pending" ] || die "racine inattendue ($(root_subvol)) : seule la disposition @ est gérée"
+    TOP=$(mktemp -d /run/noos-save.XXXXXX)
+    mount -o subvolid=5 "$(root_device)" "$TOP"
+    trap 'umount "$TOP" 2>/dev/null; rmdir "$TOP" 2>/dev/null' EXIT
+}
+
+# Noyau par défaut : le plus récent dont les modules existent dans la racine $1.
+set_kernel_for() {
+    local modules="$1/usr/lib/modules" best=""
+    for v in $(ls /boot | sed -n 's/^vmlinuz-\(.*\)$/\1/p' | grep -v rescue | sort -V); do
+        [ -d "$modules/$v" ] && best="$v"
+    done
+    [ -n "$best" ] || return 1
+    grubby --set-default "/boot/vmlinuz-$best" >/dev/null
+    echo "$best"
+}
+
+conf_get() { [ -f "$CONF" ] && sed -n "s/^$1=//p" "$CONF" | tail -1; }
+conf_set() {
+    mkdir -p "$(dirname "$CONF")"
+    touch "$CONF"
+    if grep -q "^$1=" "$CONF"; then sed -i "s|^$1=.*|$1=$2|" "$CONF"; else echo "$1=$2" >>"$CONF"; fi
+}
+
+cmd="${1:-}"
+shift || true
+case "$cmd" in
+setup)
+    need_root
+    [ "$(findmnt -no FSTYPE /)" = btrfs ] || die "la racine n'est pas en Btrfs : instantanés impossibles"
+    if ! configured; then
+        "${SNAPPER[@]}" create-config /
+    fi
+    # Membres de « wheel » : lecture de la liste sans mot de passe (snapperd + ACL).
+    "${SNAPPER[@]}" set-config ALLOW_GROUPS=wheel SYNC_ACL=yes NUMBER_CLEANUP=yes TIMELINE_CLEANUP=yes
+    # Valeurs par défaut à la première configuration seulement (ensuite : choix de l'utilisateur).
+    # Instantanés horaires désactivés : ceux de dnf et les manuels suffisent au quotidien.
+    if [ "$(conf_get SETUP_DONE)" != yes ]; then
+        "${SNAPPER[@]}" set-config NUMBER_LIMIT=10 NUMBER_LIMIT_IMPORTANT=5 TIMELINE_CREATE=no \
+            TIMELINE_LIMIT_HOURLY=5 TIMELINE_LIMIT_DAILY=7 TIMELINE_LIMIT_WEEKLY=2 TIMELINE_LIMIT_MONTHLY=1 \
+            TIMELINE_LIMIT_YEARLY=0
+    fi
+    [ -n "$(conf_get DNF_SNAPSHOTS)" ] || conf_set DNF_SNAPSHOTS yes
+    conf_set SETUP_DONE yes
+    if in_chroot; then
+        systemctl enable snapper-cleanup.timer snapper-timeline.timer >/dev/null 2>&1 || true
+    else
+        systemctl enable --now snapper-cleanup.timer snapper-timeline.timer >/dev/null 2>&1 || true
+    fi
+    echo "instantanés configurés"
+    ;;
+create)
+    need_root
+    configured || die "instantanés non configurés"
+    desc="${1:-Instantané manuel}"
+    "${SNAPPER[@]}" create -t single -p -d "${desc:0:200}" --userdata "noos=manuel"
+    ;;
+delete)
+    need_root
+    [ $# -gt 0 ] || die "numéro attendu"
+    for n in "$@"; do is_number "$n" && [ "$n" != 0 ] || die "numéro invalide : $n"; done
+    "${SNAPPER[@]}" delete "$@"
+    ;;
+set)
+    need_root
+    key="${1:-}" value="${2:-}"
+    case "$key" in
+    TIMELINE_CREATE) [[ "$value" =~ ^(yes|no)$ ]] || die "valeur invalide" ;;
+    NUMBER_LIMIT | NUMBER_LIMIT_IMPORTANT | TIMELINE_LIMIT_HOURLY | TIMELINE_LIMIT_DAILY | TIMELINE_LIMIT_WEEKLY | TIMELINE_LIMIT_MONTHLY | TIMELINE_LIMIT_YEARLY)
+        is_number "$value" && [ "$value" -le 1000 ] || die "valeur invalide" ;;
+    *) die "réglage non autorisé : $key" ;;
+    esac
+    "${SNAPPER[@]}" set-config "$key=$value"
+    ;;
+dnf)
+    need_root
+    case "${1:-}" in on) conf_set DNF_SNAPSHOTS yes ;; off) conf_set DNF_SNAPSHOTS no ;; *) die "on ou off" ;; esac
+    ;;
+dnf-pre)
+    # Appelé par dnf5 : ne doit jamais faire échouer la transaction.
+    [ "$(conf_get DNF_SNAPSHOTS)" = no ] && exit 0
+    configured && ! [ -e "$STATE/pending" ] || exit 0
+    what=$(tr '\0' ' ' <"/proc/${1:-0}/cmdline" 2>/dev/null | sed 's/ *$//') || what=""
+    n=$("${SNAPPER[@]}" create -t pre -c number -p -d "${what:-dnf}" --userdata "noos=dnf" 2>/dev/null) || exit 0
+    echo "tmp.noos_save_pre=$n"
+    ;;
+dnf-post)
+    is_number "${1:-}" || exit 0
+    what=$(tr '\0' ' ' <"/proc/${2:-0}/cmdline" 2>/dev/null | sed 's/ *$//') || what=""
+    "${SNAPPER[@]}" create -t post --pre-number "$1" -c number -d "${what:-dnf}" --userdata "noos=dnf" >/dev/null 2>&1 || true
+    echo "tmp.noos_save_pre"
+    ;;
+rollback)
+    need_root
+    n="${1:-}"
+    is_number "$n" && [ "$n" != 0 ] || die "numéro invalide"
+    [ -e "$STATE/pending" ] && die "une restauration est déjà prévue : annulez-la d'abord"
+    mount_top
+    src="$TOP/@/.snapshots/$n/snapshot"
+    [ -d "$src" ] || die "instantané $n introuvable"
+    [ -d "$src/usr/lib/modules" ] || die "l'instantané $n ne contient pas de système complet"
+    old="@.avant-restauration-$(date +%Y%m%d-%H%M%S)"
+    # 1. Copie modifiable de l'instantané. 2. @ devient l'ancienne racine (le système en cours
+    # reste monté par son identifiant et continue de fonctionner). 3. La copie devient @.
+    # 4. Les instantanés suivent dans la nouvelle racine.
+    btrfs subvolume snapshot "$src" "$TOP/@.noos-restauration" >/dev/null
+    rmdir "$TOP/@.noos-restauration/.snapshots" 2>/dev/null || true
+    mv "$TOP/@" "$TOP/$old"
+    mv "$TOP/@.noos-restauration" "$TOP/@"
+    mv "$TOP/$old/.snapshots" "$TOP/@/.snapshots"
+    # Noyau : /boot n'est pas dans les instantanés ; on démarre le plus récent compatible.
+    if ! kernel=$(set_kernel_for "$TOP/@"); then
+        mv "$TOP/@/.snapshots" "$TOP/$old/.snapshots"
+        btrfs subvolume delete "$TOP/@" >/dev/null
+        mv "$TOP/$old" "$TOP/@"
+        die "aucun noyau installé ne correspond à l'instantané $n : restauration annulée"
+    fi
+    mkdir -p "$STATE" "$TOP/@$STATE"
+    printf 'SNAPSHOT=%s\nOLD=%s\nKERNEL=%s\nDATE=%s\n' "$n" "$old" "$kernel" "$(date -Iseconds)" >"$STATE/pending"
+    printf 'SNAPSHOT=%s\nOLD=%s\nKERNEL=%s\nDATE=%s\n' "$n" "$old" "$kernel" "$(date -Iseconds)" >"$TOP/@$STATE/restored"
+    echo "restauration de l'instantané $n au prochain redémarrage (noyau $kernel, ancienne racine $old)"
+    ;;
+cancel)
+    need_root
+    [ -e "$STATE/pending" ] || die "aucune restauration en attente"
+    old=$(sed -n 's/^OLD=//p' "$STATE/pending")
+    [[ "$old" =~ ^@\.avant-restauration-[0-9-]+$ ]] || die "état de restauration invalide"
+    mount_top
+    [ -d "$TOP/$old" ] || die "ancienne racine $old introuvable"
+    mv "$TOP/@/.snapshots" "$TOP/$old/.snapshots"
+    btrfs subvolume delete -R "$TOP/@" >/dev/null 2>&1 || btrfs subvolume delete "$TOP/@" >/dev/null
+    mv "$TOP/$old" "$TOP/@"
+    grubby --set-default "/boot/vmlinuz-$(uname -r)" >/dev/null || true
+    rm -f "$STATE/pending"
+    echo "restauration annulée"
+    ;;
+delete-old)
+    need_root
+    name="${1:-}"
+    [[ "$name" =~ ^@\.avant-restauration-[0-9-]+$ ]] || die "nom invalide"
+    [ -e "$STATE/pending" ] && die "redémarrez d'abord pour terminer la restauration"
+    mount_top
+    [ -d "$TOP/$name" ] || die "$name introuvable"
+    btrfs subvolume delete -R "$TOP/$name" >/dev/null 2>&1 || btrfs subvolume delete "$TOP/$name" >/dev/null
+    sed -i '/^OLD=/d' "$STATE/restored" 2>/dev/null || true
+    echo "$name supprimé"
+    ;;
+*)
+    sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+    [ -z "$cmd" ] || exit 2
+    ;;
+esac

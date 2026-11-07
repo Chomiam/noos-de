@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Sauvegarder et Restaurer
+Comment=Instantanés du système et retour à un état antérieur
+Exec=noos-save
+Icon=document-revert
+Terminal=false
+Type=Application
+Categories=GTK;System;Utility;
+Keywords=instantané;snapshot;sauvegarde;backup;restaurer;restore;rollback;btrfs;snapper;
+StartupWMClass=org.noos.Save
