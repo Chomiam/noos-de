@@ -4,6 +4,7 @@
 //! Chaque modification est écrite immédiatement dans `~/.config/noos/noos.toml`, le thème
 //! libAdapta « NOOS » est régénéré si besoin et le compositeur est prévenu par l'IPC.
 
+mod apps;
 mod login;
 mod other;
 mod personalization;
@@ -25,6 +26,7 @@ const CATEGORIES: &[(&str, &str, &str, Builder)] = &[
     ("Système", "computer-symbolic", "nav-blue", system::root),
     ("Bluetooth et appareils", "bluetooth-symbolic", "nav-blue", other::devices),
     ("Personnalisation", "applications-graphics-symbolic", "nav-orange", personalization::root),
+    ("Applications", "view-app-grid-symbolic", "nav-purple", apps::root),
     ("Jeux", "input-gaming-symbolic", "nav-green", other::gaming),
     ("Confidentialité et sécurité", "security-high-symbolic", "nav-grey", security::root),
     ("Mises à jour", "software-update-available-symbolic", "nav-teal", other::updates),
@@ -53,11 +55,12 @@ const SEARCH: &[(&str, &str, usize, Option<Builder>)] = &[
     ("Fenêtres", "fenêtres ancrage ancrer tiling snap bords coins disposition animation aperçu", 2, Some(personalization::windows)),
     ("Écran de connexion", "écran de connexion login greeter verrouillage session fond", 2, Some(login::login_screen)),
     ("Polices", "police font texte", 2, Some(personalization::fonts)),
-    ("VRR / FreeSync", "vrr freesync gsync variable jeux", 3, None),
-    ("Mode Jeu", "mode jeu gaming", 3, None),
-    ("Pare-feu", "pare-feu firewall ports sécurité ufw firewalld", 4, Some(security::firewall_page)),
-    ("Ouvrir un port", "port ouvrir pare-feu serveur", 4, Some(security::firewall_page)),
-    ("Mises à jour", "mise à jour updates logiciels", 5, None),
+    ("Applications par défaut", "applications par défaut ouvrir avec associations type de fichier navigateur", 3, Some(apps::default_apps)),
+    ("VRR / FreeSync", "vrr freesync gsync variable jeux", 4, None),
+    ("Mode Jeu", "mode jeu gaming", 4, None),
+    ("Pare-feu", "pare-feu firewall ports sécurité ufw firewalld", 5, Some(security::firewall_page)),
+    ("Ouvrir un port", "port ouvrir pare-feu serveur", 5, Some(security::firewall_page)),
+    ("Mises à jour", "mise à jour updates logiciels", 6, None),
 ];
 
 /// Pages ouvrables directement : `noos-settings firewall`, `noos-settings display`…
@@ -76,10 +79,12 @@ const PAGES: &[(&str, usize, Option<Builder>)] = &[
     ("windows", 2, Some(personalization::windows)),
     ("login", 2, Some(login::login_screen)),
     ("fonts", 2, Some(personalization::fonts)),
-    ("gaming", 3, None),
-    ("privacy", 4, None),
-    ("firewall", 4, Some(security::firewall_page)),
-    ("updates", 5, None),
+    ("apps", 3, None),
+    ("default-apps", 3, Some(apps::default_apps)),
+    ("gaming", 4, None),
+    ("privacy", 5, None),
+    ("firewall", 5, Some(security::firewall_page)),
+    ("updates", 6, None),
 ];
 
 thread_local! {

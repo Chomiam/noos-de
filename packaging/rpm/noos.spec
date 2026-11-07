@@ -8,7 +8,7 @@
 %global __provides_exclude_from ^/opt/noos/lib/.*$
 %global __requires_exclude ^libadapta-1\\.so.*$
 
-%global noos_bins noos-comp noos-shell noos-file noos-settings noos-software noos-pkg noos-snip noos-term noos-keys noos-save noos-login noos-installer
+%global noos_bins noos-comp noos-shell noos-file noos-settings noos-software noos-pkg noos-snip noos-term noos-keys noos-save noos-photoview noos-login noos-installer
 
 Name:           noos
 Version:        0.1.0
@@ -196,6 +196,7 @@ fi
 %{_datadir}/wireplumber/wireplumber.conf.d/90-noos-no-suspend.conf
 %{_datadir}/fish/vendor_conf.d/noos.fish
 %config(noreplace) %{_sysconfdir}/xdg/fastfetch/config.jsonc
+%config(noreplace) %{_sysconfdir}/xdg/noos-mimeapps.list
 %attr(0440,root,root) %config(noreplace) %{_sysconfdir}/sudoers.d/90-noos-pwfeedback
 %{_datadir}/polkit-1/actions/org.noos.save.policy
 %config(noreplace) %{_sysconfdir}/dnf/libdnf5-plugins/actions.d/noos-save.actions

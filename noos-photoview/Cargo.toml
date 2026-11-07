@@ -1,0 +1,15 @@
+[package]
+name = "noos-photoview"
+description = "Photos : visionneuse d'images NOOS (zoom, diaporama, EXIF, bande de miniatures) — GTK4 + libAdapta"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+noos-core.workspace = true
+noos-theme.workspace = true
+gtk.workspace = true
+adap.workspace = true
+async-channel.workspace = true
+anyhow.workspace = true
+kamadak-exif = "0.6"

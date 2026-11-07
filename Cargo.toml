@@ -11,6 +11,7 @@ members = [
     "noos-settings",
     "noos-pkg",
     "noos-save",
+    "noos-photoview",
     "noos-software",
     "noos-snip",
     "noos-term",

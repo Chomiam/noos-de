@@ -119,6 +119,26 @@ sur l'hôte : compilation dans le toolbox, système live dans un conteneur podma
 - « Ouvrir avec », corbeille complète (restaurer, supprimer définitivement, vider), Suppr /
   Maj+Suppr, F2, Ctrl+A, Ctrl+F, Ctrl+1 / Ctrl+2, page « dossier vide ».
 
+## Photos (noos-photoview)
+
+Visionneuse d'images, application par défaut des images sur NOOS :
+
+- affichage immersif : fond « ambilight » (l'image floutée derrière elle), commandes qui
+  s'effacent sans mouvement de souris ; plein écran (F11), diaporama (F5) ;
+- zoom fluide centré sur le pointeur (molette, pincement, + / −), double-clic 100 % ↔ ajusté,
+  déplacement à la souris ; rotation (R / Maj+R) et miroir (M) à l'affichage ;
+- images du dossier (← / →), bande de miniatures (cache partagé avec l'Explorateur) ;
+- informations (I) : dimensions, taille, format, EXIF (appareil, objectif, exposition,
+  ouverture, ISO, focale, flash), position GPS avec lien vers OpenStreetMap ;
+- copier l'image, définir comme fond d'écran, ouvrir avec, afficher dans l'Explorateur,
+  corbeille, glisser-déposer pour ouvrir.
+
+## Applications par défaut
+
+Paramètres › Applications › Applications par défaut : navigateur, courriel, images, musique,
+vidéos, PDF, texte, archives, dossiers (appliqué à tous les types de la catégorie), choix par
+type de fichier avec recherche, et réinitialisation. Les choix vont dans `~/.config/mimeapps.list`.
+
 ## Sauvegarder et Restaurer (noos-save)
 
 Instantanés Btrfs du système (snapper, configuration `root`) :

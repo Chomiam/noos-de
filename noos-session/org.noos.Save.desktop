@@ -5,6 +5,6 @@ Exec=noos-save
 Icon=document-revert
 Terminal=false
 Type=Application
-Categories=GTK;System;Utility;
+Categories=GTK;System;
 Keywords=instantané;snapshot;sauvegarde;backup;restaurer;restore;rollback;btrfs;snapper;
 StartupWMClass=org.noos.Save

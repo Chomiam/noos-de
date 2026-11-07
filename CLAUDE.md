@@ -26,6 +26,7 @@ Le `README.md` décrit les fonctionnalités ; ce fichier donne le contexte de tr
 | `noos-comp/` | Compositeur Smithay (DRM/KMS + libinput, ou imbriqué winit), tiling, Mica (flou), capture d'écran, IPC, mode kiosque (`--kiosk "<cmd>"`) |
 | `noos-shell/` | Barre des tâches, menu Démarrer, réglages rapides, notifications, zone de notification, fond d'écran, **agent polkit** (`src/polkit.rs`) |
 | `noos-settings/`, `noos-file/`, `noos-term/`, `noos-snip/`, `noos-keys/`, `noos-software/` + `noos-pkg/` | Applications |
+| `noos-photoview/` | « Photos » : visionneuse d'images (zoom centré sur le pointeur, ambilight, bande de miniatures, diaporama, EXIF) ; appli par défaut des images (`/etc/xdg/noos-mimeapps.list`) |
 | `noos-login/` | Écran de connexion (greeter greetd), lancé par `noos-greeter` = `noos-comp --kiosk noos-login` |
 | `noos-installer/` | Installateur plein écran (installation réseau Fedora 45, Btrfs @/@home, GRUB) |
 | `noos-plymouth/` | Thème Plymouth (`generate.py` produit les PNG, déjà générés dans le dépôt) |
@@ -87,6 +88,7 @@ On ne peut pas cliquer dans l'aperçu : utiliser les variables de test ci-dessou
 | `NOOS_SAVE_DEMO=1` (+ `NOOS_SAVE_DEMO_PENDING=1`) | noos-save affiche des instantanés fictifs (et une restauration en attente), sans rien exécuter |
 | `NOOS_FILE_MENU_DEMO=x,y` | noos-file ouvre le menu contextuel de la vue en icônes en (x, y) ; y < 0 = depuis le bas |
 | `NOOS_FILE_SELECT_DEMO=0,1,2` | noos-file sélectionne ces éléments puis rejoue un clic dans le vide (coin inférieur droit) |
+| `NOOS_PHOTOVIEW_DEMO=<image>;info;zoom=2.5;next;hide;slideshow` | noos-photoview : ouvre une image, panneau d'infos, zoom, suivante, commandes masquées, diaporama |
 | `NOOS_FILE_DEMO=<dossier>;details;list;select=0,2;look;zoom=3;sort=size;copy=<source>` | noos-file : ouvre un dossier, volet de détails, vue Détails, sélection, aperçu rapide, zoom, tri, copie suivie |
 
 ### Règles de sécurité (erreurs déjà commises)

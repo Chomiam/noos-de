@@ -1,0 +1,24 @@
+# Applications par défaut du bureau NOOS (XDG_CURRENT_DESKTOP=NOOS). Vos choix (Paramètres ›
+# Applications par défaut, ~/.config/mimeapps.list) restent prioritaires.
+[Default Applications]
+image/jpeg=org.noos.PhotoView.desktop
+image/png=org.noos.PhotoView.desktop
+image/webp=org.noos.PhotoView.desktop
+image/gif=org.noos.PhotoView.desktop
+image/bmp=org.noos.PhotoView.desktop
+image/tiff=org.noos.PhotoView.desktop
+image/svg+xml=org.noos.PhotoView.desktop
+image/avif=org.noos.PhotoView.desktop
+image/heif=org.noos.PhotoView.desktop
+image/heic=org.noos.PhotoView.desktop
+image/jxl=org.noos.PhotoView.desktop
+image/x-icon=org.noos.PhotoView.desktop
+image/vnd.microsoft.icon=org.noos.PhotoView.desktop
+image/x-tga=org.noos.PhotoView.desktop
+image/x-portable-pixmap=org.noos.PhotoView.desktop
+image/x-portable-graymap=org.noos.PhotoView.desktop
+image/x-portable-bitmap=org.noos.PhotoView.desktop
+image/x-portable-anymap=org.noos.PhotoView.desktop
+image/x-xpixmap=org.noos.PhotoView.desktop
+image/qoi=org.noos.PhotoView.desktop
+inode/directory=org.noos.Files.desktop
