@@ -1,0 +1,97 @@
+#!/usr/bin/sh
+# NOOS — sous-menu GRUB « Restaurer depuis un instantané » (instantanés snapper de /).
+#
+# Appelé par grub2-mkconfig (fichier du paquet noos, dans /etc/grub.d). Chaque entrée démarre
+# l'instantané en LECTURE SEULE avec une couche modifiable en mémoire (systemd.volatile=overlay) :
+# rien n'est écrit dans l'instantané, tout est oublié au redémarrage. Pour revenir
+# définitivement à cet état : « Sauvegarder et Restaurer » › Restaurer (proposé au démarrage).
+#
+# Le noyau vient de /boot (hors instantanés) : le plus récent dont les modules existent dans
+# l'instantané. Désactivable : GRUB_SNAPSHOTS=no dans /etc/noos/save.conf.
+set -e
+
+prefix="/usr"
+exec_prefix="/usr"
+datarootdir="/usr/share"
+. "${pkgdatadir:-/usr/share/grub}/grub-mkconfig_lib"
+
+CONF=/etc/noos/save.conf
+MAX=$(sed -n 's/^GRUB_SNAPSHOTS_MAX=//p' "$CONF" 2>/dev/null | tail -1)
+MAX=${MAX:-20}
+grep -q '^GRUB_SNAPSHOTS=no' "$CONF" 2>/dev/null && exit 0
+[ -d /.snapshots ] || exit 0
+
+# Système de fichiers Btrfs de la racine (y compris si l'on a démarré sur un instantané :
+# la racine est alors un overlay, /home reste sur le même Btrfs).
+mnt=/
+[ "$(findmnt -no FSTYPE /)" = btrfs ] || mnt=/home
+[ "$(findmnt -no FSTYPE -T "$mnt")" = btrfs ] || exit 0
+uuid=$(findmnt -no UUID -T "$mnt")
+[ -n "$uuid" ] || uuid=$(blkid -s UUID -o value "$(findmnt -no SOURCE -T "$mnt" | sed 's/\[.*//')" 2>/dev/null)
+[ -n "$uuid" ] || exit 0
+
+# Arguments du noyau du système (exportés par grub2-mkconfig, sinon /etc/kernel/cmdline), sans
+# ce qui désigne la racine.
+base="${GRUB_CMDLINE_LINUX:-} ${GRUB_CMDLINE_LINUX_DEFAULT:-}"
+[ -n "${base# }" ] || base=$(cat /etc/kernel/cmdline 2>/dev/null || true)
+args=""
+for a in $base; do
+    case "$a" in
+    root=* | rootflags=* | ro | rw) ;;
+    *) args="$args $a" ;;
+    esac
+done
+
+# Lecture d'un champ de info.xml (snapper) : <num>, <date> (UTC), <description>, <type>…
+field() { sed -n "s:.*<$2>\(.*\)</$2>.*:\1:p" "$1" | head -1; }
+
+entries=""
+count=0
+for dir in $(ls -1d /.snapshots/[0-9]* 2>/dev/null | sort -t/ -k3 -n -r); do
+    info="$dir/info.xml"
+    snap="$dir/snapshot"
+    [ -f "$info" ] && [ -d "$snap" ] || continue
+    [ "$count" -lt "$MAX" ] || break
+    num=$(field "$info" num)
+    type=$(field "$info" type)
+    desc=$(field "$info" description | sed "s/'//g; s/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g" | cut -c1-60)
+    utc=$(field "$info" date)
+    when=$(date -d "$utc UTC" "+%d/%m/%Y %H:%M" 2>/dev/null || echo "$utc")
+    kind="manuel"
+    grep -q '<key>noos</key>' "$info" && grep -A1 '<key>noos</key>' "$info" | grep -q '>dnf<' && kind="dnf"
+    [ "$(field "$info" cleanup)" = "timeline" ] && kind="régulier"
+    case "$type" in
+    pre) label="avant : $desc" ;;
+    post) label="après : $desc" ;;
+    *) label="$desc" ;;
+    esac
+    [ -n "$desc" ] || label="instantané"
+
+    # Noyau compatible : le plus récent de /boot dont les modules sont dans l'instantané.
+    kver=""
+    for k in $(ls -1 /boot/vmlinuz-* 2>/dev/null | grep -v rescue | sed 's|/boot/vmlinuz-||' | sort -V -r); do
+        if [ -d "$snap/usr/lib/modules/$k" ]; then
+            kver="$k"
+            break
+        fi
+    done
+    [ -n "$kver" ] && [ -f "/boot/initramfs-$kver.img" ] || continue
+
+    linux_rel=$(make_system_path_relative_to_its_root "/boot/vmlinuz-$kver")
+    initrd_rel=$(make_system_path_relative_to_its_root "/boot/initramfs-$kver.img")
+    entries="$entries
+  menuentry 'n° $num — $when — $label ($kind)' --class noos --class snapshot {
+$(prepare_grub_to_access_device "${GRUB_DEVICE_BOOT}" | sed 's/^/    /')
+    echo 'Démarrage de l’instantané n° $num (lecture seule, changements oubliés au redémarrage)…'
+    linux $linux_rel root=UUID=$uuid rootflags=subvol=@/.snapshots/$num/snapshot ro systemd.volatile=overlay enforcing=0 noos.snapshot=$num$args
+    initrd $initrd_rel
+  }"
+    count=$((count + 1))
+done
+
+[ "$count" -gt 0 ] || exit 0
+echo "Instantanés NOOS dans le menu de démarrage : $count" >&2
+cat <<EOF
+submenu 'Restaurer depuis un instantané' --class noos --class snapshots {$entries
+}
+EOF

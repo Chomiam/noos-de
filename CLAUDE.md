@@ -86,7 +86,8 @@ On ne peut pas cliquer dans l'aperçu : utiliser les variables de test ci-dessou
 | `NOOS_SOFTWARE_PAGE=repos` | noos-software s'ouvre sur une page (`explore`, `installed`, `updates`, `repos`) |
 | `NOOS_SOFTWARE_SEARCH=gimp` | noos-software lance une recherche au démarrage |
 | `NOOS_REORDER_DEMO=1` | noos-shell fait glisser la 1re icône épinglée de 2 crans (sans enregistrer) |
-| `NOOS_SAVE_DEMO=1` (+ `NOOS_SAVE_DEMO_PENDING=1`) | noos-save affiche des instantanés fictifs (et une restauration en attente), sans rien exécuter |
+| `NOOS_SAVE_DEMO=1` (+ `NOOS_SAVE_DEMO_PENDING=1`, `NOOS_SAVE_DEMO_BOOT=n`) | noos-save affiche des instantanés fictifs (restauration en attente, démarrage sur l'instantané n), sans rien exécuter |
+| `NOOS_SAVE_PAGE=settings` / `NOOS_SAVE_EXPAND=n` / `NOOS_SAVE_COMPARE=n` / `NOOS_SAVE_SCROLL=px` | noos-save : page Réglages, instantané n déplié, fenêtre « Comparer » de n, défilement |
 | `NOOS_FILE_MENU_DEMO=x,y` | noos-file ouvre le menu contextuel de la vue en icônes en (x, y) ; y < 0 = depuis le bas |
 | `NOOS_FILE_SELECT_DEMO=0,1,2` | noos-file sélectionne ces éléments puis rejoue un clic dans le vide (coin inférieur droit) |
 | `NOOS_PHOTOVIEW_DEMO=<image>;info;zoom=2.5;next;hide;slideshow` | noos-photoview : ouvre une image, panneau d'infos, zoom, suivante, commandes masquées, diaporama |
@@ -146,6 +147,10 @@ On ne peut pas cliquer dans l'aperçu : utiliser les variables de test ci-dessou
   rollback` renomme `@` en `@.avant-restauration-…`, crée `@` depuis l'instantané, déplace
   `.snapshots`, et choisit avec grubby le noyau le plus récent dont les modules existent dans
   l'instantané (/boot est hors instantanés). Premier instantané **après** `setfiles` (SELinux).
+- **Démarrage sur un instantané** (GRUB) : `rootflags=subvol=@/.snapshots/N/snapshot
+  systemd.volatile=overlay enforcing=0 noos.snapshot=N`. `/.snapshots` y est vide (sous-volume
+  imbriqué) : `noos-snapshot-boot.service` monte `@/.snapshots` ; la racine est un overlay, donc
+  le périphérique Btrfs se lit via `/home`.
 - **Thème GRUB** : tester avec `grub2-mkrescue` + `qemu-system-x86_64 -display none` et
   `screendump` sur le moniteur ; les .pf2 doivent être chargés (`loadfont`) avant `set theme`.
 

@@ -1,0 +1,11 @@
+[Unit]
+Description=NOOS — suivi des instantanés pour le menu de démarrage
+ConditionPathIsDirectory=/.snapshots
+ConditionKernelCommandLine=!noos.snapshot
+
+[Path]
+PathChanged=/.snapshots
+Unit=noos-snapshots-grub.service
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,12 @@
+[Unit]
+Description=NOOS — mise à jour du sous-menu GRUB « Restaurer depuis un instantané »
+ConditionKernelCommandLine=!noos.snapshot
+ConditionPathExists=/usr/sbin/grub2-mkconfig
+
+[Service]
+Type=oneshot
+# Laisse snapper finir d'écrire info.xml ; plusieurs changements rapprochés = une seule mise à jour.
+ExecStartPre=/usr/bin/sleep 3
+ExecStart=/usr/sbin/grub2-mkconfig -o /boot/grub2/grub.cfg
+Nice=10
+IOSchedulingClass=idle

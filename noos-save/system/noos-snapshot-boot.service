@@ -1,0 +1,14 @@
+[Unit]
+Description=NOOS — démarrage sur un instantané : accès aux instantanés du système
+ConditionKernelCommandLine=noos.snapshot
+DefaultDependencies=no
+After=local-fs.target
+Before=snapperd.service display-manager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/opt/noos/libexec/noos-save-helper snapshot-boot
+
+[Install]
+WantedBy=multi-user.target

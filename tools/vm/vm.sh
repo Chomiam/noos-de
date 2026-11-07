@@ -51,7 +51,7 @@ install)
     c 700 457; $Q type "$PASSWORD"
     c 700 512; $Q type "$PASSWORD"
     c 1146 747                      # → Disque
-    c 1124 198                      # coche le premier disque (/dev/vda)
+    sleep 4; c 1124 198              # coche le premier disque (/dev/vda), liste chargée
     c 1146 747                      # → Récapitulatif
     c 1146 747                      # Installer NOOS
     c 729 483                       # Effacer et installer

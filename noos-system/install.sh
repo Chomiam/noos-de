@@ -9,7 +9,7 @@
 # - sudo : « * » affichés pendant la saisie du mot de passe (pwfeedback)
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-ROOT="${1:-/}"
+ROOT="$(realpath -m "${1:-/}")"   # absolu : on change de dossier ensuite
 cd "$HERE/root"
 find . -type f | while read -r f; do
     case "$f" in

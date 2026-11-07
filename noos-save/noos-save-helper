@@ -11,6 +11,11 @@
 #   rollback <n>              restaure l'instantané n au prochain redémarrage
 #   cancel                    annule la restauration en attente
 #   delete-old <nom>          supprime une ancienne racine (@.avant-restauration-…)
+#   describe <n> <texte>      renomme un instantané
+#   keep <n> yes|no           « à conserver » : jamais supprimé par le nettoyage automatique
+#   grub on|off|refresh       sous-menu « Restaurer depuis un instantané » du démarrage
+#   grub-max <n>              nombre d'instantanés dans ce sous-menu
+#   snapshot-boot             (service au démarrage sur un instantané) monte /.snapshots
 #   dnf-pre <pid> / dnf-post <n> <pid>   appelés par dnf5 (noos-save.actions)
 #
 # Disposition attendue (installateur NOOS) : racine = sous-volume @ monté par son nom
@@ -29,14 +34,24 @@ in_chroot() { systemd-detect-virt --quiet --chroot 2>/dev/null; }
 configured() { [ -e /etc/snapper/configs/root ]; }
 is_number() { [[ "${1:-}" =~ ^[0-9]+$ ]]; }
 
-root_device() { findmnt -no SOURCE / | sed 's/\[.*//'; }
+# Démarrage sur un instantané (entrée GRUB « Restaurer depuis un instantané ») : la racine est
+# alors un overlay en mémoire sur l'instantané en lecture seule ; /home reste sur le même Btrfs.
+snapshot_boot() { sed -n 's/.*noos\.snapshot=\([0-9]*\).*/\1/p' /proc/cmdline; }
+root_device() {
+    if [ "$(findmnt -no FSTYPE /)" = btrfs ]; then
+        findmnt -no SOURCE / | sed 's/\[.*//'
+    else
+        findmnt -no SOURCE -T /home | sed 's/\[.*//'
+    fi
+}
+btrfs_root() { [ "$(findmnt -no FSTYPE /)" = btrfs ] || { [ -n "$(snapshot_boot)" ] && [ "$(findmnt -no FSTYPE -T /home)" = btrfs ]; }; }
 root_subvol() { findmnt -no OPTIONS / | tr ',' '\n' | sed -n 's|^subvol=/\{0,1\}||p'; }
 
 # Monte la racine du système de fichiers Btrfs (subvolid=5) dans $TOP.
 TOP=""
 mount_top() {
-    [ "$(findmnt -no FSTYPE /)" = btrfs ] || die "la racine n'est pas en Btrfs"
-    [ "$(root_subvol)" = "@" ] || [ -e "$STATE/pending" ] || die "racine inattendue ($(root_subvol)) : seule la disposition @ est gérée"
+    btrfs_root || die "la racine n'est pas en Btrfs"
+    [ "$(root_subvol)" = "@" ] || [ -e "$STATE/pending" ] || [ -n "$(snapshot_boot)" ] || die "racine inattendue ($(root_subvol)) : seule la disposition @ est gérée"
     TOP=$(mktemp -d /run/noos-save.XXXXXX)
     mount -o subvolid=5 "$(root_device)" "$TOP"
     trap 'umount "$TOP" 2>/dev/null; rmdir "$TOP" 2>/dev/null' EXIT
@@ -54,6 +69,13 @@ set_kernel_for() {
 }
 
 conf_get() { [ -f "$CONF" ] && sed -n "s/^$1=//p" "$CONF" | tail -1; }
+grub_refresh() {
+    in_chroot && return 0
+    [ -n "$(snapshot_boot)" ] && return 0
+    command -v grub2-mkconfig >/dev/null || return 0
+    grub2-mkconfig -o /boot/grub2/grub.cfg >/dev/null 2>&1
+}
+
 conf_set() {
     mkdir -p "$(dirname "$CONF")"
     touch "$CONF"
@@ -63,6 +85,53 @@ conf_set() {
 cmd="${1:-}"
 shift || true
 case "$cmd" in
+describe)
+    need_root
+    is_number "${1:-}" && [ "$1" != 0 ] || die "numéro invalide"
+    desc="${2:-}"
+    [ -n "$desc" ] || die "nom attendu"
+    "${SNAPPER[@]}" modify -d "${desc:0:200}" "$1"
+    ;;
+keep)
+    need_root
+    n="${1:-}"
+    is_number "$n" && [ "$n" != 0 ] || die "numéro invalide"
+    case "${2:-}" in
+    yes) "${SNAPPER[@]}" modify -c "" --userdata "important=yes" "$n" ;;
+    no)
+        # Les instantanés dnf retrouvent leur nettoyage automatique ; les manuels n'en ont pas.
+        algo=""
+        grep -A1 '<key>noos</key>' "/.snapshots/$n/info.xml" 2>/dev/null | grep -q '>dnf<' && algo=number
+        "${SNAPPER[@]}" modify -c "$algo" --userdata "important=no" "$n"
+        ;;
+    *) die "yes ou no" ;;
+    esac
+    ;;
+grub)
+    need_root
+    case "${1:-}" in
+    on) conf_set GRUB_SNAPSHOTS yes ;;
+    off) conf_set GRUB_SNAPSHOTS no ;;
+    refresh) ;;
+    *) die "on, off ou refresh" ;;
+    esac
+    grub_refresh || die "grub2-mkconfig a échoué"
+    ;;
+grub-max)
+    need_root
+    is_number "${1:-}" && [ "$1" -ge 1 ] && [ "$1" -le 100 ] || die "valeur invalide"
+    conf_set GRUB_SNAPSHOTS_MAX "$1"
+    grub_refresh || die "grub2-mkconfig a échoué"
+    ;;
+snapshot-boot)
+    # Démarré sur un instantané : /.snapshots de l'instantané est vide (sous-volume imbriqué) ;
+    # on y monte celui du système pour lister et restaurer depuis l'application.
+    need_root
+    [ -n "$(snapshot_boot)" ] || exit 0
+    mountpoint -q /.snapshots && exit 0
+    mkdir -p /.snapshots
+    mount -o subvol=@/.snapshots "$(root_device)" /.snapshots
+    ;;
 setup)
     need_root
     [ "$(findmnt -no FSTYPE /)" = btrfs ] || die "la racine n'est pas en Btrfs : instantanés impossibles"
@@ -79,18 +148,24 @@ setup)
             TIMELINE_LIMIT_YEARLY=0
     fi
     [ -n "$(conf_get DNF_SNAPSHOTS)" ] || conf_set DNF_SNAPSHOTS yes
+    [ -n "$(conf_get GRUB_SNAPSHOTS)" ] || conf_set GRUB_SNAPSHOTS yes
+    [ -n "$(conf_get GRUB_SNAPSHOTS_MAX)" ] || conf_set GRUB_SNAPSHOTS_MAX 20
     conf_set SETUP_DONE yes
     if in_chroot; then
         systemctl enable snapper-cleanup.timer snapper-timeline.timer >/dev/null 2>&1 || true
     else
         systemctl enable --now snapper-cleanup.timer snapper-timeline.timer >/dev/null 2>&1 || true
     fi
+    systemctl enable noos-snapshots-grub.path noos-snapshot-boot.service >/dev/null 2>&1 || true
+    in_chroot || systemctl start noos-snapshots-grub.path >/dev/null 2>&1 || true
+    grub_refresh || true
     echo "instantanés configurés"
     ;;
 create)
     need_root
     configured || die "instantanés non configurés"
     desc="${1:-Instantané manuel}"
+    [ -z "$(snapshot_boot)" ] || die "impossible depuis un instantané démarré : restaurez-le d'abord"
     "${SNAPPER[@]}" create -t single -p -d "${desc:0:200}" --userdata "noos=manuel"
     ;;
 delete)
@@ -117,6 +192,7 @@ dnf)
 dnf-pre)
     # Appelé par dnf5 : ne doit jamais faire échouer la transaction.
     [ "$(conf_get DNF_SNAPSHOTS)" = no ] && exit 0
+    [ -z "$(snapshot_boot)" ] || exit 0
     configured && ! [ -e "$STATE/pending" ] || exit 0
     what=$(tr '\0' ' ' <"/proc/${1:-0}/cmdline" 2>/dev/null | sed 's/ *$//') || what=""
     n=$("${SNAPPER[@]}" create -t pre -c number -p -d "${what:-dnf}" --userdata "noos=dnf" 2>/dev/null) || exit 0
@@ -184,7 +260,7 @@ delete-old)
     echo "$name supprimé"
     ;;
 *)
-    sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'
     [ -z "$cmd" ] || exit 2
     ;;
 esac

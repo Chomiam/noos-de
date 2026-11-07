@@ -148,7 +148,15 @@ Instantanés Btrfs du système (snapper, configuration `root`) :
   défaut) avec un nombre conservé par période ;
 - **restauration au prochain redémarrage** : l'état actuel est gardé (`@.avant-restauration-…`)
   et la restauration s'annule tant qu'on n'a pas redémarré ; le noyau par défaut est choisi
-  pour correspondre à l'instantané (/boot est séparé).
+  pour correspondre à l'instantané (/boot est séparé) ;
+- **menu de démarrage « Restaurer depuis un instantané »** (`/etc/grub.d/42_noos_snapshots`,
+  régénéré par `noos-snapshots-grub.path` à chaque instantané) : date, heure, nom et origine de
+  chaque instantané ; il démarre en lecture seule avec une couche en mémoire
+  (`systemd.volatile=overlay`, `noos.snapshot=N`), et l'application propose ensuite de le garder ;
+- l'application sépare **manuels** et **automatiques** (dnf, réguliers) par des badges et filtres,
+  groupe par jour, détaille chaque instantané (noyau, paquets, nettoyage, présence au démarrage),
+  compare paquets et fichiers (`rpm`, `snapper status`), ouvre ses fichiers, renomme et marque
+  « à conserver ».
 
 Les dossiers personnels (`@home`) ne sont jamais concernés. Les opérations privilégiées passent
 par `/opt/noos/libexec/noos-save-helper` (polkit `org.noos.save.helper`).

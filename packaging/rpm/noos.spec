@@ -157,7 +157,9 @@ if [ ! -e /var/lib/noos/flathub-added ] && command -v flatpak >/dev/null 2>&1; t
     mkdir -p /var/lib/noos && touch /var/lib/noos/flathub-added
 fi
 # Instantanés Btrfs de / (snapper) : configurés si la racine est en Btrfs ; les réglages
-# choisis ensuite dans « Sauvegarder et Restaurer » sont conservés aux mises à jour.
+# choisis ensuite dans « Sauvegarder et Restaurer » sont conservés aux mises à jour. setup
+# active aussi le sous-menu GRUB « Restaurer depuis un instantané » et le régénère.
+systemctl daemon-reload >/dev/null 2>&1 || :
 if [ "$(findmnt -no FSTYPE / 2>/dev/null)" = btrfs ]; then
     /opt/noos/libexec/noos-save-helper setup >/dev/null 2>&1 || :
 fi
@@ -177,6 +179,12 @@ if [ -d /boot/grub2 ]; then
     else
         %{_datadir}/noos-grub/install.sh --mkconfig >/dev/null 2>&1 || :
     fi
+fi
+
+%preun
+if [ "$1" = 0 ]; then
+    systemctl disable --now noos-snapshots-grub.path >/dev/null 2>&1 || :
+    systemctl disable noos-snapshot-boot.service >/dev/null 2>&1 || :
 fi
 
 %postun -p /sbin/ldconfig
@@ -200,6 +208,10 @@ fi
 %attr(0440,root,root) %config(noreplace) %{_sysconfdir}/sudoers.d/90-noos-pwfeedback
 %{_datadir}/polkit-1/actions/org.noos.save.policy
 %config(noreplace) %{_sysconfdir}/dnf/libdnf5-plugins/actions.d/noos-save.actions
+%attr(0755,root,root) %{_sysconfdir}/grub.d/42_noos_snapshots
+%{_prefix}/lib/systemd/system/noos-snapshots-grub.path
+%{_prefix}/lib/systemd/system/noos-snapshots-grub.service
+%{_prefix}/lib/systemd/system/noos-snapshot-boot.service
 %config(noreplace) %{_sysconfdir}/ld.so.conf.d/noos.conf
 
 %changelog
