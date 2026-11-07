@@ -127,13 +127,8 @@ impl Default for Taskbar {
         Self {
             alignment: TaskbarAlignment::Center,
             height: 48,
-            pinned: vec![
-                "org.noos.Files".into(),
-                "firefox".into(),
-                "steam".into(),
-                "org.noos.Software".into(),
-                "org.noos.Settings".into(),
-            ],
+            // Première installation : Terminal, Firefox et Logiciels.
+            pinned: vec!["org.noos.Terminal".into(), "org.mozilla.firefox".into(), "org.noos.Software".into()],
             show_search: true,
             tray_expanded: false,
             start_pinned: [
@@ -207,7 +202,7 @@ impl Default for Gaming {
 
 // ─────────────────────────────── Entrées ───────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct Keyboard {
     /// Disposition XKB (vide = celle du système, lue dans /etc/vconsole.conf).
@@ -216,6 +211,21 @@ pub struct Keyboard {
     pub options: String,
     pub repeat_delay: Option<i32>,
     pub repeat_rate: Option<i32>,
+    /// Verr Num actif au démarrage (écran de connexion et session), comme sous Windows.
+    pub numlock: bool,
+}
+
+impl Default for Keyboard {
+    fn default() -> Self {
+        Self {
+            layout: String::new(),
+            variant: String::new(),
+            options: String::new(),
+            repeat_delay: None,
+            repeat_rate: None,
+            numlock: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

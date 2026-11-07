@@ -157,6 +157,22 @@ fn keyboard(app: &Rc<App>) -> adap::NavigationPage {
         g.add(&row);
     }
     content.append(&g);
+    let g = group("Démarrage");
+    let numlock = switch(
+        "input-keyboard-symbolic",
+        "Verr Num activé au démarrage",
+        "Sur l'écran de connexion et à l'ouverture de session",
+        cfg.keyboard.numlock,
+    );
+    {
+        let app = app.clone();
+        numlock.connect_active_notify(move |r| {
+            let v = r.is_active();
+            app.update(|c| c.keyboard.numlock = v);
+        });
+    }
+    g.add(&numlock);
+    content.append(&g);
     p
 }
 

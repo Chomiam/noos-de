@@ -224,9 +224,19 @@ impl NoosState {
         };
         let delay = config.keyboard.repeat_delay.unwrap_or(300);
         let rate = config.keyboard.repeat_rate.unwrap_or(30);
-        if let Err(err) = seat.add_keyboard(xkb, delay, rate) {
-            warn!("disposition clavier {kb:?} invalide ({err:?}), retour à « us »");
-            seat.add_keyboard(XkbConfig::default(), delay, rate).expect("clavier");
+        let keyboard = match seat.add_keyboard(xkb, delay, rate) {
+            Ok(k) => k,
+            Err(err) => {
+                warn!("disposition clavier {kb:?} invalide ({err:?}), retour à « us »");
+                seat.add_keyboard(XkbConfig::default(), delay, rate).expect("clavier")
+            }
+        };
+        // Verr Num actif au démarrage (option [keyboard] numlock, activée par défaut). Les
+        // voyants suivent : les claviers libinput lisent led_state() à leur ajout.
+        if config.keyboard.numlock {
+            let mut mods = keyboard.modifier_state();
+            mods.num_lock = true;
+            keyboard.set_modifier_state(mods);
         }
 
         let ipc = IpcServer::new(&loop_handle);
