@@ -330,6 +330,12 @@ button.current-wallpaper .wallpaper-preview { outline: 2px solid @accent_color; 
 checkbutton.selection-check check { background-color: alpha(black, 0.4); border: 2px solid white; min-width: 18px; min-height: 18px; }
 checkbutton.selection-check check:checked { background-color: @accent_bg_color; border-color: @accent_bg_color; }
 picture.no-wallpaper { background: linear-gradient(155deg, shade(@accent_bg_color, 0.45) 0%, @window_bg_color 55%, shade(@window_bg_color, 0.8) 100%); }
+/* ── Applications par défaut ── */
+button.da-tile { background-color: @card_bg_color; border: 1px solid alpha(@card_fg_color, 0.06); border-radius: 10px; padding: 12px 14px; }
+button.da-tile:hover { background-color: mix(@card_bg_color, @window_fg_color, 0.05); }
+button.da-tile .da-tile-app { font-weight: 700; }
+.da-ext { font-family: monospace; font-size: 0.78em; padding: 1px 6px; border-radius: 5px; background: alpha(@window_fg_color, 0.07); }
+
 /* ── Réseau ── */
 .net-hero-icon { border-radius: 999px; min-width: 72px; min-height: 72px; }
 .net-hero-icon.net-ok { background: alpha(#3ccf72, 0.15); }

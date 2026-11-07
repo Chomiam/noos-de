@@ -5,6 +5,7 @@
 //! libAdapta « NOOS » est régénéré si besoin et le compositeur est prévenu par l'IPC.
 
 mod apps;
+mod default_apps;
 mod login;
 mod network;
 mod other;
