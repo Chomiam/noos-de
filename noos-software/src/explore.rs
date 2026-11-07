@@ -70,6 +70,26 @@ impl App {
             .any(|(i, list, _)| self.kind(*i) == BackendKind::Flatpak && list.iter().any(|p| p.id == app_id))
     }
 
+    /// Paquet dnf qui fournit le même logiciel qu'une appli Flathub (même identifiant AppStream).
+    pub(crate) fn dnf_alternative(&self, app_id: &str) -> Option<Package> {
+        let id = app_id.to_lowercase();
+        let name = self.appstream.borrow().iter().find(|(_, v)| **v == id).map(|(k, _)| k.clone())?;
+        self.backend_index(BackendKind::Dnf)?;
+        let installed = self
+            .installed
+            .borrow()
+            .iter()
+            .any(|(i, list, _)| self.kind(*i) == BackendKind::Dnf && list.iter().any(|p| p.id == name));
+        Some(Package {
+            backend: Some(BackendKind::Dnf),
+            id: name.clone(),
+            name,
+            origin: "fedora".into(),
+            installed,
+            ..Default::default()
+        })
+    }
+
     /// Installe une appli Flathub via le backend Flatpak (remote « flathub »).
     pub(crate) fn install_flathub(self: &Rc<Self>, app_id: &str, name: &str) {
         let Some(idx) = self.backends.iter().position(|b| b.kind() == BackendKind::Flatpak) else {
@@ -463,13 +483,42 @@ impl App {
             names.append(&sum);
             head.append(&names);
             let installed = app.is_flatpak_installed(&d.summary.app_id);
-            let action = if installed {
+            let alternative = app.dnf_alternative(&d.summary.app_id);
+            let action: gtk::Widget = if let Some(dnf) = alternative.as_ref().filter(|p| p.installed) {
+                // Déjà installé en paquet Fedora.
+                let b = gtk::Button::with_label("Supprimer");
+                b.add_css_class("destructive-action");
+                b.set_tooltip_text(Some("Installé en paquet Fedora (dnf)"));
+                let (app2, pkg, dlg) = (app.clone(), dnf.clone(), dialog2.clone());
+                b.connect_clicked(move |_| {
+                    dlg.close();
+                    app2.remove(pkg.clone());
+                });
+                b.upcast()
+            } else if let (false, Some(dnf)) = (installed, alternative.clone()) {
+                // Disponible de deux façons : on laisse choisir.
+                let flathub = Package {
+                    backend: Some(BackendKind::Flatpak),
+                    id: d.summary.app_id.clone(),
+                    name: d.summary.name.clone(),
+                    origin: "flathub".into(),
+                    version: d.version.clone(),
+                    ..Default::default()
+                };
+                let sw = noos_pkg::catalog::Software {
+                    key: d.summary.app_id.to_lowercase(),
+                    name: d.summary.name.clone(),
+                    summary: d.summary.summary.clone(),
+                    offers: vec![flathub, Package { name: d.summary.name.clone(), ..dnf }],
+                };
+                app.action_button(&sw)
+            } else if installed {
                 let b = gtk::Button::with_label("Supprimer");
                 b.add_css_class("destructive-action");
                 let (app2, aid, name, dlg) = (app.clone(), d.summary.app_id.clone(), d.summary.name.clone(), dialog2.clone());
                 b.connect_clicked(move |_| {
                     dlg.close();
-                    if let Some(idx) = app2.backends.iter().position(|b| b.kind() == BackendKind::Flatpak) {
+                    {
                         let pkg = app2
                             .installed
                             .borrow()
@@ -483,10 +532,10 @@ impl App {
                                 name: name.clone(),
                                 ..Default::default()
                             });
-                        app2.remove(idx, pkg);
+                        app2.remove(pkg);
                     }
                 });
-                b
+                b.upcast()
             } else {
                 let b = gtk::Button::with_label("Installer");
                 b.add_css_class("suggested-action");
@@ -495,7 +544,7 @@ impl App {
                     dlg.close();
                     app2.install_flathub(&aid, &name);
                 });
-                b
+                b.upcast()
             };
             action.add_css_class("pill");
             action.set_valign(gtk::Align::Center);

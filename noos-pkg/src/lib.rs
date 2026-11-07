@@ -1,21 +1,20 @@
-//! noos-pkg — une seule interface pour tous les gestionnaires de paquets.
+//! noos-pkg — paquets de NOOS (basé sur Fedora) : **dnf** et **Flatpak**.
 //!
-//! | Backend      | Distributions                               | Élévation                 |
-//! |--------------|---------------------------------------------|---------------------------|
-//! | `flatpak`    | toutes                                      | aucune (`--user`) / polkit|
-//! | `rpm-ostree` | Fedora Atomic (Silverblue, Kinoite, Bazzite…)| polkit (démon rpm-ostreed)|
-//! | `dnf`        | Fedora, RHEL, Alma, Rocky, CentOS Stream    | pkexec                    |
-//! | `apt`        | Debian, Ubuntu, Mint, Pop!_OS…              | pkexec                    |
-//! | `pacman`     | Arch, EndeavourOS, Manjaro, CachyOS…        | pkexec                    |
-//! | `aur`        | Arch + paru/yay                             | l'assistant (via pkexec)  |
+//! | Backend   | Contenu                                         | Élévation                 |
+//! |-----------|-------------------------------------------------|---------------------------|
+//! | `dnf`     | paquets RPM (Fedora, RPM Fusion, COPR…)         | pkexec                    |
+//! | `flatpak` | applications Flatpak (Flathub, Fedora Flatpaks) | aucune (`--user`) / polkit|
 //!
 //! Chaque backend sait : rechercher, lister les paquets installés explicitement, lister et
-//! appliquer les mises à jour, installer/supprimer, et gérer ses dépôts additionnels
-//! (Flathub, RPM Fusion, COPR, PPA, contrib/non-free, multilib, Chaotic-AUR…).
+//! appliquer les mises à jour, installer/supprimer, et gérer ses dépôts. Les dépôts bruts
+//! sont regroupés en **sources** lisibles (voir [`sources`]) et les résultats des deux
+//! backends en **logiciels** proposant une ou plusieurs installations (voir [`catalog`]).
 
 pub mod backends;
+pub mod catalog;
 pub mod exec;
 pub mod firewall;
+pub mod sources;
 pub mod system;
 
 use std::fmt;
@@ -29,38 +28,26 @@ pub use system::SystemInfo;
 #[serde(rename_all = "kebab-case")]
 pub enum BackendKind {
     Flatpak,
-    RpmOstree,
     Dnf,
-    Apt,
-    Pacman,
-    Aur,
 }
 
 impl BackendKind {
     pub fn id(self) -> &'static str {
         match self {
             Self::Flatpak => "flatpak",
-            Self::RpmOstree => "rpm-ostree",
             Self::Dnf => "dnf",
-            Self::Apt => "apt",
-            Self::Pacman => "pacman",
-            Self::Aur => "aur",
         }
     }
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Flatpak => "Flatpak",
-            Self::RpmOstree => "Système (rpm-ostree)",
-            Self::Dnf => "Système (dnf)",
-            Self::Apt => "Système (apt)",
-            Self::Pacman => "Système (pacman)",
-            Self::Aur => "AUR",
+            Self::Flatpak => "Applications Flatpak",
+            Self::Dnf => "Paquets Fedora (dnf)",
         }
     }
 
     pub fn parse(s: &str) -> Option<Self> {
-        [Self::Flatpak, Self::RpmOstree, Self::Dnf, Self::Apt, Self::Pacman, Self::Aur]
+        [Self::Flatpak, Self::Dnf]
             .into_iter()
             .find(|k| k.id() == s)
     }
@@ -119,7 +106,7 @@ pub struct Repo {
     pub url: String,
     pub enabled: bool,
     pub scope: Option<Scope>,
-    /// Fichier de configuration (dnf/apt/pacman).
+    /// Fichier .repo (dnf) ou nom du remote (Flatpak).
     pub file: String,
     /// Dépôt fourni par la distribution (supprimable uniquement à vos risques).
     pub builtin: bool,
@@ -132,15 +119,8 @@ pub struct Preset {
     pub backend: BackendKind,
     pub name: &'static str,
     pub description: &'static str,
-    /// Le préréglage attend un argument (COPR « user/projet », PPA « user/ppa », URL…).
+    /// Le préréglage attend un argument (COPR « propriétaire/projet », URL…).
     pub argument: Option<&'static str>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
-pub struct Status {
-    /// Un redémarrage est nécessaire pour appliquer des changements (rpm-ostree).
-    pub reboot_required: bool,
-    pub message: String,
 }
 
 pub trait Backend: Send + Sync {
@@ -162,9 +142,19 @@ pub trait Backend: Send + Sync {
     fn remove_repo(&self, repo: &Repo) -> anyhow::Result<Plan>;
     fn presets(&self) -> Vec<Preset>;
     fn add_preset(&self, preset: &str, argument: Option<&str>) -> anyhow::Result<Plan>;
+    /// Active / désactive plusieurs dépôts en une fois (une source = plusieurs dépôts).
+    fn set_repos_enabled(&self, repos: &[Repo], enabled: bool) -> anyhow::Result<Plan> {
+        let mut plan = Plan::new();
+        for r in repos {
+            plan = plan.extend(self.set_repo_enabled(r, enabled)?);
+        }
+        Ok(plan)
+    }
 
-    fn status(&self) -> Status {
-        Status::default()
+    /// Identifiants AppStream des paquets (nom du paquet → identifiant en minuscules) : sert à
+    /// reconnaître le même logiciel en paquet dnf et en Flatpak.
+    fn appstream_ids(&self) -> std::collections::HashMap<String, String> {
+        Default::default()
     }
 }
 
@@ -172,17 +162,8 @@ pub trait Backend: Send + Sync {
 pub fn detect() -> Vec<Box<dyn Backend>> {
     let sys = SystemInfo::detect();
     let mut list: Vec<Box<dyn Backend>> = Vec::new();
-    if sys.atomic && exec::have("rpm-ostree") {
-        list.push(Box::new(backends::rpmostree::RpmOstree::new(sys.clone())));
-    } else if exec::have("dnf") || exec::have("dnf5") {
+    if exec::have("dnf") || exec::have("dnf5") {
         list.push(Box::new(backends::dnf::Dnf::new(sys.clone())));
-    } else if exec::have("apt-get") {
-        list.push(Box::new(backends::apt::Apt::new(sys.clone())));
-    } else if exec::have("pacman") {
-        list.push(Box::new(backends::pacman::Pacman::new(sys.clone())));
-        if let Some(aur) = backends::aur::Aur::detect() {
-            list.push(Box::new(aur));
-        }
     }
     if exec::have("flatpak") {
         list.push(Box::new(backends::flatpak::Flatpak::new(sys)));

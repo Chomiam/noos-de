@@ -1,9 +1,5 @@
-//! Implémentations des gestionnaires de paquets.
+//! Implémentations des gestionnaires de paquets de NOOS (basé sur Fedora).
 
-pub mod apt;
-pub mod aur;
 pub mod dnf;
 pub mod flatpak;
-pub mod pacman;
-pub mod rpmostree;
 pub mod yumrepo;

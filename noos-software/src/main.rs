@@ -1,7 +1,7 @@
 //! noos-software — « Logiciels » de NOOS.
 //!
-//! Une seule application pour toutes les sources : Flatpak (Flathub…), rpm-ostree (Fedora
-//! Atomic), dnf (Fedora, RHEL…), apt (Debian, Ubuntu…), pacman (Arch…) et l'AUR.
+//! Applications Flatpak (Flathub, Fedora Flatpaks) et paquets Fedora (dnf). Quand un logiciel
+//! existe des deux façons, on choisit au moment d'installer.
 //! Toute la logique de paquets est dans la bibliothèque `noos-pkg` ; ce fichier n'est que
 //! l'interface GTK4 + libAdapta.
 
@@ -11,6 +11,7 @@ mod ops;
 
 use std::{
     cell::{Cell, RefCell},
+    collections::HashMap,
     rc::Rc,
     sync::Arc,
     time::Duration,
@@ -18,7 +19,11 @@ use std::{
 
 use adap::prelude::*;
 use gtk::{gdk, gio, glib};
-use noos_pkg::{BackendKind, Package, Preset, Repo, Scope, SystemInfo, Update};
+use noos_pkg::{
+    BackendKind, Package, Preset, Scope, SystemInfo, Update,
+    catalog::{self, Software},
+    sources::{self, Channel, Source, State},
+};
 use ops::{Backends, Ops, background};
 
 struct App {
@@ -34,6 +39,8 @@ struct App {
     explore_stack: gtk::Stack,
     search_gen: Cell<u64>,
     found: RefCell<Vec<(usize, Package)>>,
+    /// Paquet dnf → identifiant AppStream (rapprochement avec les Flatpak).
+    appstream: RefCell<HashMap<String, String>>,
     explore_home: gtk::Box,
     collection_box: gtk::Box,
     dynamic_css: gtk::CssProvider,
@@ -45,10 +52,8 @@ struct App {
 
     updates_box: gtk::Box,
     updates_page: adap::ViewStackPage,
-    banner: adap::Banner,
 
     repos_box: gtk::Box,
-    show_debug: gtk::CheckButton,
 }
 
 // ───────────────────────────── Utilitaires d'interface ─────────────────────────────
@@ -74,26 +79,42 @@ fn badge(text: &str, kind: BackendKind) -> gtk::Label {
     l.add_css_class("noos-badge");
     l.add_css_class(match kind {
         BackendKind::Flatpak => "flatpak",
-        BackendKind::Aur => "aur",
-        _ => "system",
+        BackendKind::Dnf => "system",
     });
     l.set_valign(gtk::Align::Center);
     l
 }
 
+/// Nom lisible d'un dépôt d'origine (« flathub » → « Flathub »).
+fn origin_label(p: &Package) -> String {
+    match (p.backend, p.origin.as_str()) {
+        (Some(BackendKind::Flatpak), "flathub") => "Flathub".into(),
+        (Some(BackendKind::Flatpak), "fedora") => "Fedora".into(),
+        (_, o) if o.starts_with("rpmfusion") => "RPM Fusion".into(),
+        (_, "fedora" | "updates" | "updates-testing") => "Fedora".into(),
+        (_, o) if o.starts_with("copr:") => format!("COPR {}", o.rsplit(':').take(2).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("/")),
+        (_, "@System" | "") => String::new(),
+        (_, o) => o.to_string(),
+    }
+}
+
+/// Texte court de la source d'un paquet : « Flatpak · Flathub », « dnf · RPM Fusion ».
 fn source_text(p: &Package) -> String {
-    let kind = p.backend.unwrap_or(BackendKind::Flatpak);
-    let base = match kind {
-        BackendKind::Flatpak => "Flatpak".to_string(),
-        BackendKind::Aur => "AUR".to_string(),
-        k => k.id().to_string(),
+    let base = match p.backend.unwrap_or(BackendKind::Flatpak) {
+        BackendKind::Flatpak => "Flatpak",
+        BackendKind::Dnf => "dnf",
     };
-    let scope = match p.scope {
-        Some(Scope::User) => " · utilisateur",
-        Some(Scope::System) => " · système",
-        None => "",
-    };
-    if p.origin.is_empty() { format!("{base}{scope}") } else { format!("{base} · {}{scope}", p.origin) }
+    let origin = origin_label(p);
+    let scope = if p.scope == Some(Scope::User) { " · votre compte" } else { "" };
+    if origin.is_empty() { format!("{base}{scope}") } else { format!("{base} · {origin}{scope}") }
+}
+
+/// Description d'une façon d'installer, pour le choix dnf / Flatpak.
+fn offer_explanation(p: &Package) -> &'static str {
+    match p.backend {
+        Some(BackendKind::Flatpak) => "Application isolée (bac à sable), mise à jour par son éditeur",
+        _ => "Paquet du système, intégré et mis à jour avec Fedora",
+    }
 }
 
 /// Icône : thème d'icônes, puis données AppStream de Flatpak, sinon icône générique.
@@ -187,52 +208,32 @@ impl App {
 
     // ───────────────────────── Installer / supprimer ─────────────────────────
 
-    fn install(self: &Rc<Self>, idx: usize, pkg: Package) {
-        let kind = self.kind(idx);
-        let go = {
-            let app = self.clone();
-            let pkg = pkg.clone();
-            move || {
-                let p = pkg.clone();
-                let app2 = app.clone();
-                app.ops.enqueue(
-                    format!("Installation de {}", pkg.name),
-                    idx,
-                    move |b| Ok(b.install(&[p])),
-                    move |ok| {
-                        if ok && kind == BackendKind::RpmOstree {
-                            app2.toasts.add_toast(adap::Toast::new("Installé : redémarrez pour utiliser ce paquet"));
-                        }
-                        app2.after_change();
-                    },
-                );
-            }
-        };
-        match kind {
-            BackendKind::Aur => self.confirm(
-                "Installer depuis l'AUR ?",
-                "Les paquets de l'AUR sont proposés par la communauté et ne sont pas vérifiés. Leur script de construction s'exécute sur votre machine : n'installez que des paquets de confiance.",
-                "Installer",
-                false,
-                go,
-            ),
-            BackendKind::RpmOstree => self.confirm(
-                &format!("Superposer {} au système ?", pkg.name),
-                "Sur un système atomique, les paquets RPM sont ajoutés à l'image et ne seront disponibles qu'après redémarrage. Préférez une application Flatpak quand elle existe.",
-                "Superposer",
-                false,
-                go,
-            ),
-            _ => go(),
-        }
+    fn backend_index(&self, kind: BackendKind) -> Option<usize> {
+        self.backends.iter().position(|b| b.kind() == kind)
     }
 
-    fn remove(self: &Rc<Self>, idx: usize, pkg: Package) {
+    pub(crate) fn install(self: &Rc<Self>, pkg: Package) {
+        let Some(idx) = pkg.backend.and_then(|k| self.backend_index(k)) else {
+            self.toasts.add_toast(adap::Toast::new("Gestionnaire de paquets indisponible"));
+            return;
+        };
+        let app = self.clone();
+        let p = pkg.clone();
+        self.ops.enqueue(
+            format!("Installation de {} ({})", pkg.name, source_text(&pkg)),
+            idx,
+            move |b| Ok(b.install(&[p])),
+            move |_| app.after_change(),
+        );
+    }
+
+    pub(crate) fn remove(self: &Rc<Self>, pkg: Package) {
+        let Some(idx) = pkg.backend.and_then(|k| self.backend_index(k)) else { return };
         let app = self.clone();
         let name = pkg.name.clone();
         self.confirm(
             &format!("Supprimer {name} ?"),
-            if self.kind(idx) == BackendKind::Flatpak {
+            if pkg.backend == Some(BackendKind::Flatpak) {
                 "L'application sera désinstallée. Ses données dans ~/.var/app sont conservées."
             } else {
                 "Le paquet et les dépendances devenues inutiles seront supprimés."
@@ -255,17 +256,103 @@ impl App {
         self.load_updates();
     }
 
-    fn package_row(self: &Rc<Self>, idx: usize, p: &Package) -> adap::ActionRow {
-        let kind = self.kind(idx);
-        let r = row(&p.name, &p.summary);
-        r.add_prefix(&icon_for(p, 48));
+    /// Bouton d'action d'un logiciel : « Supprimer » s'il est installé ; sinon « Installer »,
+    /// avec un menu de choix (Flatpak Flathub, Flatpak Fedora, paquet dnf…) s'il y a plusieurs
+    /// façons de l'installer.
+    pub(crate) fn action_button(self: &Rc<Self>, sw: &Software) -> gtk::Widget {
+        let installed: Vec<Package> = sw.installed().cloned().collect();
+        if let Some(p) = installed.first() {
+            let b = gtk::Button::with_label("Supprimer");
+            b.add_css_class("destructive-action");
+            b.add_css_class("pill");
+            b.set_valign(gtk::Align::Center);
+            b.set_tooltip_text(Some(&format!("Installé : {}", source_text(p))));
+            let (app, pkg) = (self.clone(), p.clone());
+            b.connect_clicked(move |_| app.remove(pkg.clone()));
+            return b.upcast();
+        }
+        if sw.offers.len() == 1 {
+            let b = gtk::Button::with_label("Installer");
+            b.add_css_class("suggested-action");
+            b.add_css_class("pill");
+            b.set_valign(gtk::Align::Center);
+            b.set_tooltip_text(Some(&source_text(&sw.offers[0])));
+            let (app, pkg) = (self.clone(), sw.offers[0].clone());
+            b.connect_clicked(move |_| app.install(pkg.clone()));
+            return b.upcast();
+        }
+        let menu = gtk::MenuButton::new();
+        let content = adap::ButtonContent::builder().label("Installer").icon_name("pan-down-symbolic").build();
+        menu.set_child(Some(&content));
+        menu.add_css_class("suggested-action");
+        menu.add_css_class("pill");
+        menu.set_valign(gtk::Align::Center);
+        menu.set_tooltip_text(Some("Choisir comment installer ce logiciel"));
+        let pop = gtk::Popover::new();
+        let list = gtk::Box::new(gtk::Orientation::Vertical, 4);
+        list.set_margin_top(6);
+        list.set_margin_bottom(6);
+        list.set_margin_start(6);
+        list.set_margin_end(6);
+        let title = gtk::Label::new(Some("Installer depuis…"));
+        title.add_css_class("heading");
+        title.set_xalign(0.0);
+        title.set_margin_start(6);
+        title.set_margin_bottom(4);
+        list.append(&title);
+        for offer in &sw.offers {
+            let b = gtk::Button::new();
+            b.add_css_class("flat");
+            b.add_css_class("noos-offer");
+            let col = gtk::Box::new(gtk::Orientation::Vertical, 2);
+            let line = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+            line.append(&badge(&source_text(offer), offer.backend.unwrap_or(BackendKind::Flatpak)));
+            if !offer.version.is_empty() {
+                let v = gtk::Label::new(Some(&offer.version));
+                v.add_css_class("dim-label");
+                v.set_max_width_chars(24);
+                v.set_ellipsize(gtk::pango::EllipsizeMode::End);
+                line.append(&v);
+            }
+            col.append(&line);
+            let why = gtk::Label::new(Some(offer_explanation(offer)));
+            why.add_css_class("caption");
+            why.add_css_class("dim-label");
+            why.set_xalign(0.0);
+            col.append(&why);
+            b.set_child(Some(&col));
+            let (app, pkg, pop2) = (self.clone(), offer.clone(), pop.clone());
+            b.connect_clicked(move |_| {
+                pop2.popdown();
+                app.install(pkg.clone());
+            });
+            list.append(&b);
+        }
+        pop.set_child(Some(&list));
+        menu.set_popover(Some(&pop));
+        menu.upcast()
+    }
+
+    pub(crate) fn software_row(self: &Rc<Self>, sw: &Software) -> adap::ActionRow {
+        let r = row(&sw.name, &sw.summary);
+        let main = sw.installed().next().unwrap_or(&sw.offers[0]);
+        r.add_prefix(&icon_for(main, 48));
         let info = gtk::Box::new(gtk::Orientation::Vertical, 4);
         info.set_valign(gtk::Align::Center);
-        let b = badge(&source_text(p), kind);
-        b.set_halign(gtk::Align::End);
-        info.append(&b);
-        if !p.version.is_empty() {
-            let v = gtk::Label::new(Some(&p.version));
+        // Une pastille par source ; celle qui est installée d'abord.
+        let mut shown: Vec<String> = Vec::new();
+        for offer in sw.installed().chain(sw.offers.iter().filter(|o| !o.installed)) {
+            let text = source_text(offer);
+            if shown.contains(&text) {
+                continue;
+            }
+            shown.push(text.clone());
+            let b = badge(&if offer.installed { format!("✓ {text}") } else { text }, offer.backend.unwrap_or(BackendKind::Flatpak));
+            b.set_halign(gtk::Align::End);
+            info.append(&b);
+        }
+        if sw.offers.len() == 1 && !main.version.is_empty() {
+            let v = gtk::Label::new(Some(&main.version));
             v.add_css_class("dim-label");
             v.add_css_class("caption");
             v.set_halign(gtk::Align::End);
@@ -274,33 +361,13 @@ impl App {
             info.append(&v);
         }
         r.add_suffix(&info);
-        let button = if p.installed {
-            if kind == BackendKind::RpmOstree && !self.layered(p) {
-                let l = gtk::Label::new(Some("Inclus"));
-                l.add_css_class("dim-label");
-                r.add_suffix(&l);
-                return r;
-            }
-            let b = gtk::Button::with_label("Supprimer");
-            b.add_css_class("destructive-action");
-            let (app, pkg) = (self.clone(), p.clone());
-            b.connect_clicked(move |_| app.remove(idx, pkg.clone()));
-            b
-        } else {
-            let b = gtk::Button::with_label("Installer");
-            b.add_css_class("suggested-action");
-            let (app, pkg) = (self.clone(), p.clone());
-            b.connect_clicked(move |_| app.install(idx, pkg.clone()));
-            b
-        };
-        button.set_valign(gtk::Align::Center);
-        button.add_css_class("pill");
-        r.add_suffix(&button);
+        r.add_suffix(&self.action_button(sw));
         r
     }
 
-    fn layered(&self, p: &Package) -> bool {
-        self.installed.borrow().iter().any(|(i, list, _)| self.kind(*i) == BackendKind::RpmOstree && list.iter().any(|x| x.id == p.id))
+    /// Ligne d'un seul paquet (pages Installées).
+    fn package_row(self: &Rc<Self>, p: &Package) -> adap::ActionRow {
+        self.software_row(&Software { key: p.id.clone(), name: p.name.clone(), summary: p.summary.clone(), offers: vec![p.clone()] })
     }
 
     // ───────────────────────── Explorer ─────────────────────────
@@ -327,41 +394,48 @@ impl App {
         for idx in targets {
             let backends = self.backends.clone();
             let q = query.clone();
-            let task = background(move || backends[idx].search(&q));
+            // dnf : on récupère aussi la table AppStream (une fois, mise en cache par le backend).
+            let task = background(move || {
+                let res = backends[idx].search(&q);
+                let ids = (backends[idx].kind() == BackendKind::Dnf).then(|| backends[idx].appstream_ids());
+                (res, ids)
+            });
             let (app, pending, query) = (self.clone(), pending.clone(), query.clone());
             glib::spawn_future_local(async move {
-                let res = task.await;
+                let (res, ids) = task.await;
                 if app.search_gen.get() != generation {
                     return;
+                }
+                if let Some(ids) = ids {
+                    *app.appstream.borrow_mut() = ids;
                 }
                 pending.set(pending.get() - 1);
                 match res {
                     Ok(pkgs) => app.found.borrow_mut().extend(pkgs.into_iter().map(|p| (idx, p))),
                     Err(e) => app.toasts.add_toast(adap::Toast::new(&format!("{} : {e}", app.kind(idx).label()))),
                 }
-                app.render_results(&query, pending.get() == 0);
+                // On attend les deux sources : sinon une ligne « dnf » se transformerait en
+                // ligne « dnf + Flatpak » sous les yeux de l'utilisateur.
+                if pending.get() == 0 {
+                    app.render_results(&query);
+                }
             });
         }
     }
 
-    fn render_results(self: &Rc<Self>, query: &str, finished: bool) {
-        let mut found = self.found.borrow().clone();
-        if found.is_empty() {
-            if finished {
-                self.explore_stack.set_visible_child_name("none");
-            }
+    fn render_results(self: &Rc<Self>, query: &str) {
+        let mut pkgs: Vec<Package> = self.found.borrow().iter().map(|(_, p)| p.clone()).collect();
+        if pkgs.is_empty() {
+            self.explore_stack.set_visible_child_name("none");
             return;
         }
-        // Classement global : pertinence, puis Flatpak avant les paquets système à égalité.
-        let mut pkgs: Vec<Package> = found.iter().map(|(_, p)| p.clone()).collect();
+        // Classement global : pertinence, puis Flatpak avant les paquets dnf à égalité.
+        pkgs.sort_by_key(|p| p.backend != Some(BackendKind::Flatpak));
         noos_pkg::rank(query, &mut pkgs);
-        found.sort_by_key(|(i, p)| {
-            let pos = pkgs.iter().position(|x| x.id == p.id && x.backend == p.backend).unwrap_or(usize::MAX);
-            (pos, self.kind(*i) != BackendKind::Flatpak)
-        });
+        let software = catalog::merge(pkgs, &self.appstream.borrow());
         self.results.remove_all();
-        for (idx, p) in found.iter().take(120) {
-            self.results.append(&self.package_row(*idx, p));
+        for sw in software.iter().take(120) {
+            self.results.append(&self.software_row(sw));
         }
         self.explore_stack.set_visible_child_name("results");
     }
@@ -404,10 +478,8 @@ impl App {
             let g = adap::PreferencesGroup::new();
             g.set_title(&format!("{} — {}", kind.label(), list.len()));
             g.set_description(Some(match kind {
-                BackendKind::RpmOstree => "Paquets superposés à l'image système",
-                BackendKind::Flatpak => "Applications Flatpak",
-                BackendKind::Aur => "Paquets hors dépôts (AUR)",
-                _ => "Paquets installés explicitement (hors dépendances)",
+                BackendKind::Flatpak => "Applications isolées (Flathub, Fedora Flatpaks)",
+                BackendKind::Dnf => "Paquets installés explicitement (hors dépendances)",
             }));
             if let Some(e) = err {
                 g.add(&row("Erreur", e));
@@ -415,7 +487,7 @@ impl App {
                 g.add(&row(if list.is_empty() { "Aucun" } else { "Aucun résultat pour ce filtre" }, ""));
             }
             for p in shown.iter().take(300) {
-                g.add(&self.package_row(*idx, p));
+                g.add(&self.package_row(p));
             }
             if shown.len() > 300 {
                 g.add(&row(&format!("… et {} autres (affinez le filtre)", shown.len() - 300), ""));
@@ -432,7 +504,7 @@ impl App {
         let backends = self.backends.clone();
         let task = background(move || {
             (0..backends.len())
-                .map(|i| (i, backends[i].updates().map_err(|e| format!("{e:#}")), backends[i].status()))
+                .map(|i| (i, backends[i].updates().map_err(|e| format!("{e:#}"))))
                 .collect::<Vec<_>>()
         });
         let app = self.clone();
@@ -442,14 +514,9 @@ impl App {
         });
     }
 
-    fn render_updates(self: &Rc<Self>, results: Vec<(usize, Result<Vec<Update>, String>, noos_pkg::Status)>) {
+    fn render_updates(self: &Rc<Self>, results: Vec<(usize, Result<Vec<Update>, String>)>) {
         clear(&self.updates_box);
-        let reboot = results.iter().find(|(_, _, s)| s.reboot_required);
-        self.banner.set_revealed(reboot.is_some());
-        if let Some((_, _, s)) = reboot {
-            self.banner.set_title(&s.message);
-        }
-        let total: usize = results.iter().filter_map(|(_, r, _)| r.as_ref().ok()).map(|u| u.len()).sum();
+        let total: usize = results.iter().filter_map(|(_, r)| r.as_ref().ok()).map(|u| u.len()).sum();
         self.updates_page.set_badge_number(total as u32);
         self.updates_page.set_needs_attention(total > 0);
 
@@ -473,7 +540,7 @@ impl App {
         if total > 0 {
             let all = gtk::Button::with_label("Tout mettre à jour");
             all.add_css_class("suggested-action");
-            let (app, idxs) = (self.clone(), results.iter().filter(|(_, r, _)| r.as_ref().is_ok_and(|u| !u.is_empty())).map(|(i, _, _)| *i).collect::<Vec<_>>());
+            let (app, idxs) = (self.clone(), results.iter().filter(|(_, r)| r.as_ref().is_ok_and(|u| !u.is_empty())).map(|(i, _)| *i).collect::<Vec<_>>());
             all.connect_clicked(move |_| {
                 for i in &idxs {
                     app.upgrade(*i);
@@ -483,11 +550,11 @@ impl App {
         }
         self.updates_box.append(&header);
 
-        if total == 0 && results.iter().all(|(_, r, _)| r.is_ok()) {
+        if total == 0 && results.iter().all(|(_, r)| r.is_ok()) {
             self.updates_box.append(&status_page("emblem-ok-symbolic", "Votre système est à jour", "Aucune mise à jour pour l'instant."));
         }
 
-        for (idx, res, _) in results {
+        for (idx, res) in results {
             let kind = self.kind(idx);
             let g = adap::PreferencesGroup::new();
             g.set_title(kind.label());
@@ -525,17 +592,7 @@ impl App {
     fn upgrade(self: &Rc<Self>, idx: usize) {
         let kind = self.kind(idx);
         let app = self.clone();
-        self.ops.enqueue(
-            format!("Mise à jour : {}", kind.label()),
-            idx,
-            |b| Ok(b.upgrade_all()),
-            move |ok| {
-                if ok && kind == BackendKind::RpmOstree {
-                    app.toasts.add_toast(adap::Toast::new("Nouvelle image prête : redémarrez pour l'utiliser"));
-                }
-                app.load_updates();
-            },
-        );
+        self.ops.enqueue(format!("Mise à jour : {}", kind.label()), idx, |b| Ok(b.upgrade_all()), move |_| app.load_updates());
     }
 
     fn refresh_sources(self: &Rc<Self>) {
@@ -560,11 +617,19 @@ impl App {
 
     fn load_repos(self: &Rc<Self>) {
         clear(&self.repos_box);
-        self.repos_box.append(&loading("Lecture des dépôts…"));
+        self.repos_box.append(&loading("Lecture des sources…"));
         let backends = self.backends.clone();
+        let version = self.sys.major();
         let task = background(move || {
             (0..backends.len())
-                .map(|i| (i, backends[i].repos().map_err(|e| format!("{e:#}")), backends[i].presets()))
+                .map(|i| {
+                    let b = &backends[i];
+                    let sources = b.repos().map_err(|e| format!("{e:#}")).map(|repos| match b.kind() {
+                        BackendKind::Dnf => sources::group_dnf(&repos, &version),
+                        BackendKind::Flatpak => sources::group_flatpak(&repos),
+                    });
+                    (i, sources, b.presets())
+                })
                 .collect::<Vec<_>>()
         });
         let app = self.clone();
@@ -574,101 +639,198 @@ impl App {
         });
     }
 
-    fn render_repos(self: &Rc<Self>, data: Vec<(usize, Result<Vec<Repo>, String>, Vec<Preset>)>) {
+    fn render_repos(self: &Rc<Self>, data: Vec<(usize, Result<Vec<Source>, String>, Vec<Preset>)>) {
         clear(&self.repos_box);
-        let head = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-        let t = gtk::Label::new(Some("Dépôts et sources"));
+        let t = gtk::Label::new(Some("Sources de logiciels"));
         t.add_css_class("title-2");
-        t.set_hexpand(true);
         t.set_xalign(0.0);
-        head.append(&t);
-        head.append(&self.show_debug);
-        self.repos_box.append(&head);
-        let show_debug = self.show_debug.is_active();
+        self.repos_box.append(&t);
+        let intro = gtk::Label::new(Some(
+            "Les sources actives sont celles dans lesquelles Logiciels cherche et installe. \
+             Un logiciel disponible dans plusieurs sources vous laisse choisir au moment de l'installer.",
+        ));
+        intro.set_wrap(true);
+        intro.set_xalign(0.0);
+        intro.add_css_class("dim-label");
+        self.repos_box.append(&intro);
 
-        for (idx, repos, presets) in data {
+        // Sources stables, par gestionnaire.
+        let mut testing: Vec<(usize, Source)> = Vec::new();
+        let mut extra: Vec<(usize, Preset)> = Vec::new();
+        for (idx, res, presets) in data {
             let kind = self.kind(idx);
-            if kind == BackendKind::Aur && presets.is_empty() {
-                continue;
-            }
             let g = adap::PreferencesGroup::new();
             g.set_title(kind.label());
-            match repos {
+            g.set_description(Some(match kind {
+                BackendKind::Dnf => "Paquets RPM installés avec le système (dnf)",
+                BackendKind::Flatpak => "Applications isolées, indépendantes du système",
+            }));
+            match res {
                 Err(e) => g.add(&row("Lecture impossible", &e)),
                 Ok(list) => {
-                    let mut hidden = 0;
-                    for r in list {
-                        let technical = ["-debuginfo", "-source", "-debug", "(sources)"].iter().any(|s| r.id.ends_with(s) || r.name.contains(s));
-                        if technical && !show_debug {
-                            hidden += 1;
-                            continue;
+                    for src in list {
+                        if src.channel == Channel::Testing {
+                            testing.push((idx, src));
+                        } else {
+                            g.add(&self.source_row(idx, src));
                         }
-                        g.add(&self.repo_row(idx, r));
-                    }
-                    if hidden > 0 {
-                        g.set_description(Some(&format!("{hidden} dépôt(s) de débogage / sources masqué(s)")));
                     }
                 }
             }
             self.repos_box.append(&g);
+            // Préréglages qui ne sont pas déjà des lignes « non installée » (COPR, URL…).
+            extra.extend(
+                presets
+                    .into_iter()
+                    .filter(|p| p.argument.is_some() || matches!(p.id, "flathub" | "flathub-beta" | "flathub-unfilter"))
+                    .map(|p| (idx, p)),
+            );
+        }
 
-            if !presets.is_empty() {
-                let pg = adap::PreferencesGroup::new();
-                pg.set_title(&format!("Ajouter un dépôt — {}", kind.label()));
-                for p in presets {
-                    let r = row(p.name, p.description);
-                    let b = gtk::Button::with_label(if p.argument.is_some() { "Ajouter…" } else { "Ajouter" });
-                    b.set_valign(gtk::Align::Center);
-                    let app = self.clone();
-                    b.connect_clicked(move |_| app.add_preset(idx, p.clone()));
-                    r.add_suffix(&b);
-                    pg.add(&r);
-                }
-                self.repos_box.append(&pg);
+        // Sources de test, à part.
+        if !testing.is_empty() {
+            let g = adap::PreferencesGroup::new();
+            g.set_title("Sources de test");
+            g.set_description(Some(
+                "Versions en cours de validation : plus récentes, mais elles peuvent casser des logiciels \
+                 ou le système. À n'activer que pour essayer un correctif précis.",
+            ));
+            for (idx, src) in testing {
+                g.add(&self.source_row(idx, src));
             }
+            self.repos_box.append(&g);
+        }
+
+        if !extra.is_empty() {
+            let g = adap::PreferencesGroup::new();
+            g.set_title("Ajouter une source");
+            for (idx, p) in extra {
+                let r = row(p.name, p.description);
+                r.add_prefix(&gtk::Image::from_icon_name(match p.backend {
+                    BackendKind::Flatpak => "application-x-addon-symbolic",
+                    BackendKind::Dnf => "package-x-generic-symbolic",
+                }));
+                let b = gtk::Button::with_label(if p.argument.is_some() { "Ajouter…" } else { "Ajouter" });
+                b.set_valign(gtk::Align::Center);
+                let app = self.clone();
+                b.connect_clicked(move |_| app.add_preset(idx, p.clone()));
+                r.add_suffix(&b);
+                g.add(&r);
+            }
+            self.repos_box.append(&g);
         }
     }
 
-    fn repo_row(self: &Rc<Self>, idx: usize, r: Repo) -> adap::ActionRow {
-        let mut subtitle = r.url.clone();
-        if r.builtin {
-            subtitle = format!("{subtitle}\nFourni par la distribution");
+    fn source_row(self: &Rc<Self>, idx: usize, src: Source) -> adap::ActionRow {
+        let r = row(&src.name, &src.description);
+        r.set_subtitle_lines(3);
+        let ids: Vec<&str> = src.repos.iter().map(|r| r.id.as_str()).collect();
+        if !ids.is_empty() {
+            r.set_tooltip_text(Some(&format!("Dépôts : {}", ids.join(", "))));
         }
-        let row = row(&r.name, subtitle.trim());
-        row.set_subtitle_selectable(true);
-        if !r.builtin && r.backend != BackendKind::Flatpak || (r.backend == BackendKind::Flatpak && !r.builtin) {
+        // État lisible d'un coup d'œil.
+        let (text, class) = match src.state {
+            State::Enabled => ("Active", "on"),
+            State::Partial => ("Partielle", "partial"),
+            State::Disabled => ("Inactive", "off"),
+            State::Missing => ("Non installée", "off"),
+        };
+        let state = gtk::Label::new(Some(text));
+        state.add_css_class("noos-state");
+        state.add_css_class(class);
+        state.set_valign(gtk::Align::Center);
+        r.add_suffix(&state);
+
+        if src.state == State::Missing {
+            if let Some(preset) = src.preset {
+                let b = gtk::Button::with_label("Ajouter");
+                b.add_css_class("suggested-action");
+                b.set_valign(gtk::Align::Center);
+                let (app, name) = (self.clone(), src.name.clone());
+                b.connect_clicked(move |_| {
+                    let app2 = app.clone();
+                    app.ops.enqueue(
+                        format!("Ajout de {name}"),
+                        idx,
+                        move |b| b.add_preset(preset, None),
+                        move |_| {
+                            app2.load_repos();
+                            app2.load_updates();
+                        },
+                    );
+                });
+                r.add_suffix(&b);
+            }
+            return r;
+        }
+
+        if !src.builtin && !src.essential {
             let del = gtk::Button::from_icon_name("user-trash-symbolic");
             del.add_css_class("flat");
             del.set_valign(gtk::Align::Center);
-            del.set_tooltip_text(Some("Supprimer ce dépôt"));
-            let (app, repo) = (self.clone(), r.clone());
+            del.set_tooltip_text(Some("Supprimer cette source"));
+            let (app, s2) = (self.clone(), src.clone());
             del.connect_clicked(move |_| {
-                let (app2, repo2) = (app.clone(), repo.clone());
+                let (app2, s3) = (app.clone(), s2.clone());
                 app.confirm(
-                    &format!("Supprimer « {} » ?", repo.name),
-                    "Les paquets déjà installés depuis ce dépôt restent installés mais ne recevront plus de mises à jour.",
+                    &format!("Supprimer « {} » ?", s2.name),
+                    "Les logiciels déjà installés depuis cette source restent installés mais ne recevront plus de mises à jour.",
                     "Supprimer",
                     true,
                     move || {
-                        let (app3, repo3) = (app2.clone(), repo2.clone());
-                        app2.ops.enqueue(format!("Suppression du dépôt {}", repo2.name), idx, move |b| b.remove_repo(&repo3), move |_| app3.load_repos());
+                        let (app3, repo) = (app2.clone(), s3.repos[0].clone());
+                        app2.ops.enqueue(format!("Suppression de {}", s3.name), idx, move |b| b.remove_repo(&repo), move |_| app3.load_repos());
                     },
                 );
             });
-            row.add_suffix(&del);
+            r.add_suffix(&del);
         }
+
         let sw = gtk::Switch::new();
-        sw.set_active(r.enabled);
+        sw.set_active(src.enabled());
         sw.set_valign(gtk::Align::Center);
+        if src.essential {
+            sw.set_sensitive(false);
+            sw.set_tooltip_text(Some("Indispensable au système : ne peut pas être désactivée"));
+        }
         let app = self.clone();
-        sw.connect_state_set(move |_, on| {
-            let (app2, repo) = (app.clone(), r.clone());
-            let verb = if on { "Activation" } else { "Désactivation" };
-            app.ops.enqueue(format!("{verb} de {}", r.name), idx, move |b| b.set_repo_enabled(&repo, on), move |_| app2.load_repos());
+        sw.connect_state_set(move |sw, on| {
+            let apply = {
+                let (app, src) = (app.clone(), src.clone());
+                move || {
+                    let (app2, repos) = (app.clone(), src.repos.clone());
+                    let verb = if on { "Activation" } else { "Désactivation" };
+                    app.ops.enqueue(format!("{verb} de {}", src.name), idx, move |b| b.set_repos_enabled(&repos, on), move |_| {
+                        app2.load_repos();
+                        app2.load_updates();
+                    });
+                }
+            };
+            if on && src.channel == Channel::Testing {
+                // Activer une source de test mérite une confirmation.
+                let sw2 = sw.clone();
+                let d = adap::AlertDialog::new(
+                    Some(&format!("Activer « {} » ?", src.name)),
+                    Some("Les mises à jour de test n'ont pas fini d'être validées : elles peuvent casser des logiciels ou le démarrage. Désactivez cette source dès que vous n'en avez plus besoin."),
+                );
+                d.add_responses(&[("cancel", "Annuler"), ("ok", "Activer")]);
+                d.set_response_appearance("ok", adap::ResponseAppearance::Destructive);
+                d.set_default_response(Some("cancel"));
+                d.connect_response(None, move |_, resp| {
+                    if resp == "ok" {
+                        apply();
+                    } else {
+                        sw2.set_active(false);
+                    }
+                });
+                d.present(Some(&app.window));
+            } else {
+                apply();
+            }
             glib::Propagation::Proceed
         });
-        row.add_suffix(&sw);
-        row
+        r.add_suffix(&sw);
+        r
     }
 
     fn add_preset(self: &Rc<Self>, idx: usize, p: Preset) {
@@ -720,7 +882,11 @@ const CSS: &str = r#"
 .noos-badge { border-radius: 99px; padding: 2px 10px; font-size: 0.8em; font-weight: 600; }
 .noos-badge.flatpak { background: alpha(@accent_bg_color, 0.18); color: @accent_color; }
 .noos-badge.system { background: alpha(@success_bg_color, 0.18); color: @success_color; }
-.noos-badge.aur { background: alpha(@warning_bg_color, 0.22); color: @warning_color; }
+.noos-offer { padding: 8px 10px; border-radius: 10px; }
+.noos-state { border-radius: 99px; padding: 2px 10px; font-size: 0.8em; font-weight: 600; }
+.noos-state.on { background: alpha(@success_bg_color, 0.20); color: @success_color; }
+.noos-state.partial { background: alpha(@warning_bg_color, 0.22); color: @warning_color; }
+.noos-state.off { background: alpha(@window_fg_color, 0.08); color: alpha(@window_fg_color, 0.65); }
 .noos-banner { border-radius: 18px; padding: 28px 32px; min-height: 250px; }
 .noos-banner .title-1 { font-size: 2.2em; }
 .banner-shot { border-radius: 12px; box-shadow: 0 6px 24px rgba(0,0,0,0.30); }
@@ -756,7 +922,7 @@ fn build(gapp: &adap::Application) {
     search.set_placeholder_text(Some("Applications, outils, jeux, paquets…"));
     search.add_css_class("noos-search");
     search.set_hexpand(true);
-    let mut labels = vec!["Toutes les sources".to_string()];
+    let mut labels = vec!["Flatpak et dnf".to_string()];
     labels.extend(backends.iter().map(|b| b.kind().label().to_string()));
     let refs: Vec<&str> = labels.iter().map(|s| s.as_str()).collect();
     let source = gtk::DropDown::from_strings(&refs);
@@ -771,7 +937,7 @@ fn build(gapp: &adap::Application) {
     let collection_box = gtk::Box::new(gtk::Orientation::Vertical, 18);
     let home = explore_home.clone();
     explore_stack.add_named(&home, Some("home"));
-    explore_stack.add_named(&loading("Recherche dans toutes les sources…"), Some("loading"));
+    explore_stack.add_named(&loading("Recherche dans les applications Flatpak et les paquets Fedora…"), Some("loading"));
     let results = gtk::ListBox::new();
     results.add_css_class("boxed-list");
     results.set_selection_mode(gtk::SelectionMode::None);
@@ -787,19 +953,10 @@ fn build(gapp: &adap::Application) {
     installed_filter.set_placeholder_text(Some("Filtrer les logiciels installés"));
 
     // ── Mises à jour ──
-    let (updates_scroll, updates_box) = page_container();
-    let banner = adap::Banner::new("");
-    banner.set_button_label(Some("Redémarrer"));
-    banner.connect_button_clicked(|_| {
-        let _ = std::process::Command::new("systemctl").arg("reboot").spawn();
-    });
-    let updates_view = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    updates_view.append(&banner);
-    updates_view.append(&updates_scroll);
+    let (updates_view, updates_box) = page_container();
 
     // ── Sources ──
     let (repos_scroll, repos_box) = page_container();
-    let show_debug = gtk::CheckButton::with_label("Dépôts de débogage et sources");
 
     let stack = adap::ViewStack::new();
     stack.add_titled_with_icon(&explore_scroll, Some("explore"), "Explorer", "system-search-symbolic");
@@ -835,6 +992,7 @@ fn build(gapp: &adap::Application) {
         explore_stack,
         search_gen: Cell::new(0),
         found: RefCell::new(vec![]),
+        appstream: RefCell::new(HashMap::new()),
         explore_home,
         collection_box,
         dynamic_css: gtk::CssProvider::new(),
@@ -844,9 +1002,7 @@ fn build(gapp: &adap::Application) {
         installed: RefCell::new(vec![]),
         updates_box,
         updates_page,
-        banner,
         repos_box,
-        show_debug: show_debug.clone(),
     });
 
     // ── Signaux ──
@@ -880,10 +1036,6 @@ fn build(gapp: &adap::Application) {
     {
         let app2 = app.clone();
         installed_filter.connect_search_changed(move |_| app2.render_installed());
-    }
-    {
-        let app2 = app.clone();
-        show_debug.connect_toggled(move |_| app2.load_repos());
     }
     // Chargement paresseux des pages.
     {
@@ -922,13 +1074,28 @@ fn build(gapp: &adap::Application) {
     }
 
     if app.backends.is_empty() {
-        app.toasts.add_toast(adap::Toast::new("Aucun gestionnaire de paquets reconnu sur ce système"));
+        app.toasts.add_toast(adap::Toast::new("Ni dnf ni Flatpak ne sont disponibles sur ce système"));
     }
     app.load_installed();
     app.load_updates();
-    let _ = &app.sys;
+    // Table AppStream dnf (≈ 1 s) : rapproche paquets Fedora et applis Flathub dès la vitrine.
+    if let Some(idx) = app.backend_index(BackendKind::Dnf) {
+        let backends = app.backends.clone();
+        let task = background(move || backends[idx].appstream_ids());
+        let app2 = app.clone();
+        glib::spawn_future_local(async move {
+            *app2.appstream.borrow_mut() = task.await;
+        });
+    }
     window.present();
     search.grab_focus();
+    // Tests visuels (aperçu sans souris) : page d'ouverture et recherche initiale.
+    if let Ok(page) = std::env::var("NOOS_SOFTWARE_PAGE") {
+        stack.set_visible_child_name(&page);
+    }
+    if let Ok(q) = std::env::var("NOOS_SOFTWARE_SEARCH") {
+        search.set_text(&q);
+    }
 }
 
 fn main() -> glib::ExitCode {

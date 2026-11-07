@@ -58,6 +58,8 @@ Requires:       wireplumber
 Requires:       pipewire-utils
 Requires:       NetworkManager
 Requires:       papirus-icon-theme
+# Logiciels : applications Flatpak (Flathub + Fedora Flatpaks) et paquets dnf.
+Requires:       flatpak
 # Thème GTK3 qui suit les couleurs de la palette NOOS.
 Requires:       adw-gtk3-theme
 Recommends:     xwayland-satellite
@@ -123,7 +125,16 @@ install -d %{buildroot}%{_datadir}/plymouth/themes/noos
 install -m644 noos-plymouth/noos/*.png noos-plymouth/noos/noos.plymouth noos-plymouth/noos/noos.script \
     %{buildroot}%{_datadir}/plymouth/themes/noos/
 
-%post -p /sbin/ldconfig
+%post
+/sbin/ldconfig
+# Flathub actif par défaut, à côté de Fedora Flatpaks (fichier embarqué : pas de réseau).
+# Une seule fois : si l'utilisateur retire Flathub, une mise à jour ne le remet pas.
+if [ ! -e /var/lib/noos/flathub-added ] && command -v flatpak >/dev/null 2>&1; then
+    flatpak remote-add --system --if-not-exists flathub /opt/noos/share/noos/flathub.flatpakrepo >/dev/null 2>&1 || :
+    flatpak remote-modify --system --no-filter --enable flathub >/dev/null 2>&1 || :
+    mkdir -p /var/lib/noos && touch /var/lib/noos/flathub-added
+fi
+
 %postun -p /sbin/ldconfig
 
 %files

@@ -329,36 +329,12 @@ pub fn remove_service(backend: FwBackend, service: &str, zone: Option<&str>) -> 
     }
 }
 
-/// Pare-feu recommandé pour la distribution, et plan d'installation.
-pub fn install_plan(sys: &SystemInfo) -> Option<(&'static str, Plan)> {
-    if sys.atomic {
-        // firewalld fait partie de l'image Fedora Atomic : il suffit de l'activer.
-        return Some(("firewalld", Plan::new().root(&["systemctl", "enable", "--now", "firewalld"])));
-    }
-    if have("dnf") || have("dnf5") {
-        return Some((
-            "firewalld",
-            Plan::new().root(&["dnf", "install", "-y", "firewalld"]).root(&["systemctl", "enable", "--now", "firewalld"]),
-        ));
-    }
-    if have("apt-get") {
-        return Some((
-            "ufw",
-            Plan::new()
-                .root(&["env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "install", "-y", "ufw"])
-                .root(&["ufw", "--force", "enable"]),
-        ));
-    }
-    if have("pacman") {
-        return Some((
-            "ufw",
-            Plan::new()
-                .root(&["pacman", "-Syu", "--needed", "--noconfirm", "ufw"])
-                .root(&["systemctl", "enable", "--now", "ufw"])
-                .root(&["ufw", "--force", "enable"]),
-        ));
-    }
-    None
+/// Pare-feu de NOOS (firewalld, comme Fedora), et plan d'installation.
+pub fn install_plan(_sys: &SystemInfo) -> Option<(&'static str, Plan)> {
+    Some((
+        "firewalld",
+        Plan::new().root(&["dnf", "install", "-y", "firewalld"]).root(&["systemctl", "enable", "--now", "firewalld"]),
+    ))
 }
 
 #[cfg(test)]

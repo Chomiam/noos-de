@@ -16,7 +16,7 @@ et, surtout, **un thème entièrement personnalisable** grâce à **GTK4 + libAd
 | `noos-file/` | Explorateur de fichiers (grille / détails, fil d'Ariane, corbeille, copier-coller) |
 | `noos-settings/` | Paramètres : personnalisation, barre des tâches, écrans (HDR/VRR), jeux, entrées |
 | `noos-software/` | **Logiciels** : vitrine Flathub, recherche multi-sources, mises à jour, dépôts |
-| `noos-pkg/` | Bibliothèque + CLI `noos-pkg` : Flatpak, rpm-ostree, dnf, apt, pacman, AUR |
+| `noos-pkg/` | Bibliothèque + CLI `noos-pkg` : dnf et Flatpak, sources regroupées, rapprochement AppStream |
 | `noos-keys/` | **Porte-clés** : mots de passe du Secret Service (oo7, gnome-keyring), trousseaux, clés SSH |
 | `noos-term/` | **Terminal** (VTE) : onglets, menu clic droit, thèmes, taille du texte, barre latérale d'alias (ex. `claude`) |
 | `noos-snip/` | **Outil Capture d'écran** (Win+Maj+S) : rectangle, fenêtre, plein écran, forme libre, annotation |
@@ -103,18 +103,21 @@ sur l'hôte : compilation dans le toolbox, système live dans un conteneur podma
 
 ## Logiciels (noos-software / noos-pkg)
 
-Une seule application pour toutes les sources, choisies automatiquement selon la distribution :
+NOOS est basé sur Fedora : Logiciels gère les **paquets Fedora (dnf)** et les **applications
+Flatpak**. Flathub et Fedora Flatpaks sont actifs par défaut.
 
-| Distribution | Backend système | Dépôts additionnels gérés |
-|---|---|---|
-| Fedora Atomic (Silverblue, Kinoite, Bazzite…) | `rpm-ostree` (superposition, redémarrage signalé) | RPM Fusion, COPR, fichier .repo, surcharges dnf5 |
-| Fedora, RHEL, Alma, Rocky | `dnf` (dnf5 / dnf4) | RPM Fusion, COPR, .repo, EPEL + CRB (EL) |
-| Debian, Ubuntu, Mint… | `apt` (sources une ligne et deb822) | PPA, Universe/Multiverse, contrib/non-free, backports, dépôt + clé |
-| Arch, EndeavourOS, CachyOS… | `pacman` (+ AUR via paru/yay) | multilib, Chaotic-AUR, dépôt personnalisé |
-| toutes | Flatpak (utilisateur / système) | Flathub, Flathub Beta, .flatpakrepo, retrait du filtre Fedora |
-
-- Les opérations admin passent par **un seul** `pkexec` par opération. rpm-ostree et Flatpak passent par polkit.
-- Sur Arch, NOOS n'utilise jamais `pacman -Sy` seul : il installe avec `-Syu` et liste les mises à jour avec `checkupdates`, pour éviter les mises à jour partielles.
+- **Un logiciel, plusieurs façons de l'installer** : les paquets dnf et les applis Flatpak sont
+  rapprochés par leur identifiant AppStream (`metainfo(org.gimp.GIMP…)` côté RPM, `org.gimp.GIMP`
+  côté Flatpak). Une seule ligne « GIMP » propose alors Flatpak · Flathub, Flatpak · Fedora ou
+  dnf · Fedora.
+- **Sources lisibles** : les dépôts bruts sont regroupés (Fedora = `fedora` + `updates`, RPM Fusion
+  libre = `rpmfusion-free` + `rpmfusion-free-updates`…) avec un état clair (Active, Inactive,
+  Partielle, Non installée). Les **sources de test** (`*-updates-testing`, `flathub-beta`,
+  `fedora-testing`) sont séparées et leur activation demande confirmation. Les dépôts de
+  débogage et de sources sont masqués.
+- Ajout de sources : RPM Fusion (libre / non libre), COPR, fichier .repo, Flathub (système ou
+  votre compte), Flathub bêta, .flatpakrepo, retrait du filtre Fedora sur Flathub.
+- Les opérations admin passent par **un seul** `pkexec` par opération ; Flatpak passe par polkit.
 - La page Explorer affiche la vitrine Flathub (API publique v2, en cache dans `~/.cache/noos-software`) : bannière, catégories, populaires, tendances, nouveautés et fiches détaillées.
 
 En ligne de commande :

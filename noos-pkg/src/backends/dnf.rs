@@ -1,11 +1,14 @@
-//! dnf (dnf5 sur Fedora ≥ 41, dnf4 sur RHEL/Alma/Rocky 9).
+//! dnf5 (Fedora 45).
 
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::OnceLock,
+};
 
 use super::yumrepo;
 use crate::{
     Backend, BackendKind, Package, Plan, Preset, Repo, SystemInfo, Update,
-    exec::{capture, capture_codes},
+    exec::capture,
 };
 
 /// Séparateur de champs improbable dans un résumé de paquet.
@@ -14,12 +17,13 @@ const SEP: &str = "\u{1f}";
 pub struct Dnf {
     sys: SystemInfo,
     bin: &'static str,
+    appstream: OnceLock<HashMap<String, String>>,
 }
 
 impl Dnf {
     pub fn new(sys: SystemInfo) -> Self {
         let bin = if crate::exec::have("dnf") { "dnf" } else { "dnf5" };
-        Self { sys, bin }
+        Self { sys, bin, appstream: OnceLock::new() }
     }
 
     fn query_format() -> String {
@@ -67,21 +71,22 @@ pub fn native_arch() -> String {
     capture(&["uname", "-m"]).map(|s| s.trim().to_string()).unwrap_or_else(|_| "x86_64".into())
 }
 
-/// Préréglages communs dnf / rpm-ostree.
-pub fn rpm_presets(sys: &SystemInfo, backend: BackendKind) -> Vec<Preset> {
-    let mut p = vec![
+/// Dépôts additionnels proposés.
+pub fn rpm_presets() -> Vec<Preset> {
+    let backend = BackendKind::Dnf;
+    vec![
         Preset {
             id: "rpmfusion-free",
             backend,
-            name: "RPM Fusion (libre)",
-            description: "Codecs et logiciels libres absents de la distribution (ffmpeg, VLC…)",
+            name: "RPM Fusion — libre",
+            description: "Codecs et logiciels libres absents de Fedora (ffmpeg complet, VLC…)",
             argument: None,
         },
         Preset {
             id: "rpmfusion-nonfree",
             backend,
-            name: "RPM Fusion (libre + non libre)",
-            description: "Ajoute aussi les pilotes NVIDIA, Steam, les firmwares propriétaires",
+            name: "RPM Fusion — non libre",
+            description: "Pilotes NVIDIA, Steam, firmwares et codecs propriétaires (ajoute aussi la partie libre)",
             argument: None,
         },
         Preset {
@@ -98,24 +103,32 @@ pub fn rpm_presets(sys: &SystemInfo, backend: BackendKind) -> Vec<Preset> {
             description: "Ajoute un dépôt depuis l'URL d'un fichier .repo",
             argument: Some("https://…/fichier.repo"),
         },
-    ];
-    if sys.is_enterprise_linux() && backend == BackendKind::Dnf {
-        p.insert(0, Preset {
-            id: "epel",
-            backend,
-            name: "EPEL",
-            description: "Extra Packages for Enterprise Linux (requis par RPM Fusion sur EL)",
-            argument: None,
-        });
-        p.insert(1, Preset {
-            id: "crb",
-            backend,
-            name: "CodeReady Builder / CRB",
-            description: "Dépôt de dépendances de développement requis par une partie d'EPEL",
-            argument: None,
-        });
+    ]
+}
+
+/// Lit `dnf repoquery --whatprovides 'metainfo()'` : nom du paquet → identifiant AppStream
+/// (minuscules, sans `.desktop` / `.appdata.xml` / `.metainfo.xml`).
+pub fn parse_metainfo(out: &str) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    let mut current: Option<String> = None;
+    for line in out.lines() {
+        let line = line.trim();
+        let provide = match line.split_once(SEP) {
+            Some((name, rest)) => {
+                current = Some(name.to_string());
+                rest
+            }
+            None => line,
+        };
+        let Some(name) = current.as_ref() else { continue };
+        let Some(id) = provide.strip_prefix("metainfo(").and_then(|p| p.strip_suffix(')')) else { continue };
+        let id = id.trim_end_matches(".xml").trim_end_matches(".appdata").trim_end_matches(".metainfo");
+        if id.is_empty() || map.contains_key(name) {
+            continue;
+        }
+        map.insert(name.clone(), id.trim_end_matches(".desktop").to_lowercase());
     }
-    p
+    map
 }
 
 /// Plan d'ajout d'un .repo (COPR ou URL) : téléchargement en root.
@@ -135,16 +148,19 @@ pub fn add_repo_file_plan(sys: &SystemInfo, preset: &str, argument: Option<&str>
     Ok(Plan::new().root_owned(vec!["curl".into(), "-fsSL".into(), "-o".into(), path, url]))
 }
 
-/// Activation / désactivation par réécriture du fichier .repo (identique dnf4 / dnf5 / rpm-ostree).
-pub fn toggle_plan(repo: &Repo, enabled: bool) -> anyhow::Result<Plan> {
-    let (path, content) = yumrepo::toggle_writes(repo, enabled)?;
-    Ok(Plan::new().write(&path, &content))
+/// Activation / désactivation par réécriture des fichiers .repo (ou de la surcharge dnf5).
+pub fn toggle_plan(repos: &[Repo], enabled: bool) -> anyhow::Result<Plan> {
+    let mut plan = Plan::new();
+    for (path, content) in yumrepo::toggle_many(repos, enabled)? {
+        plan = plan.write(&path, &content);
+    }
+    Ok(plan)
 }
 
 /// Suppression : paquet propriétaire (ex. rpmfusion-free-release), section ou fichier.
 pub fn remove_plan(repo: &Repo, remove_pkg: impl Fn(String) -> Plan) -> anyhow::Result<Plan> {
     if let Some(owner) = yumrepo::owner_package(&repo.file) {
-        if repo.builtin || owner.starts_with("fedora-repos") || owner.ends_with("-repos") {
+        if repo.builtin || owner.starts_with("fedora-") || owner.ends_with("-repos") {
             anyhow::bail!("dépôt fourni par la distribution ({owner}) : désactivez-le plutôt que de le supprimer");
         }
         return Ok(remove_pkg(owner));
@@ -231,7 +247,22 @@ impl Backend for Dnf {
     }
 
     fn set_repo_enabled(&self, repo: &Repo, enabled: bool) -> anyhow::Result<Plan> {
-        toggle_plan(repo, enabled)
+        toggle_plan(std::slice::from_ref(repo), enabled)
+    }
+
+    fn set_repos_enabled(&self, repos: &[Repo], enabled: bool) -> anyhow::Result<Plan> {
+        toggle_plan(repos, enabled)
+    }
+
+    fn appstream_ids(&self) -> HashMap<String, String> {
+        self.appstream
+            .get_or_init(|| {
+                let qf = format!("--queryformat=%{{name}}{SEP}%{{provides}}\n");
+                capture(&[self.bin, "repoquery", "--quiet", "--latest-limit=1", "--whatprovides", "metainfo()", &qf])
+                    .map(|out| parse_metainfo(&out))
+                    .unwrap_or_default()
+            })
+            .clone()
     }
 
     fn remove_repo(&self, repo: &Repo) -> anyhow::Result<Plan> {
@@ -239,7 +270,7 @@ impl Backend for Dnf {
     }
 
     fn presets(&self) -> Vec<Preset> {
-        rpm_presets(&self.sys, BackendKind::Dnf)
+        rpm_presets()
     }
 
     fn add_preset(&self, preset: &str, argument: Option<&str>) -> anyhow::Result<Plan> {
@@ -249,27 +280,32 @@ impl Backend for Dnf {
             Plan::new().root_owned(argv)
         };
         match preset {
-            "rpmfusion-free" | "rpmfusion-nonfree" => {
-                let mut plan = Plan::new();
-                if self.sys.is_enterprise_linux() && !std::path::Path::new("/etc/yum.repos.d/epel.repo").exists() {
-                    plan = plan.extend(self.add_preset("epel", None)?);
-                }
-                Ok(plan.extend(install(yumrepo::rpmfusion_urls(&self.sys, preset == "rpmfusion-nonfree"))))
-            }
-            "epel" => Ok(if capture_codes(&[self.bin, "info", "-q", "epel-release"], &[0, 1]).is_ok_and(|o| o.contains("epel-release")) {
-                install(vec!["epel-release".into()])
-            } else {
-                install(vec![yumrepo::epel_url(&self.sys)])
-            }),
-            "crb" => {
-                let repos = self.repos()?;
-                let crb = repos
-                    .iter()
-                    .find(|r| r.id == "crb" || r.id.starts_with("codeready-builder"))
-                    .ok_or_else(|| anyhow::anyhow!("dépôt CRB introuvable"))?;
-                toggle_plan(crb, true)
-            }
+            "rpmfusion-free" => Ok(install(vec![yumrepo::rpmfusion_url(&self.sys, false)])),
+            "rpmfusion-nonfree" => Ok(install(vec![
+                yumrepo::rpmfusion_url(&self.sys, false),
+                yumrepo::rpmfusion_url(&self.sys, true),
+            ])),
             _ => add_repo_file_plan(&self.sys, preset, argument),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn metainfo() {
+        let out = format!(
+            "gimp{SEP}application()\napplication(gimp.desktop)\nmetainfo()\nmetainfo(org.gimp.GIMP.appdata.xml)\n\
+             vlc{SEP}metainfo(org.videolan.vlc.appdata.xml)\n\
+             gimp-data-extras{SEP}metainfo()\ngimp-data-extras = 2.0.4\n\
+             foo{SEP}metainfo(org.example.Foo.metainfo.xml)\n"
+        );
+        let m = parse_metainfo(&out);
+        assert_eq!(m["gimp"], "org.gimp.gimp");
+        assert_eq!(m["vlc"], "org.videolan.vlc");
+        assert_eq!(m["foo"], "org.example.foo");
+        assert!(!m.contains_key("gimp-data-extras"));
     }
 }

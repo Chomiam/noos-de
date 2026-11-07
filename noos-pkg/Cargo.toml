@@ -1,6 +1,6 @@
 [package]
 name = "noos-pkg"
-description = "Abstraction des gestionnaires de paquets pour NOOS Logiciels : Flatpak, rpm-ostree, dnf, apt, pacman (+AUR)"
+description = "Paquets de NOOS Logiciels (basé sur Fedora) : dnf et Flatpak"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

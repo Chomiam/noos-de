@@ -513,6 +513,12 @@ fn install(ctx: &Ctx, c: &Choices) -> anyhow::Result<()> {
     ctx.try_run("ln", &["-sf", "/usr/lib/systemd/system/getty@.service", &format!("{TARGET}/etc/systemd/system/autovt@.service")]);
     ctx.run("systemctl", &["--root", TARGET, "set-default", "graphical.target"])?;
     ctx.try_run("chroot", &[TARGET, "plymouth-set-default-theme", "noos"]);
+    // Flathub actif par défaut, à côté de Fedora Flatpaks (fichier embarqué : pas de réseau).
+    ctx.try_run(
+        "chroot",
+        &[TARGET, "flatpak", "remote-add", "--system", "--if-not-exists", "flathub", "/opt/noos/share/noos/flathub.flatpakrepo"],
+    );
+    ctx.try_run("chroot", &[TARGET, "flatpak", "remote-modify", "--system", "--no-filter", "--enable", "flathub"]);
     // SELinux : le système live tourne sans SELinux (selinux=0), les fichiers créés ici
     // (comptes, /opt/noos, configuration) n'ont pas d'étiquette. Étiquetage complet hors
     // ligne avec la politique du système installé (sinon systemd ne démarre pas en

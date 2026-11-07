@@ -1,6 +1,6 @@
 [package]
 name = "noos-software"
-description = "NOOS Logiciels : applications Flatpak et paquets de la distribution, mises à jour et dépôts"
+description = "NOOS Logiciels : applications Flatpak et paquets Fedora (dnf), mises à jour et sources"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

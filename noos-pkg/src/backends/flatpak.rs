@@ -1,4 +1,5 @@
-//! Flatpak — installations utilisateur (`--user`, sans mot de passe) et système.
+//! Flatpak — installations système (Flathub et Fedora Flatpaks, actifs par défaut sur NOOS)
+//! et utilisateur (`--user`, sans mot de passe).
 
 use std::collections::{HashMap, HashSet};
 
@@ -75,32 +76,31 @@ impl Backend for Flatpak {
         let remotes = Self::remotes();
         let installed = Self::installed_ids();
         let mut seen = HashSet::new();
-        let mut pkgs: Vec<Package> = out
-            .lines()
-            .filter_map(|l| {
-                let c = cols(l);
-                if c.len() < 6 || !seen.insert(c[0].to_string()) {
-                    return None;
+        let mut pkgs: Vec<Package> = Vec::new();
+        for l in out.lines() {
+            let c = cols(l);
+            if c.len() < 6 {
+                continue;
+            }
+            // Une proposition par remote actif (Flathub, Fedora Flatpaks…) : l'utilisateur choisit.
+            for r in c[4].split(',').map(str::trim) {
+                for (name, scope, ..) in remotes.iter().filter(|x| x.0 == r && !x.4.contains("disabled")) {
+                    if !seen.insert((c[0].to_string(), name.clone(), *scope)) {
+                        continue;
+                    }
+                    pkgs.push(Package {
+                        backend: Some(BackendKind::Flatpak),
+                        id: c[0].into(),
+                        name: c[1].into(),
+                        version: c[2].into(),
+                        summary: c[5].into(),
+                        origin: name.clone(),
+                        scope: Some(*scope),
+                        installed: installed.contains(c[0]),
+                    });
                 }
-                // Préférence : remote de l'utilisateur (pas de mot de passe), sinon système.
-                let candidates: Vec<&str> = c[4].split(',').map(str::trim).collect();
-                let pick = candidates
-                    .iter()
-                    .find_map(|r| remotes.iter().find(|x| x.0 == *r && x.1 == Scope::User && !x.4.contains("disabled")))
-                    .or_else(|| candidates.iter().find_map(|r| remotes.iter().find(|x| x.0 == *r && !x.4.contains("disabled"))));
-                let (origin, scope) = pick.map(|x| (x.0.clone(), x.1)).unwrap_or((candidates[0].to_string(), Scope::User));
-                Some(Package {
-                    backend: Some(BackendKind::Flatpak),
-                    id: c[0].into(),
-                    name: c[1].into(),
-                    version: c[2].into(),
-                    summary: c[5].into(),
-                    origin,
-                    scope: Some(scope),
-                    installed: installed.contains(c[0]),
-                })
-            })
-            .collect();
+            }
+        }
         crate::rank(q, &mut pkgs);
         Ok(pkgs)
     }
@@ -248,23 +248,23 @@ impl Backend for Flatpak {
     fn presets(&self) -> Vec<Preset> {
         let mut p = vec![
             Preset {
-                id: "flathub",
+                id: "flathub-system",
                 backend: BackendKind::Flatpak,
-                name: "Flathub (utilisateur)",
-                description: "Le principal magasin d'applications Flatpak, sans mot de passe",
+                name: "Flathub",
+                description: "Le principal magasin d'applications Flatpak, pour tous les comptes de la machine",
                 argument: None,
             },
             Preset {
-                id: "flathub-system",
+                id: "flathub",
                 backend: BackendKind::Flatpak,
-                name: "Flathub (système)",
-                description: "Flathub pour tous les utilisateurs de la machine",
+                name: "Flathub (votre compte uniquement)",
+                description: "Installations sans mot de passe, visibles seulement par vous",
                 argument: None,
             },
             Preset {
                 id: "flathub-beta",
                 backend: BackendKind::Flatpak,
-                name: "Flathub Beta",
+                name: "Flathub — tests (bêta)",
                 description: "Versions bêta des applications Flathub",
                 argument: None,
             },

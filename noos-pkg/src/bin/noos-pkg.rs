@@ -76,10 +76,9 @@ fn run() -> anyhow::Result<()> {
     match args.cmd.as_str() {
         "info" | "" => {
             let sys = SystemInfo::detect();
-            println!("{} (id={}, version={}, atomique={})", sys.name, sys.id, sys.version_id, sys.atomic);
+            println!("{} (id={}, version={})", sys.name, sys.id, sys.version_id);
             for b in &all {
-                let st = b.status();
-                println!("  • {} ({}){}", b.kind().label(), b.kind().id(), if st.reboot_required { " — redémarrage requis" } else { "" });
+                println!("  • {} ({})", b.kind().label(), b.kind().id());
             }
         }
         "search" => {
