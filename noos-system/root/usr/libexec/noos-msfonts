@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# noos-msfonts — polices Microsoft d'origine (« Core fonts for the Web » : Arial, Times New Roman,
+# Courier New, Verdana, Georgia, Trebuchet MS, Comic Sans MS, Impact, Andale Mono, Webdings).
+# Microsoft les distribue gratuitement mais interdit de les inclure dans une distribution : elles
+# sont téléchargées depuis leur archive officielle (SourceForge « corefonts »), sur demande de
+# l'utilisateur qui accepte la licence (Paramètres › Personnalisation › Polices, ou l'installateur).
+#
+#   noos-msfonts status    installed / absent
+#   noos-msfonts install   (root) téléchargement, extraction, cache des polices
+#   noos-msfonts remove    (root)
+set -euo pipefail
+export LC_ALL=C.UTF-8
+DEST=/usr/share/fonts/msttcore
+FONTS=(andale32 arial32 arialb32 comic32 courie32 georgi32 impact32 times32 trebuc32 verdan32 webdin32)
+
+die() { echo "noos-msfonts : $*" >&2; exit 1; }
+
+case "${1:-status}" in
+status)
+    if ls "$DEST"/*.ttf >/dev/null 2>&1; then echo installed; else echo absent; fi
+    ;;
+install)
+    [ "$(id -u)" = 0 ] || die "à lancer en root"
+    command -v cabextract >/dev/null || die "cabextract manquant"
+    tmp=$(mktemp -d /var/tmp/noos-msfonts.XXXXXX)
+    trap 'rm -rf "$tmp"' EXIT
+    for f in "${FONTS[@]}"; do
+        echo "téléchargement de $f…"
+        curl -fsSL --retry 3 --connect-timeout 15 -o "$tmp/$f.exe" "https://downloads.sourceforge.net/corefonts/$f.exe" ||
+            die "téléchargement de $f impossible"
+        cabextract -q -L -F '*.ttf' -d "$tmp/ttf" "$tmp/$f.exe" || die "archive $f illisible"
+    done
+    n=$(ls "$tmp/ttf"/*.ttf 2>/dev/null | wc -l)
+    [ "$n" -ge 20 ] || die "archives incomplètes ($n polices)"
+    install -d "$DEST"
+    install -m644 "$tmp/ttf"/*.ttf "$DEST/"
+    restorecon -R "$DEST" 2>/dev/null || true
+    fc-cache -f "$DEST" >/dev/null 2>&1 || true
+    echo "$n polices Microsoft installées dans $DEST"
+    ;;
+remove)
+    [ "$(id -u)" = 0 ] || die "à lancer en root"
+    rm -rf "$DEST"
+    fc-cache -f >/dev/null 2>&1 || true
+    echo "polices Microsoft supprimées"
+    ;;
+*) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac

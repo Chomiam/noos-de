@@ -25,7 +25,6 @@ gdk-pixbuf2-modules-extra
 libopenraw-pixbuf-loader
 # VPN WireGuard (Paramètres › Réseau › VPN)
 wireguard-tools
-google-noto-color-emoji-fonts
 mesa-vulkan-drivers
 vulkan-loader
 libinput
@@ -51,3 +50,27 @@ glibc-langpack-en
 kbd
 curl
 nano
+# Profils d'énergie
+tuned-ppd
+# Polices (voir packaging/rpm/noos.spec)
+dejavu-fonts-all
+liberation-fonts-all
+google-carlito-fonts
+google-crosextra-caladea-fonts
+google-noto-serif-fonts
+google-noto-sans-cjk-vf-fonts
+google-noto-color-emoji-fonts
+google-noto-sans-symbols-fonts
+google-noto-sans-symbols-2-fonts
+google-noto-sans-math-fonts
+google-roboto-fonts
+open-sans-fonts
+lato-fonts
+rsms-inter-fonts
+adobe-source-code-pro-fonts
+fira-code-fonts
+jetbrains-mono-fonts-all
+cascadia-fonts-all
+ibm-plex-fonts-all
+fontawesome-fonts-all
+cabextract

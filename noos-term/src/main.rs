@@ -271,6 +271,8 @@ impl Win {
         self.add_mouse(&term);
 
         let shell = std::env::var("SHELL").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "/bin/bash".into());
+        // Sans dossier précis : le dossier personnel (et non celui du lanceur, souvent « / »).
+        let cwd = cwd.or_else(|| Some(glib::home_dir().to_string_lossy().into_owned()));
         let term2 = term.clone();
         let shell2 = shell.clone();
         term.spawn_async(
@@ -862,7 +864,9 @@ fn main() -> glib::ExitCode {
     app.connect_command_line(|app, cl| {
         let args: Vec<String> = cl.arguments().iter().map(|a| a.to_string_lossy().to_string()).collect();
         let (cwd, cmd) = parse(&args);
-        let cwd = cwd.or_else(|| cl.cwd().map(|p| p.to_string_lossy().to_string()));
+        // Dossier du lanceur : seulement s'il est significatif (la barre des tâches et le menu
+        // Démarrer lancent depuis « / »).
+        let cwd = cwd.or_else(|| cl.cwd().map(|p| p.to_string_lossy().to_string()).filter(|d| d != "/"));
         let w = Win::new(app);
         w.new_tab(cwd, cmd);
         w.window.present();

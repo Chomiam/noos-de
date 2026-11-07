@@ -1626,5 +1626,91 @@ pub fn fonts(app: &Rc<App>) -> adap::NavigationPage {
     sample.set_wrap(true);
     sample.set_xalign(0.0);
     content.append(&sample);
+    content.append(&ms_fonts(app));
     p
+}
+
+const MSFONTS: &str = "/usr/libexec/noos-msfonts";
+
+/// Polices Microsoft d'origine : téléchargées à la demande (licence Microsoft à accepter).
+fn ms_fonts(app: &Rc<App>) -> adap::PreferencesGroup {
+    let g = group("Polices Microsoft");
+    let families = pangocairo_fontmap().list_families().len();
+    g.set_description(Some(&format!(
+        "{families} familles de polices installées, dont des équivalentes aux polices Microsoft (Liberation pour Arial / Times New Roman / Courier New, Carlito pour Calibri, Caladea pour Cambria) : les documents gardent leur mise en page."
+    )));
+    let row = card("font-x-generic-symbolic", "Polices Microsoft d'origine", "Arial, Times New Roman, Courier New, Verdana, Georgia, Trebuchet MS, Comic Sans MS, Impact, Webdings");
+    let btn = gtk::Button::new();
+    btn.set_valign(gtk::Align::Center);
+    row.add_suffix(&btn);
+    g.add(&row);
+    let state = Rc::new(std::cell::Cell::new(false));
+    let refresh: Rc<dyn Fn()> = {
+        let (btn, row, state) = (btn.clone(), row.clone(), state.clone());
+        Rc::new(move || {
+            let installed = std::process::Command::new(MSFONTS).arg("status").output().is_ok_and(|o| o.stdout.starts_with(b"installed"));
+            btn.set_label(if installed { "Supprimer" } else { "Installer…" });
+            btn.set_css_classes(if installed { &["destructive-action"] } else { &["suggested-action"] });
+            row.set_subtitle(if installed {
+                "Installées : Arial, Times New Roman, Courier New, Verdana, Georgia, Trebuchet MS, Comic Sans MS, Impact, Webdings"
+            } else {
+                "Arial, Times New Roman, Courier New, Verdana, Georgia, Trebuchet MS, Comic Sans MS, Impact, Webdings"
+            });
+            state.set(installed);
+        })
+    };
+    refresh();
+    {
+        let (app, refresh) = (app.clone(), refresh.clone());
+        btn.connect_clicked(move |b| {
+            let installed = state.get();
+            let run = {
+                let (app, refresh, b) = (app.clone(), refresh.clone(), b.clone());
+                move |action: &'static str| {
+                    b.set_sensitive(false);
+                    b.set_label(if action == "install" { "Téléchargement…" } else { "Suppression…" });
+                    let task = crate::ui::background(move || {
+                        std::process::Command::new("pkexec").args([MSFONTS, action]).output().map_err(|e| e.to_string()).and_then(|o| {
+                            if o.status.success() { Ok(String::from_utf8_lossy(&o.stdout).trim().lines().last().unwrap_or("").to_string()) } else { Err(String::from_utf8_lossy(&o.stderr).trim().to_string()) }
+                        })
+                    });
+                    let (app, refresh, b) = (app.clone(), refresh.clone(), b.clone());
+                    glib::spawn_future_local(async move {
+                        b.set_sensitive(true);
+                        match task.await {
+                            Ok(msg) => app.toast(&msg),
+                            Err(e) if e.is_empty() => app.toast("Opération annulée"),
+                            Err(e) => app.error("Polices Microsoft", &e),
+                        }
+                        refresh();
+                    });
+                }
+            };
+            if installed {
+                run("remove");
+                return;
+            }
+            let d = adap::AlertDialog::new(
+                Some("Installer les polices Microsoft ?"),
+                Some("Microsoft les distribue gratuitement (« Core fonts for the Web ») mais interdit de les inclure dans un système : elles sont téléchargées depuis leur archive officielle (environ 4 Mo).\n\nEn continuant, vous acceptez la <a href=\"https://corefonts.sourceforge.net/eula.htm\">licence d'utilisation de Microsoft</a> pour ces polices."),
+            );
+            d.set_body_use_markup(true);
+            d.add_responses(&[("cancel", "Annuler"), ("ok", "Accepter et installer")]);
+            d.set_response_appearance("ok", adap::ResponseAppearance::Suggested);
+            d.set_default_response(Some("ok"));
+            d.set_close_response("cancel");
+            let run = Rc::new(run);
+            d.connect_response(None, move |_, r| {
+                if r == "ok" {
+                    run("install");
+                }
+            });
+            d.present(Some(&app.window));
+        });
+    }
+    g
+}
+
+fn pangocairo_fontmap() -> gtk::pango::FontMap {
+    gtk::Label::new(None).pango_context().font_map().expect("fontmap")
 }

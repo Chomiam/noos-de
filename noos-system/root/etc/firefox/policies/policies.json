@@ -1,0 +1,9 @@
+{
+  "policies": {
+    "Homepage": { "URL": "about:home", "StartPage": "homepage", "Locked": false },
+    "NoDefaultBookmarks": true,
+    "OverrideFirstRunPage": "",
+    "OverridePostUpdatePage": "",
+    "DisplayBookmarksToolbar": "newtab"
+  }
+}

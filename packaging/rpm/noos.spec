@@ -81,6 +81,35 @@ Requires:       grub2-tools
 # Shell par défaut des comptes NOOS (fastfetch à l'ouverture d'un terminal).
 Requires:       fish
 Requires:       fastfetch
+# Profils d'énergie (Économie / Équilibré / Performances) : tuned + interface power-profiles.
+Requires:       tuned-ppd
+# Polices : courantes, équivalentes métriques des polices Microsoft (Liberation = Arial / Times /
+# Courier, Carlito = Calibri, Caladea = Cambria), CJK, emoji en couleur et symboles (fastfetch,
+# drapeaux), polices de code et d'icônes. cabextract : polices Microsoft d'origine à la demande.
+Requires:       dejavu-fonts-all
+Requires:       liberation-fonts-all
+Requires:       google-carlito-fonts
+Requires:       google-crosextra-caladea-fonts
+Requires:       google-noto-sans-fonts
+Requires:       google-noto-serif-fonts
+Requires:       google-noto-sans-mono-fonts
+Requires:       google-noto-sans-cjk-vf-fonts
+Requires:       google-noto-color-emoji-fonts
+Requires:       google-noto-emoji-fonts
+Requires:       google-noto-sans-symbols-fonts
+Requires:       google-noto-sans-symbols-2-fonts
+Requires:       google-noto-sans-math-fonts
+Requires:       google-roboto-fonts
+Requires:       open-sans-fonts
+Requires:       lato-fonts
+Requires:       rsms-inter-fonts
+Requires:       adobe-source-code-pro-fonts
+Requires:       fira-code-fonts
+Requires:       jetbrains-mono-fonts-all
+Requires:       cascadia-fonts-all
+Requires:       ibm-plex-fonts-all
+Requires:       fontawesome-fonts-all
+Requires:       cabextract
 # Visionneuse d'images : photos RAW (NEF, CR2/CR3, ARW, DNG…) ; HEIC des iPhone (décodeur HEVC
 # de RPM Fusion). Dépendance conditionnelle : obligatoire seulement si RPM Fusion est configuré
 # (un simple Recommends n'est pas installé lors d'une mise à jour de noos).
@@ -89,7 +118,6 @@ Requires:       (libheif-freeworld if rpmfusion-free-release)
 # Réseau : VPN WireGuard (NetworkManager le gère nativement ; wg pour l'état des tunnels).
 Requires:       wireguard-tools
 # Drapeaux des pays (Paramètres › Réseau › DNS).
-Requires:       google-noto-color-emoji-fonts
 Recommends:     libtimezonemap
 Recommends:     curl
 
@@ -172,6 +200,11 @@ systemctl daemon-reload >/dev/null 2>&1 || :
 if [ "$(findmnt -no FSTYPE / 2>/dev/null)" = btrfs ]; then
     /opt/noos/libexec/noos-save-helper setup >/dev/null 2>&1 || :
 fi
+# Profils d'énergie : tuned + tuned-ppd démarrés (une seule fois : l'utilisateur peut les couper).
+if [ ! -e /var/lib/noos/power-profiles ]; then
+    systemctl enable --now tuned.service tuned-ppd.service >/dev/null 2>&1 || :
+    mkdir -p /var/lib/noos && touch /var/lib/noos/power-profiles
+fi
 # Nouveaux comptes créés ensuite (useradd) : fish par défaut, une seule fois.
 if [ ! -e /var/lib/noos/useradd-fish ] && [ -x /usr/bin/fish ] && [ -f /etc/default/useradd ]; then
     if grep -q '^SHELL=' /etc/default/useradd; then
@@ -215,6 +248,8 @@ fi
 %config(noreplace) %{_sysconfdir}/xdg/fastfetch/config.jsonc
 %config(noreplace) %{_sysconfdir}/xdg/noos-mimeapps.list
 %attr(0440,root,root) %config(noreplace) %{_sysconfdir}/sudoers.d/90-noos-pwfeedback
+%config(noreplace) %{_sysconfdir}/firefox/policies/policies.json
+%{_libexecdir}/noos-msfonts
 %{_datadir}/polkit-1/actions/org.noos.save.policy
 %config(noreplace) %{_sysconfdir}/dnf/libdnf5-plugins/actions.d/noos-save.actions
 %attr(0755,root,root) %{_sysconfdir}/grub.d/42_noos_snapshots
