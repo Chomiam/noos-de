@@ -471,6 +471,8 @@ pub fn dns_state(c: &Connection) -> DnsState {
     let info = device_info(&c.device);
     let mut in_use = indexed(&info, "IP4.DNS");
     in_use.extend(indexed(&info, "IP6.DNS"));
+    // « 9.9.9.9#dns.quad9.net » → « 9.9.9.9 » (le nom TLS est déjà indiqué par le badge).
+    let in_use = in_use.into_iter().map(|s| s.split('#').next().unwrap_or("").to_string()).collect();
     DnsState { choice, tls, in_use }
 }
 

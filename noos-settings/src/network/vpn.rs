@@ -32,6 +32,31 @@ pub fn page(app: &Rc<App>) -> adap::NavigationPage {
         });
     }
     content.add_controller(drop);
+
+    // État suivi en direct : un VPN connecté ou coupé ailleurs (barre des tâches, nmcli…)
+    // met la page à jour.
+    let shown: std::rc::Rc<std::cell::RefCell<Option<Vec<(String, bool)>>>> = Default::default();
+    {
+        let (app, holder, shown) = (app.clone(), holder.clone(), shown.clone());
+        let weak = holder.downgrade();
+        glib::timeout_add_seconds_local(3, move || {
+            let Some(h) = weak.upgrade() else { return glib::ControlFlow::Break };
+            if !h.is_mapped() {
+                return glib::ControlFlow::Continue;
+            }
+            let task = background(|| nm::connections().into_iter().filter(Connection::is_wireguard).map(|c| (c.uuid, c.active)).collect::<Vec<_>>());
+            let (app, holder, shown) = (app.clone(), holder.clone(), shown.clone());
+            glib::spawn_future_local(async move {
+                let now = task.await;
+                let changed = shown.borrow().as_ref().is_some_and(|s| *s != now);
+                *shown.borrow_mut() = Some(now);
+                if changed {
+                    load(&app, &holder);
+                }
+            });
+            glib::ControlFlow::Continue
+        });
+    }
     p
 }
 

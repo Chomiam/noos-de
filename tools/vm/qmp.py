@@ -3,6 +3,7 @@
 
     qmp.py shot SORTIE.png        capture d'écran (PPM → PNG, nécessite pycairo)
     qmp.py click X Y [L H]        clic gauche absolu (tablette USB), écran 1280×800 par défaut
+    qmp.py scroll X Y N           molette : N crans vers le bas (négatif : vers le haut)
     qmp.py key TOUCHE…            touches QEMU (ret, esc, ctrl-alt-f2, down…), « - » = combinaison
     qmp.py type "texte\\n"         saisie de texte, clavier AZERTY côté invité
     qmp.py cmd COMMANDE           commande QMP brute (system_powerdown, system_reset…)
@@ -23,6 +24,8 @@ AZERTY = {
     '.': 'shift-comma', '/': 'shift-dot', '-': '6', '_': '8', ' ': 'spc', '\n': 'ret', '|': 'alt_r-6',
     '>': 'shift-less', '<': 'less', '=': 'equal', '"': '3', "'": '4', '@': 'alt_r-0', '*': 'backslash',
     '&': '1', '$': 'bracket_right', '!': 'slash', '~': 'alt_r-2', '#': 'alt_r-3',
+    '(': '5', ')': 'minus', '[': 'alt_r-5', ']': 'alt_r-minus', '{': 'alt_r-4', '}': 'alt_r-equal',
+    '\\': 'alt_r-8', '`': 'alt_r-7', '+': 'shift-equal', '?': 'shift-m', '%': 'shift-apostrophe',
     '1': 'shift-1', '2': 'shift-2', '3': 'shift-3', '4': 'shift-4', '5': 'shift-5',
     '6': 'shift-6', '7': 'shift-7', '8': 'shift-8', '9': 'shift-9', '0': 'shift-0',
 }
@@ -87,6 +90,20 @@ def click(q, x, y, w=1280.0, h=800.0):
         time.sleep(0.08)
 
 
+def scroll(q, x, y, n, w=1280.0, h=800.0):
+    """Molette : n crans vers le bas (négatif = vers le haut) au point (x, y)."""
+    q.call("input-send-event", events=[
+        {"type": "abs", "data": {"axis": "x", "value": int(x / w * 32767)}},
+        {"type": "abs", "data": {"axis": "y", "value": int(y / h * 32767)}},
+    ])
+    time.sleep(0.1)
+    button = "wheel-down" if n > 0 else "wheel-up"
+    for _ in range(abs(n)):
+        for down in (True, False):
+            q.call("input-send-event", events=[{"type": "btn", "data": {"down": down, "button": button}}])
+            time.sleep(0.04)
+
+
 def type_text(q, text):
     for ch in text:
         k = AZERTY.get(ch.lower() if ch.isalpha() else ch, ch.lower())
@@ -104,6 +121,8 @@ def main():
         shot(q, args[0])
     elif cmd == "click":
         click(q, *map(float, args))
+    elif cmd == "scroll":
+        scroll(q, float(sys.argv[2]), float(sys.argv[3]), int(sys.argv[4]))
     elif cmd == "key":
         for k in args:
             q.keys(k)

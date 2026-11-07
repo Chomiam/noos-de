@@ -1,5 +1,6 @@
 # NOOS « Sauvegarder et Restaurer » : instantané Btrfs (snapper) avant et après chaque
 # transaction dnf. Désactivable dans l'application (DNF_SNAPSHOTS dans /etc/noos/save.conf).
-# Format : callback:filtre de paquets:direction:options:commande (voir man libdnf5-actions).
-pre_transaction::::enabled=host-only /opt/noos/libexec/noos-save-helper dnf-pre ${pid}
-post_transaction::::enabled=host-only /opt/noos/libexec/noos-save-helper dnf-post ${tmp.noos_save_pre} ${pid}
+# Format : rappel:filtre de paquets:direction:options:commande — 5 champs, 4 deux-points (man
+# libdnf5-actions) ; options et commande sont des champs distincts.
+pre_transaction:::enabled=host-only:/opt/noos/libexec/noos-save-helper dnf-pre ${pid}
+post_transaction:::enabled=host-only:/opt/noos/libexec/noos-save-helper dnf-post ${tmp.noos_save_pre} ${pid}

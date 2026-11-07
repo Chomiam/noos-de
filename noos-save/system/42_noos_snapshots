@@ -83,7 +83,7 @@ for dir in $(ls -1d /.snapshots/[0-9]* 2>/dev/null | sort -t/ -k3 -n -r); do
   menuentry 'n° $num — $when — $label ($kind)' --class noos --class snapshot {
 $(prepare_grub_to_access_device "${GRUB_DEVICE_BOOT}" | sed 's/^/    /')
     echo 'Démarrage de l’instantané n° $num (lecture seule, changements oubliés au redémarrage)…'
-    linux $linux_rel root=UUID=$uuid rootflags=subvol=@/.snapshots/$num/snapshot ro systemd.volatile=overlay enforcing=0 noos.snapshot=$num$args
+    linux $linux_rel root=UUID=$uuid rootflags=subvol=@/.snapshots/$num/snapshot ro systemd.volatile=overlay systemd.mask=systemd-remount-fs.service enforcing=0 noos.snapshot=$num$args
     initrd $initrd_rel
   }"
     count=$((count + 1))
