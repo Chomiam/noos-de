@@ -14,6 +14,7 @@ mod cursor;
 mod grabs;
 mod handlers;
 mod idle;
+mod lock;
 mod input;
 mod ipc;
 mod render;

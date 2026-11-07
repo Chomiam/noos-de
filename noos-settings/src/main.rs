@@ -6,6 +6,7 @@
 
 mod apps;
 mod default_apps;
+mod lockscreen;
 mod login;
 mod network;
 mod other;
@@ -64,6 +65,7 @@ const SEARCH: &[(&str, &str, usize, Option<Builder>)] = &[
     ("Fenêtres", "fenêtres ancrage ancrer tiling snap bords coins disposition animation aperçu", 3, Some(personalization::windows)),
     ("Écran de connexion", "écran de connexion login greeter verrouillage session fond", 3, Some(login::login_screen)),
     ("Polices", "police font texte", 3, Some(personalization::fonts)),
+    ("Écran de verrouillage", "verrouillage verrouiller écran de veille shadertoy animation shader super+l", 3, Some(lockscreen::root)),
     ("Applications par défaut", "applications par défaut ouvrir avec associations type de fichier navigateur", 4, Some(apps::default_apps)),
     ("VRR / FreeSync", "vrr freesync gsync variable jeux", 5, None),
     ("Mode Jeu", "mode jeu gaming", 5, None),
@@ -95,6 +97,7 @@ const PAGES: &[(&str, usize, Option<Builder>)] = &[
     ("windows", 3, Some(personalization::windows)),
     ("login", 3, Some(login::login_screen)),
     ("fonts", 3, Some(personalization::fonts)),
+    ("lockscreen", 3, Some(lockscreen::root)),
     ("apps", 4, None),
     ("default-apps", 4, Some(apps::default_apps)),
     ("gaming", 5, None),

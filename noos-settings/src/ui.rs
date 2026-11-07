@@ -153,6 +153,11 @@ pub fn page(app: &Rc<App>, crumbs: &[&str], title: &str) -> (adap::NavigationPag
 
     let clamp = adap::Clamp::builder().maximum_size(1000).tightening_threshold(700).child(&content).build();
     let scroll = gtk::ScrolledWindow::builder().child(&clamp).hscrollbar_policy(gtk::PolicyType::Never).vexpand(true).build();
+    // Tests (captures) : `NOOS_SETTINGS_SCROLL=<px>` fait défiler la page après son affichage.
+    if let Some(y) = std::env::var("NOOS_SETTINGS_SCROLL").ok().and_then(|v| v.parse::<f64>().ok()) {
+        let s = scroll.clone();
+        glib::timeout_add_local_once(std::time::Duration::from_millis(1500), move || s.vadjustment().set_value(y));
+    }
     let tv = adap::ToolbarView::new();
     let hb = adap::HeaderBar::new();
     hb.set_show_title(false);
@@ -330,6 +335,18 @@ button.current-wallpaper .wallpaper-preview { outline: 2px solid @accent_color; 
 checkbutton.selection-check check { background-color: alpha(black, 0.4); border: 2px solid white; min-width: 18px; min-height: 18px; }
 checkbutton.selection-check check:checked { background-color: @accent_bg_color; border-color: @accent_bg_color; }
 picture.no-wallpaper { background: linear-gradient(155deg, shade(@accent_bg_color, 0.45) 0%, @window_bg_color 55%, shade(@window_bg_color, 0.8) 100%); }
+/* ── Écran de verrouillage ── */
+.ls-preview { border-radius: 12px; background: black; }
+.ls-clock { color: white; font-size: 44px; font-weight: 300; text-shadow: 0 1px 10px rgba(0,0,0,0.5); }
+button.ls-tile { padding: 8px; border-radius: 12px; background: transparent; }
+button.ls-tile:hover { background-color: alpha(@window_fg_color, 0.05); }
+button.ls-tile .ls-thumb { border-radius: 10px; background: black; border: 2px solid transparent; }
+button.ls-tile.active .ls-thumb { border-color: @accent_bg_color; }
+button.ls-tile .ls-name { font-weight: 700; }
+button.ls-tile.incompatible { opacity: 0.45; }
+.ls-badge { background: @accent_bg_color; color: @accent_fg_color; border-radius: 999px; padding: 3px; }
+.ls-error { color: white; background: rgba(0,0,0,0.6); padding: 16px; }
+
 /* ── Applications par défaut ── */
 button.da-tile { background-color: @card_bg_color; border: 1px solid alpha(@card_fg_color, 0.06); border-radius: 10px; padding: 12px 14px; }
 button.da-tile:hover { background-color: mix(@card_bg_color, @window_fg_color, 0.05); }

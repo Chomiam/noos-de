@@ -1,0 +1,5 @@
+#%PAM-1.0
+# Écran de verrouillage de NOOS (noos-lock) : vérifie le mot de passe de l'utilisateur.
+auth       substack     system-auth
+auth       include      postlogin
+account    include      system-auth

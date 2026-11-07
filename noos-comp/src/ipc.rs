@@ -235,6 +235,14 @@ impl NoosState {
                 self.pending_screenshot = Some(path.into());
                 Event::Ok
             }
+            Request::Lock => {
+                self.lock_session();
+                Event::Ok
+            }
+            Request::Suspend => {
+                self.suspend_with_lock();
+                Event::Ok
+            }
             Request::Quit => {
                 self.loop_signal.stop();
                 Event::Ok

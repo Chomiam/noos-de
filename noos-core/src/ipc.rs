@@ -51,6 +51,10 @@ pub enum Request {
     ToggleStartMenu,
     /// Capture de l'écran (premier écran) au format PNG.
     Screenshot { path: String },
+    /// Verrouiller la session (lance `noos-lock`).
+    Lock,
+    /// Mise en veille (précédée du verrouillage si `[lock] before_suspend`).
+    Suspend,
     /// Quitter la session.
     Quit,
 }

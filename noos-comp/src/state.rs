@@ -124,6 +124,9 @@ pub struct NoosState {
     pub suspend_requested: bool,
     /// Surfaces qui empêchent l'extinction (lecture vidéo…).
     pub idle_inhibitors: Vec<WlSurface>,
+    /// Verrouillage de session (ext-session-lock-v1, voir `lock.rs`).
+    pub session_lock_state: smithay::wayland::session_lock::SessionLockManagerState,
+    pub lock: crate::lock::LockState,
 
     pub ipc: IpcServer,
     /// Capture d'écran demandée (chemin PNG), faite au prochain rendu.
@@ -211,6 +214,7 @@ impl NoosState {
         // Les applis demandent une forme de curseur ; le compositeur la dessine avec son thème :
         // même taille partout (GTK, Qt, Electron…).
         smithay::wayland::cursor_shape::CursorShapeManagerState::new::<Self>(&dh);
+        let session_lock_state = smithay::wayland::session_lock::SessionLockManagerState::new::<Self, _>(&dh, |_| true);
 
         let mut seat_state = SeatState::new();
         let mut seat = seat_state.new_wl_seat(&dh, backend.seat_name());
@@ -282,6 +286,8 @@ impl NoosState {
             screens_off: false,
             suspend_requested: false,
             idle_inhibitors: Vec::new(),
+            session_lock_state,
+            lock: Default::default(),
             ipc,
             pending_screenshot: None,
             capture,
@@ -295,6 +301,10 @@ impl NoosState {
 
     /// Surface (fenêtre, layer-shell ou popup) sous le pointeur, avec sa position globale.
     pub fn surface_under(&self, pos: Point<f64, Logical>) -> Option<(WlSurface, Point<f64, Logical>)> {
+        // Verrouillée : rien d'autre que l'écran de verrouillage.
+        if self.lock.locked {
+            return self.lock_surface_under(pos);
+        }
         let output = self.space.output_under(pos).next()?.clone();
         let output_geo = self.space.output_geometry(&output)?;
 
@@ -473,6 +483,12 @@ impl NoosState {
         }
         if let Some(icon) = &self.dnd_icon {
             smithay::desktop::utils::send_frames_surface_tree(icon, output, time, throttle, |_, _| {
+                Some(output.clone())
+            });
+        }
+        // Écran de verrouillage : sans ces rappels, son animation resterait figée.
+        if let Some(lock) = self.lock_surface_for(output) {
+            smithay::desktop::utils::send_frames_surface_tree(lock.wl_surface(), output, time, throttle, |_, _| {
                 Some(output.clone())
             });
         }

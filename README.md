@@ -170,6 +170,18 @@ autocomplétion des mots, commenter / dupliquer / déplacer / trier les lignes, 
 ligne, encodage et fins de ligne conservés, rechargement si un autre programme modifie le
 fichier, enregistrement automatique (option), session restaurée, thèmes NOOS clair / sombre.
 
+## Écran de verrouillage (noos-lock)
+
+Verrouillage de session (`ext-session-lock-v1`) : Super+L, menu Démarrer, inactivité, avant la
+mise en veille. Animation en plein écran, grande horloge, mot de passe vérifié par PAM. Si
+l'écran de verrouillage s'arrête, la session reste verrouillée et il est relancé.
+
+Paramètres › Personnalisation › Écran de verrouillage : aperçu animé, verrouillage automatique,
+images par seconde et qualité de rendu, **animations NOOS** intégrées (Aurore, Plasma,
+Nébuleuse, Infini, Vagues), **bibliothèque** des animations téléchargées (appliquer, supprimer)
+et **parcours de Shadertoy** (recherche, tri, vignettes, compatibilité ; clé personnelle
+gratuite de l'utilisateur).
+
 ## Réseau et Internet (Paramètres)
 
 - **État** de la connexion avec débit en direct (graphique), adresses IP, DNS et VPN en cours ;

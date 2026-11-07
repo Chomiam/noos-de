@@ -41,6 +41,11 @@ impl NoosState {
             return;
         }
         let idle = self.last_activity.elapsed();
+        let lock = self.config.lock.clone();
+        if lock.idle_minutes > 0 && !self.lock.locked && idle >= Duration::from_secs(lock.idle_minutes as u64 * 60) {
+            info!(minutes = lock.idle_minutes, "inactivité : verrouillage");
+            self.lock_session();
+        }
         if power.screen_off_minutes > 0
             && !self.screens_off
             && idle >= Duration::from_secs(power.screen_off_minutes as u64 * 60)
@@ -56,7 +61,7 @@ impl NoosState {
         {
             info!(minutes = power.suspend_minutes, "inactivité : mise en veille");
             self.suspend_requested = true;
-            let _ = std::process::Command::new("systemctl").arg("suspend").spawn();
+            self.suspend_with_lock();
         }
     }
 
@@ -64,6 +69,7 @@ impl NoosState {
     pub fn start_reaper(&mut self) {
         let _ = self.loop_handle.insert_source(Timer::from_duration(Duration::from_secs(1)), |_, _, state| {
             state.reap_children();
+            state.check_lock_client();
             TimeoutAction::ToDuration(Duration::from_secs(1))
         });
     }

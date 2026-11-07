@@ -8,7 +8,7 @@
 %global __provides_exclude_from ^/opt/noos/lib/.*$
 %global __requires_exclude ^libadapta-1\\.so.*$
 
-%global noos_bins noos-comp noos-shell noos-file noos-settings noos-software noos-pkg noos-snip noos-term noos-keys noos-save noos-photoview noos-texteditor noos-login noos-installer
+%global noos_bins noos-comp noos-shell noos-file noos-settings noos-software noos-pkg noos-snip noos-term noos-keys noos-save noos-photoview noos-texteditor noos-lock noos-login noos-installer
 
 Name:           noos
 Version:        0.1.0
@@ -43,6 +43,7 @@ BuildRequires:  pkgconfig(libdisplay-info)
 BuildRequires:  pkgconfig(gtk4-layer-shell-0)
 BuildRequires:  pkgconfig(vte-2.91-gtk4)
 BuildRequires:  pkgconfig(gtksourceview-5)
+BuildRequires:  pam-devel
 
 # Session, écran de connexion, démarrage.
 Requires:       greetd
@@ -253,6 +254,7 @@ fi
 %attr(0440,root,root) %config(noreplace) %{_sysconfdir}/sudoers.d/90-noos-pwfeedback
 %config(noreplace) %{_sysconfdir}/firefox/policies/policies.json
 %{_libexecdir}/noos-msfonts
+%config(noreplace) %{_sysconfdir}/pam.d/noos-lock
 %{_datadir}/polkit-1/actions/org.noos.save.policy
 %config(noreplace) %{_sysconfdir}/dnf/libdnf5-plugins/actions.d/noos-save.actions
 %attr(0755,root,root) %{_sysconfdir}/grub.d/42_noos_snapshots

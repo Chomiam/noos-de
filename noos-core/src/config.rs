@@ -19,6 +19,7 @@ pub struct NoosConfig {
     pub keyboard: Keyboard,
     pub input: Input,
     pub power: Power,
+    pub lock: Lock,
     pub notifications: Notifications,
     pub tiling: Tiling,
     /// Réglages par écran (nom du connecteur DRM, ex. `DP-1`, `HDMI-A-1`).
@@ -261,6 +262,32 @@ pub struct Power {
 impl Default for Power {
     fn default() -> Self {
         Self { screen_off_minutes: 10, suspend_minutes: 0, inhibit_fullscreen: true }
+    }
+}
+
+// ───────────────────────────── Verrouillage ─────────────────────────────
+
+/// Écran de verrouillage (`noos-lock`) et verrouillage automatique.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct Lock {
+    /// Verrouiller après N minutes d'inactivité (0 = jamais).
+    pub idle_minutes: u32,
+    /// Verrouiller avant la mise en veille.
+    pub before_suspend: bool,
+    /// Animation : `builtin:<nom>` (animations NOOS), `shadertoy:<id>` (bibliothèque locale),
+    /// vide = fond d'écran.
+    pub animation: String,
+    /// Images par seconde maximales de l'animation.
+    pub fps: u32,
+    /// Échelle de rendu de l'animation (1 = pleine résolution, 0,5 = deux fois plus léger).
+    pub render_scale: f32,
+    pub show_clock: bool,
+}
+
+impl Default for Lock {
+    fn default() -> Self {
+        Self { idle_minutes: 5, before_suspend: true, animation: "builtin:aurora".into(), fps: 30, render_scale: 0.75, show_clock: true }
     }
 }
 

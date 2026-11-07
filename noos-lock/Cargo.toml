@@ -1,0 +1,16 @@
+[package]
+name = "noos-lock"
+description = "Écran de verrouillage de NOOS (ext-session-lock) : animation Shadertoy, horloge, mot de passe (PAM)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+noos-core.workspace = true
+noos-theme.workspace = true
+noos-shader.workspace = true
+gtk.workspace = true
+adap.workspace = true
+async-channel.workspace = true
+gtk4-session-lock = { version = "0.4", features = ["v1_2"] }
+pam-client2 = "0.5"

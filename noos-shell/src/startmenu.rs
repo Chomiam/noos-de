@@ -182,8 +182,10 @@ impl StartMenu {
         let power_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         power_row.add_css_class("power-row");
         power_row.set_homogeneous(true);
+        // Verrouiller et Veille passent par le compositeur (verrouillage avant la mise en veille).
         for (label, icon, cmd) in [
-            ("Veille", "weather-clear-night-symbolic", Some("systemctl suspend")),
+            ("Verrouiller", "system-lock-screen-symbolic", Some("@lock")),
+            ("Veille", "weather-clear-night-symbolic", Some("@suspend")),
             ("Se déconnecter", "system-log-out-symbolic", None),
             ("Redémarrer", "system-reboot-symbolic", Some("systemctl reboot")),
             ("Arrêter", "system-shutdown-symbolic", Some("systemctl poweroff")),
@@ -204,6 +206,8 @@ impl StartMenu {
             b.connect_clicked(move |_| {
                 power.set_active(false);
                 match cmd {
+                    Some("@lock") => apps::request(Request::Lock),
+                    Some("@suspend") => apps::request(Request::Suspend),
                     Some(c) => apps::spawn(c),
                     None => apps::request(Request::Quit),
                 }

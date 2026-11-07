@@ -13,6 +13,8 @@ members = [
     "noos-save",
     "noos-photoview",
     "noos-texteditor",
+    "noos-shader",
+    "noos-lock",
     "noos-software",
     "noos-snip",
     "noos-term",
@@ -31,6 +33,7 @@ authors = ["Axel Valens"]
 noos-core = { path = "noos-core" }
 noos-theme = { path = "noos-theme" }
 noos-pkg = { path = "noos-pkg" }
+noos-shader = { path = "noos-shader" }
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

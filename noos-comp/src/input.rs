@@ -46,6 +46,7 @@ enum Action {
     ShowDesktop,
     AltTab,
     ReloadConfig,
+    Lock,
 }
 
 fn terminal_command() -> String {
@@ -97,6 +98,7 @@ fn shortcut(mods: &ModifiersState, sym: Keysym) -> Option<Action> {
         Keysym::i | Keysym::I => Some(Action::Spawn("noos-settings".into())),
         Keysym::Return | Keysym::KP_Enter => Some(Action::Spawn(terminal_command())),
         Keysym::d | Keysym::D => Some(Action::ShowDesktop),
+        Keysym::l | Keysym::L => Some(Action::Lock),
         Keysym::q | Keysym::Q => Some(Action::Close),
         Keysym::f | Keysym::F => Some(Action::Fullscreen),
         Keysym::r | Keysym::R if mods.shift => Some(Action::ReloadConfig),
@@ -142,7 +144,9 @@ impl NoosState {
                 }
                 state.super_alone = false;
                 // Kiosque : seul le changement de terminal virtuel reste disponible.
-                let action = shortcut(mods, sym).filter(|a| !crate::kiosk() || matches!(a, Action::VtSwitch(_)));
+                // Kiosque ou session verrouillée : aucun raccourci du bureau.
+                let restricted = crate::kiosk() || state.lock.locked;
+                let action = shortcut(mods, sym).filter(|a| !restricted || matches!(a, Action::VtSwitch(_)));
                 if let Some(action) = action {
                     state.suppressed_keys.push(keycode.raw());
                     return FilterResult::Intercept(Some(action));
@@ -153,7 +157,7 @@ impl NoosState {
                     state.suppressed_keys.remove(pos);
                     return FilterResult::Intercept(None);
                 }
-                if is_super && std::mem::take(&mut state.super_alone) && !crate::kiosk() {
+                if is_super && std::mem::take(&mut state.super_alone) && !crate::kiosk() && !state.lock.locked {
                     return FilterResult::Intercept(Some(Action::StartMenuKey));
                 }
                 FilterResult::Forward
@@ -173,6 +177,7 @@ impl NoosState {
             }
             Action::VtSwitch(vt) => self.backend.change_vt(vt),
             Action::Spawn(cmd) => self.spawn(&cmd),
+            Action::Lock => self.lock_session(),
             Action::StartMenuKey => {
                 // Mode jeu : pas de menu Démarrer par-dessus un jeu en plein écran.
                 let in_game = self.config.gaming.game_mode
@@ -283,7 +288,10 @@ impl NoosState {
         let button = event.button_code();
         let state = event.state();
 
-        if state == ButtonState::Pressed && !pointer.is_grabbed() {
+        if state == ButtonState::Pressed && self.lock.locked {
+            let pos = pointer.current_location();
+            self.focus_lock_under(pos);
+        } else if state == ButtonState::Pressed && !pointer.is_grabbed() {
             let pos = pointer.current_location();
             let mods = self.seat.get_keyboard().unwrap().modifier_state();
             self.super_alone = false;

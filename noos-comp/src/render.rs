@@ -48,7 +48,7 @@ impl std::fmt::Debug for NoosElement {
 
 /// Couleur de fond visible tant que le shell n'a pas posé de fond d'écran.
 pub fn clear_color(state: &NoosState) -> [f32; 4] {
-    if state.screens_off {
+    if state.screens_off || state.is_locked() {
         return [0.0, 0.0, 0.0, 1.0];
     }
     match state.config.appearance.color_scheme {
@@ -126,6 +126,18 @@ pub fn output_elements(
                     .map(NoosElement::Surface),
             );
         }
+    }
+
+    // ── Session verrouillée : uniquement la surface de verrouillage de cet écran (sinon noir) ──
+    if state.is_locked() {
+        if let Some(surface) = state.lock_surface_for(output).map(|s| s.wl_surface().clone()) {
+            elements.extend(
+                render_elements_from_surface_tree(renderer, &surface, (0, 0), scale, 1.0, Kind::Unspecified)
+                    .into_iter()
+                    .map(NoosElement::Surface),
+            );
+        }
+        return elements;
     }
 
     // ── Plein écran : uniquement la fenêtre (scanout direct possible) ──
