@@ -80,6 +80,7 @@ On ne peut pas cliquer dans l'aperçu : utiliser les variables de test ci-dessou
 | `NOOS_POLKIT_TEST=1` | noos-shell affiche une fenêtre d'élévation d'exemple |
 | `NOOS_SOFTWARE_PAGE=repos` | noos-software s'ouvre sur une page (`explore`, `installed`, `updates`, `repos`) |
 | `NOOS_SOFTWARE_SEARCH=gimp` | noos-software lance une recherche au démarrage |
+| `NOOS_REORDER_DEMO=1` | noos-shell fait glisser la 1re icône épinglée de 2 crans (sans enregistrer) |
 
 ### Règles de sécurité (erreurs déjà commises)
 

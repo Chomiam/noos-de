@@ -10,6 +10,7 @@ mod net;
 mod notify;
 mod polkit;
 mod quick;
+mod reorder;
 mod startmenu;
 mod style;
 mod taskbar;

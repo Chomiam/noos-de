@@ -459,7 +459,13 @@ impl Taskbar {
 
         let size = icon_size(self.height.get());
         for item in items {
-            self.tasks.append(&task_button(item, size, &self.shell));
+            let (pinned, app_id) = (item.pinned, item.app_id.clone());
+            let button = task_button(item, size, &self.shell);
+            if pinned {
+                // Glisser-déposer pour changer l'ordre des épinglées.
+                crate::reorder::attach(&button, &app_id, &self.tasks, &self.shell);
+            }
+            self.tasks.append(&button);
         }
     }
 }
