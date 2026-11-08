@@ -21,6 +21,9 @@ pub struct Taskbar {
     pub window: gtk::Window,
     shell: Weak<Shell>,
     root: gtk::CenterBox,
+    /// Zone de gauche : widget Ressources (+ les icônes si la barre est alignée à gauche).
+    left: gtk::Box,
+    vitals: Rc<noos_widget_vitals::Vitals>,
     main: gtk::Box,
     search: gtk::Button,
     tasks: gtk::Box,
@@ -380,12 +383,20 @@ impl Taskbar {
         end.append(&bell_btn);
         end.append(&show_desktop);
         root.set_end_widget(Some(&end));
+        // ── Widget Ressources (coin gauche) ──
+        let left = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        left.set_valign(gtk::Align::Center);
+        left.set_margin_start(6);
+        let vitals = noos_widget_vitals::Vitals::new();
+        left.append(vitals.widget());
 
         window.set_child(Some(&root));
         let bar = Self {
             shell: Rc::downgrade(shell),
             window,
             root,
+            left,
+            vitals,
             main,
             search,
             tasks,
@@ -455,12 +466,18 @@ impl Taskbar {
         }
         self.search.set_visible(cfg.taskbar.show_search);
         self.ai_btn.set_visible(cfg.ai.enabled && cfg.ai.assistant);
+        self.vitals.widget().set_visible(cfg.taskbar.show_vitals);
         self.root.set_start_widget(gtk::Widget::NONE);
         self.root.set_center_widget(gtk::Widget::NONE);
+        if self.main.parent().is_some_and(|p| p == *self.left.upcast_ref::<gtk::Widget>()) {
+            self.left.remove(&self.main);
+        }
         match cfg.taskbar.alignment {
             TaskbarAlignment::Center => self.root.set_center_widget(Some(&self.main)),
-            TaskbarAlignment::Left => self.root.set_start_widget(Some(&self.main)),
+            // Alignée à gauche : icônes d'abord, widget ensuite.
+            TaskbarAlignment::Left => self.left.prepend(&self.main),
         }
+        self.root.set_start_widget(Some(&self.left));
     }
 
     pub fn update(&self, windows: &[WindowInfo], cfg: &NoosConfig) {

@@ -122,6 +122,8 @@ pub struct Taskbar {
     /// Icônes des applications actives (zone de notification) : toutes visibles dans la
     /// barre, au lieu d'être regroupées dans le menu « ^ » comme sur Windows 11.
     pub tray_expanded: bool,
+    /// Widget « Ressources » à gauche de la barre (processeur, mémoire, disque…).
+    pub show_vitals: bool,
 }
 
 impl Default for Taskbar {
@@ -133,6 +135,7 @@ impl Default for Taskbar {
             pinned: vec!["org.noos.Terminal".into(), "org.mozilla.firefox".into(), "org.noos.Software".into()],
             show_search: true,
             tray_expanded: false,
+            show_vitals: true,
             start_pinned: [
                 "org.noos.Files",
                 "org.noos.Settings",

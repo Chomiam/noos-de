@@ -1360,6 +1360,15 @@ pub fn taskbar(app: &Rc<App>) -> adap::NavigationPage {
         });
     }
     g.add(&search);
+    let vitals = switch("utilities-system-monitor-symbolic", "Ressources", "Widget à gauche de la barre : processeur, carte graphique, mémoire, disque, réseau", t.show_vitals);
+    {
+        let app = app.clone();
+        vitals.connect_active_notify(move |r| {
+            let v = r.is_active();
+            app.update(|c| c.taskbar.show_vitals = v);
+        });
+    }
+    g.add(&vitals);
     content.append(&g);
 
     let tray = group("Zone de notification");

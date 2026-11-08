@@ -1,0 +1,11 @@
+[package]
+name = "noos-widget-vitals"
+description = "Widget « Ressources » de la barre des tâches NOOS : processeur, carte graphique, mémoire, disque, réseau"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+gtk.workspace = true
+async-channel.workspace = true
+libc = "0.2"
