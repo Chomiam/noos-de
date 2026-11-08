@@ -361,9 +361,9 @@ impl NetFlyout {
         window.init_layer_shell();
         window.set_namespace(Some("noos-quicksettings"));
         window.set_layer(Layer::Top);
-        window.set_anchor(Edge::Bottom, true);
+        crate::editmode::anchor_to_bar(&window, &shell.config());
+        shell.flyouts.borrow_mut().push(window.downgrade());
         window.set_anchor(Edge::Right, true);
-        window.set_margin(Edge::Bottom, 12);
         window.set_margin(Edge::Right, 12);
         window.set_keyboard_mode(KeyboardMode::Exclusive);
 

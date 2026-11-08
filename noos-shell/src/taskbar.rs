@@ -23,8 +23,11 @@ pub struct Taskbar {
     /// Écran de cette barre (nom du connecteur).
     output: String,
     root: gtk::CenterBox,
-    /// Zone de gauche : widget Ressources (+ les icônes si la barre est alignée à gauche).
+    /// Zones de la barre (gauche, centre = `main`, droite = `end`) et éléments encadrés.
     left: gtk::Box,
+    end: gtk::Box,
+    frames: Vec<(String, gtk::Overlay, gtk::Box)>,
+    tv_btn: gtk::Button,
     vitals: Rc<noos_widget_vitals::Vitals>,
     main: gtk::Box,
     search: gtk::Button,
@@ -80,9 +83,12 @@ impl Taskbar {
         window.set_layer(Layer::Top);
         window.set_monitor(Some(monitor));
         window.set_keyboard_mode(KeyboardMode::None);
-        for edge in [Edge::Left, Edge::Right, Edge::Bottom] {
+        for edge in [Edge::Left, Edge::Right] {
             window.set_anchor(edge, true);
         }
+        let top = cfg.taskbar.position == "top";
+        window.set_anchor(Edge::Bottom, !top);
+        window.set_anchor(Edge::Top, top);
         window.set_exclusive_zone(cfg.taskbar.height as i32);
         window.set_default_size(-1, cfg.taskbar.height as i32);
 
@@ -129,8 +135,6 @@ impl Taskbar {
         let tasks = gtk::Box::new(gtk::Orientation::Horizontal, 4);
         let main = gtk::Box::new(gtk::Orientation::Horizontal, 4);
         main.set_valign(gtk::Align::Center);
-        main.append(&start_btn);
-        main.append(&search);
         // ── Vue des tâches (bureaux virtuels) : clic = vue, molette = bureau voisin ──
         let tv_btn = gtk::Button::new();
         let tv_icon = gtk::Image::from_icon_name("window-restore-symbolic");
@@ -157,8 +161,7 @@ impl Taskbar {
             });
             tv_btn.add_controller(scroll);
         }
-        main.append(&tv_btn);
-        main.append(&tasks);
+
 
         // ── Zone de droite ──
         let end = gtk::Box::new(gtk::Orientation::Horizontal, 2);
@@ -400,19 +403,80 @@ impl Taskbar {
         show_desktop.set_tooltip_text(Some("Afficher le bureau"));
         show_desktop.connect_clicked(|_| apps::request(Request::ShowDesktop));
 
-        end.append(&tray_overflow);
-        end.append(&tray_inline);
-        end.append(&status_group);
-        end.append(&clock_btn);
-        end.append(&bell_btn);
-        end.append(&show_desktop);
+        let tray_box = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        tray_box.set_valign(gtk::Align::Center);
+        tray_box.append(&tray_overflow);
+        tray_box.append(&tray_inline);
         root.set_end_widget(Some(&end));
         // ── Widget Ressources (coin gauche) ──
         let left = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         left.set_valign(gtk::Align::Center);
         left.set_margin_start(6);
         let vitals = noos_widget_vitals::Vitals::new();
-        left.append(vitals.widget());
+        // Éléments de la barre, rangés dans les zones selon la configuration (mode édition).
+        let frames: Vec<(String, gtk::Overlay, gtk::Box)> = [
+            ("vitals", vitals.widget().clone().upcast::<gtk::Widget>()),
+            ("start", start_btn.clone().upcast()),
+            ("search", search.clone().upcast()),
+            ("taskview", tv_btn.clone().upcast()),
+            ("tasks", tasks.clone().upcast()),
+            ("tray", tray_box.upcast()),
+            ("status", status_group.clone().upcast()),
+            ("clock", clock_btn.clone().upcast()),
+            ("notifications", bell_btn.clone().upcast()),
+            ("showdesktop", show_desktop.clone().upcast()),
+        ]
+        .into_iter()
+        .map(|(id, w)| {
+            let (o, shield) = crate::editmode::frame(id, &w);
+            o.set_widget_name(&format!("bar-{id}"));
+            (id.to_string(), o, shield)
+        })
+        .collect();
+        for (k, z) in [&left, &main, &end].into_iter().enumerate() {
+            crate::editmode::zone_drop(k, z, Rc::downgrade(shell));
+        }
+        {
+            // Clic droit dans une zone vide de la barre : « Modifier la barre des tâches ».
+            let menu = gtk::Box::new(gtk::Orientation::Vertical, 2);
+            let pop = gtk::Popover::new();
+            pop.set_has_arrow(false);
+            pop.set_child(Some(&menu));
+            pop.set_parent(&root);
+            for (label, icon, act) in [("Modifier la barre des tâches", "document-edit-symbolic", 0), ("Paramètres de la barre des tâches", "emblem-system-symbolic", 1)] {
+                let b = gtk::Button::new();
+                b.add_css_class("flat");
+                let c = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+                c.append(&gtk::Image::from_icon_name(icon));
+                c.append(&gtk::Label::new(Some(label)));
+                b.set_child(Some(&c));
+                let (pop, sh) = (pop.clone(), Rc::downgrade(shell));
+                b.connect_clicked(move |_| {
+                    pop.popdown();
+                    if act == 1 {
+                        apps::spawn("noos-settings taskbar");
+                    } else if let Some(s) = sh.upgrade() {
+                        if let Some(e) = s.editmode.borrow().as_ref() {
+                            e.set_active(true);
+                        }
+                    }
+                });
+                menu.append(&b);
+            }
+            let click = gtk::GestureClick::new();
+            click.set_button(3);
+            let root2 = root.clone();
+            click.connect_pressed(move |g, _, x, y| {
+                // Seulement dans le vide (pas sur une icône, qui a son propre menu).
+                let empty = root2.pick(x, y, gtk::PickFlags::DEFAULT).is_none_or(|w| w.is::<gtk::CenterBox>() || w.has_css_class("edit-zone") || w.is::<gtk::Box>() && w.first_child().is_none());
+                if empty {
+                    g.set_state(gtk::EventSequenceState::Claimed);
+                    pop.set_pointing_to(Some(&gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
+                    pop.popup();
+                }
+            });
+            root.add_controller(click);
+        }
 
         window.set_child(Some(&root));
         let bar = Self {
@@ -421,6 +485,9 @@ impl Taskbar {
             root,
             left,
             vitals,
+            end,
+            frames,
+            tv_btn,
             main,
             search,
             tasks,
@@ -490,17 +557,47 @@ impl Taskbar {
         }
         self.search.set_visible(cfg.taskbar.show_search);
         self.vitals.widget().set_visible(cfg.taskbar.show_vitals);
-        self.root.set_start_widget(gtk::Widget::NONE);
-        self.root.set_center_widget(gtk::Widget::NONE);
-        if self.main.parent().is_some_and(|p| p == *self.left.upcast_ref::<gtk::Widget>()) {
-            self.left.remove(&self.main);
+        self.tv_btn.set_visible(cfg.desktops.taskbar_button);
+        let top = cfg.taskbar.position == "top";
+        self.window.set_anchor(Edge::Bottom, !top);
+        self.window.set_anchor(Edge::Top, top);
+        self.layout(cfg);
+    }
+
+    /// Range les éléments dans les zones (configuration du mode édition).
+    pub fn layout(&self, cfg: &NoosConfig) {
+        for (_, o, _) in &self.frames {
+            if let Some(p) = o.parent().and_downcast::<gtk::Box>() {
+                p.remove(o);
+            }
         }
-        match cfg.taskbar.alignment {
-            TaskbarAlignment::Center => self.root.set_center_widget(Some(&self.main)),
-            // Alignée à gauche : icônes d'abord, widget ensuite.
-            TaskbarAlignment::Left => self.left.prepend(&self.main),
+        let [mut l, mut c, r] = cfg.taskbar.zones();
+        // Alignement à gauche : les éléments du centre suivent ceux de gauche.
+        if cfg.taskbar.alignment == TaskbarAlignment::Left {
+            l.append(&mut c);
+        }
+        for (zone, ids) in [(&self.left, l), (&self.main, c), (&self.end, r)] {
+            for id in ids {
+                if let Some((_, o, _)) = self.frames.iter().find(|(i, _, _)| *i == id) {
+                    zone.append(o);
+                }
+            }
         }
         self.root.set_start_widget(Some(&self.left));
+        self.root.set_center_widget(Some(&self.main));
+        self.root.set_end_widget(Some(&self.end));
+    }
+
+    /// Mode édition : boucliers des éléments et zones visibles.
+    pub fn set_editing(&self, on: bool) {
+        for (_, _, shield) in &self.frames {
+            shield.set_visible(on);
+        }
+        if on {
+            self.root.add_css_class("editing");
+        } else {
+            self.root.remove_css_class("editing");
+        }
     }
 
     pub fn update(&self, windows: &[WindowInfo], cfg: &NoosConfig) {

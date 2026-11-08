@@ -5,7 +5,7 @@ use std::{cell::Cell, rc::Rc, time::Instant};
 
 use adap::prelude::*;
 use gtk::{gio, glib};
-use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
+use gtk4_layer_shell::{KeyboardMode, Layer, LayerShell};
 use noos_core::ipc::Request;
 
 use crate::{Shell, apps};
@@ -74,8 +74,8 @@ impl StartMenu {
         window.init_layer_shell();
         window.set_namespace(Some("noos-startmenu"));
         window.set_layer(Layer::Top);
-        window.set_anchor(Edge::Bottom, true);
-        window.set_margin(Edge::Bottom, 12);
+        crate::editmode::anchor_to_bar(&window, &shell.config());
+        shell.flyouts.borrow_mut().push(window.downgrade());
         window.set_keyboard_mode(KeyboardMode::Exclusive);
         window.set_default_size(640, 680);
 

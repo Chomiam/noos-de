@@ -1371,6 +1371,25 @@ pub fn taskbar(app: &Rc<App>) -> adap::NavigationPage {
     g.add(&vitals);
     content.append(&g);
 
+    let layout = group("Disposition");
+    let pos = combo("view-dual-symbolic", "Position de la barre", "", &["En bas".to_string(), "En haut".to_string()], if t.position == "top" { 1 } else { 0 });
+    {
+        let app = app.clone();
+        pos.connect_selected_notify(move |r| {
+            let v = if r.selected() == 1 { "top" } else { "bottom" };
+            app.update(|c| c.taskbar.position = v.into());
+        });
+    }
+    layout.add(&pos);
+    let edit = card("document-edit-symbolic", "Modifier la disposition", "Mode édition : déplacez les éléments de la barre et ajoutez des widgets au bureau (aussi : clic droit sur le bureau)");
+    edit.set_activatable(true);
+    edit.add_suffix(&gtk::Image::from_icon_name("go-next-symbolic"));
+    edit.connect_activated(|_| {
+        let _ = crate::ui::ipc(noos_core::ipc::Request::ToggleEditMode);
+    });
+    layout.add(&edit);
+    content.append(&layout);
+
     let multi = group("Plusieurs écrans");
     let all = switch("video-display-symbolic", "Barre des tâches sur tous les écrans", "Sinon, seulement sur l'écran principal", t.all_outputs);
     {

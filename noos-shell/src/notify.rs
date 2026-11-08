@@ -126,7 +126,8 @@ fn layer_window(shell: &Shell, namespace: &str, keyboard: KeyboardMode) -> gtk::
     window.add_css_class("noos-layer");
     window.init_layer_shell();
     window.set_namespace(Some(namespace));
-    window.set_anchor(Edge::Bottom, true);
+    crate::editmode::anchor_to_bar(&window, &shell.config());
+        shell.flyouts.borrow_mut().push(window.downgrade());
     window.set_anchor(Edge::Right, true);
     window.set_margin(Edge::Bottom, 12);
     window.set_margin(Edge::Right, 12);

@@ -7,6 +7,7 @@
 mod apps;
 mod audio;
 mod drives;
+mod editmode;
 mod net;
 mod notify;
 mod polkit;
@@ -89,6 +90,10 @@ pub struct Shell {
     pub desktops: RefCell<(Vec<String>, usize)>,
     pub outputs: RefCell<Vec<noos_core::ipc::OutputInfo>>,
     pub taskview: RefCell<Option<Rc<taskview::TaskView>>>,
+    /// Mode édition du bureau (barre réorganisable, widgets).
+    pub editmode: RefCell<Option<Rc<editmode::EditMode>>>,
+    /// Panneaux placés contre la barre des tâches (replacés si elle change de bord).
+    pub flyouts: RefCell<Vec<glib::WeakRef<gtk::Window>>>,
     pub slideshow: wallpaper::Slideshow,
     css: gtk::CssProvider,
 }
@@ -130,6 +135,7 @@ impl Shell {
                 self.taskbars.borrow_mut().push(taskbar::Taskbar::new(self, &monitor));
             }
         }
+        self.rebuild_desktop_widgets();
         self.refresh_tasks();
     }
 
@@ -167,6 +173,31 @@ impl Shell {
         }
     }
 
+    /// Mode édition : réorganisation de la barre (disposition, bord) appliquée à toutes les barres.
+    pub fn relayout_taskbars(self: &Rc<Self>) {
+        self.apply_style(&self.config());
+        let editing = self.editmode.borrow().as_ref().is_some_and(|e| e.active.get());
+        for t in self.taskbars.borrow().iter() {
+            t.set_editing(editing);
+        }
+    }
+
+    pub fn set_editing(self: &Rc<Self>, on: bool) {
+        for t in self.taskbars.borrow().iter() {
+            t.set_editing(on);
+        }
+        for w in self.wallpapers.borrow().iter() {
+            w.build_widgets(self, on);
+        }
+    }
+
+    pub fn rebuild_desktop_widgets(self: &Rc<Self>) {
+        let editing = self.editmode.borrow().as_ref().is_some_and(|e| e.active.get());
+        for w in self.wallpapers.borrow().iter() {
+            w.build_widgets(self, editing);
+        }
+    }
+
     /// Écran principal (nom du connecteur), d'après le compositeur.
     pub fn primary_output(&self) -> Option<String> {
         self.outputs.borrow().iter().find(|o| o.primary).map(|o| o.name.clone())
@@ -195,6 +226,11 @@ impl Shell {
         }
         for w in self.wallpapers.borrow().iter() {
             w.apply_config(cfg);
+        }
+        // Panneaux : contre la barre, en bas ou en haut.
+        self.flyouts.borrow_mut().retain(|w| w.upgrade().is_some());
+        for w in self.flyouts.borrow().iter().filter_map(|w| w.upgrade()) {
+            editmode::anchor_to_bar(&w, cfg);
         }
         self.slideshow.sync(self, cfg);
         self.refresh_indicators();
@@ -227,6 +263,11 @@ impl Shell {
                     tv.refresh_if_open();
                 }
                 self.refresh_tasks();
+            }
+            Event::ToggleEditMode => {
+                if let Some(e) = self.editmode.borrow().as_ref() {
+                    e.toggle();
+                }
             }
             Event::ToggleTaskView => {
                 self.close_flyouts();
@@ -398,6 +439,8 @@ fn main() -> glib::ExitCode {
             desktops: RefCell::new((vec!["Bureau 1".into()], 0)),
             outputs: RefCell::new(vec![]),
             taskview: RefCell::new(None),
+            editmode: RefCell::new(None),
+            flyouts: RefCell::new(vec![]),
             slideshow: wallpaper::Slideshow::default(),
             css,
         });
@@ -411,6 +454,14 @@ fn main() -> glib::ExitCode {
         *shell.drives.borrow_mut() = Some(drives::Drives::new(&shell));
         *shell.updates.borrow_mut() = Some(updates::UpdateIcon::new(&shell));
         *shell.taskview.borrow_mut() = Some(taskview::TaskView::new(&shell));
+        *shell.editmode.borrow_mut() = Some(editmode::EditMode::new(&shell));
+        {
+            let provider = gtk::CssProvider::new();
+            provider.load_from_string(editmode::CSS);
+            if let Some(d) = gdk::Display::default() {
+                gtk::style_context_add_provider_for_display(&d, &provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION + 3);
+            }
+        }
         {
             // Icônes réseau / volume : toutes les 5 s (et juste après une action).
             shell.refresh_status_soon();

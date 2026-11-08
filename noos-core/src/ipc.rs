@@ -51,6 +51,8 @@ pub enum Request {
     ToggleStartMenu,
     /// Ouvre / ferme la vue des tâches (Super+Tab).
     ToggleTaskView,
+    /// Mode édition du bureau (disposition de la barre, widgets).
+    ToggleEditMode,
     // ── Bureaux virtuels ──
     /// État des bureaux (réponse : `Desktops`).
     GetDesktops,
@@ -91,6 +93,8 @@ pub enum Event {
     ToggleStartMenu,
     /// Super+Tab : vue des tâches.
     ToggleTaskView,
+    /// Mode édition du bureau.
+    ToggleEditMode,
     /// Bureaux virtuels : noms et bureau actif (diffusé à chaque changement).
     Desktops { names: Vec<String>, current: usize },
     ConfigReloaded,

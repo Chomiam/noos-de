@@ -23,6 +23,9 @@ pub struct NoosConfig {
     pub autoplay: AutoPlay,
     pub updates: Updates,
     pub desktops: Desktops,
+    /// Widgets posés sur le bureau (mode édition).
+    #[serde(rename = "desktop_widget")]
+    pub desktop_widgets: Vec<DesktopWidget>,
     pub notifications: Notifications,
     pub tiling: Tiling,
     /// Réglages par écran (nom du connecteur DRM, ex. `DP-1`, `HDMI-A-1`).
@@ -130,6 +133,44 @@ pub struct Taskbar {
     pub all_outputs: bool,
     /// Écrans secondaires : seulement les fenêtres de cet écran.
     pub windows_on_own_output: bool,
+    /// Bord de l'écran : `bottom` (par défaut) ou `top`.
+    pub position: String,
+    /// Disposition (mode édition) : éléments de chaque zone, dans l'ordre. Identifiants :
+    /// `vitals`, `start`, `search`, `taskview`, `tasks`, `tray`, `status`, `clock`,
+    /// `notifications`, `showdesktop`.
+    pub zone_left: Vec<String>,
+    pub zone_center: Vec<String>,
+    pub zone_right: Vec<String>,
+}
+
+impl Taskbar {
+    pub const DEFAULT_LEFT: &'static [&'static str] = &["vitals"];
+    pub const DEFAULT_CENTER: &'static [&'static str] = &["start", "search", "taskview", "tasks"];
+    pub const DEFAULT_RIGHT: &'static [&'static str] = &["tray", "status", "clock", "notifications", "showdesktop"];
+
+    /// Zones validées : chaque élément connu une seule fois ; ceux qui manquent reprennent
+    /// leur zone par défaut.
+    pub fn zones(&self) -> [Vec<String>; 3] {
+        let all: Vec<&str> = Self::DEFAULT_LEFT.iter().chain(Self::DEFAULT_CENTER).chain(Self::DEFAULT_RIGHT).copied().collect();
+        let mut seen: Vec<String> = vec![];
+        let mut z: [Vec<String>; 3] = Default::default();
+        for (k, list) in [&self.zone_left, &self.zone_center, &self.zone_right].into_iter().enumerate() {
+            for id in list {
+                if all.contains(&id.as_str()) && !seen.contains(id) {
+                    seen.push(id.clone());
+                    z[k].push(id.clone());
+                }
+            }
+        }
+        for (k, defaults) in [Self::DEFAULT_LEFT, Self::DEFAULT_CENTER, Self::DEFAULT_RIGHT].into_iter().enumerate() {
+            for id in defaults {
+                if !seen.iter().any(|s| s == id) {
+                    z[k].push(id.to_string());
+                }
+            }
+        }
+        z
+    }
 }
 
 impl Default for Taskbar {
@@ -144,6 +185,10 @@ impl Default for Taskbar {
             show_vitals: true,
             all_outputs: true,
             windows_on_own_output: false,
+            position: "bottom".into(),
+            zone_left: Taskbar::DEFAULT_LEFT.iter().map(|s| s.to_string()).collect(),
+            zone_center: Taskbar::DEFAULT_CENTER.iter().map(|s| s.to_string()).collect(),
+            zone_right: Taskbar::DEFAULT_RIGHT.iter().map(|s| s.to_string()).collect(),
             start_pinned: [
                 "org.noos.Files",
                 "org.noos.Settings",
@@ -278,6 +323,20 @@ impl Default for Power {
 }
 
 // ───────────────────────────── Verrouillage ─────────────────────────────
+
+/// Widget du bureau : `clock`, `vitals`, `note`, `calendar`, placé en fraction de l'écran.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(default)]
+pub struct DesktopWidget {
+    pub kind: String,
+    /// Écran (nom du connecteur ; vide = principal).
+    pub output: String,
+    /// Coin supérieur gauche, en fraction de la largeur / hauteur de l'écran.
+    pub x: f64,
+    pub y: f64,
+    /// Contenu (texte de la note).
+    pub text: String,
+}
 
 /// Bureaux virtuels.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

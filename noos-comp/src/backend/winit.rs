@@ -98,8 +98,8 @@ pub fn run() -> anyhow::Result<()> {
     });
     let (mut backend, winit) = match size {
         Some((w, h)) => winit::init_from_attributes::<GlesRenderer>(
-            smithay::reexports::winit::window::Window::default_attributes()
-                .with_inner_size(smithay::reexports::winit::dpi::LogicalSize::new(w as f64, h as f64))
+            smithay::reexports::winit::window::WindowAttributes::default()
+                .with_surface_size(smithay::reexports::winit::dpi::LogicalSize::new(w as f64, h as f64))
                 .with_title("NOOS — compositeur (mode imbriqué)")
                 .with_visible(true),
         ),

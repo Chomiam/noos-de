@@ -201,6 +201,27 @@ volants, Courbes) et des créations (Horizon rétro, Lampe à lave, Vitrail, Tun
 Lumières de la ville) ; **bibliothèque** locale ; **import** d'un fichier ou de code collé
 (format Shadertoy `mainImage`, ou GLSL Sandbox converti automatiquement).
 
+## Bureaux virtuels, plusieurs écrans, mode édition
+
+**Bureaux virtuels** comme Windows : Super+Ctrl+← / → pour changer (glissement animé, nom du
+bureau affiché), Super+Ctrl+D pour en créer un, Super+Ctrl+F4 pour le fermer,
+Super+Ctrl+Maj+← / → pour emporter la fenêtre active. **Vue des tâches** (Super+Tab ou bouton
+de la barre, la molette change de bureau) : fenêtres du bureau actif, miniatures de chaque
+bureau, glisser une fenêtre sur un bureau pour l'y envoyer, renommer (double-clic), fermer,
+ajouter. Menu des icônes de la barre : déplacer vers un bureau, afficher sur tous les bureaux.
+Paramètres › **Bureaux virtuels** : liste (renommer, réordonner, supprimer), barre des tâches
+limitée au bureau actif ou non, navigation circulaire, animation, indicateur, raccourcis.
+
+**Plusieurs écrans** : Paramètres › Écran dispose les moniteurs à la souris (ils se collent
+bord à bord), choisit l'écran principal ; Super+Maj+← / → envoie une fenêtre sur l'écran
+voisin (en gardant son ancrage) ; barre des tâches sur tous les écrans ou seulement le
+principal, chacune avec les fenêtres de son écran si on le souhaite.
+
+**Mode édition** (clic droit sur le bureau ou la barre) : les éléments de la barre se
+déplacent d'une zone à l'autre par glisser-déposer, la barre passe en haut ou en bas (les
+panneaux suivent), et des widgets se posent librement sur le bureau : horloge, ressources,
+note (son texte est gardé), calendrier.
+
 ## Mises à jour
 
 Un service de la session (`noos-update-check.timer`) recherche les mises à jour en

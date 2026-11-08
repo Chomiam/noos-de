@@ -15,6 +15,11 @@ use crate::Shell;
 
 pub struct Wallpaper {
     pub window: gtk::Window,
+    /// Widgets du bureau (mode édition), posés librement sur le fond.
+    fixed: gtk::Fixed,
+    widgets: RefCell<Vec<crate::editmode::DeskWidget>>,
+    output: String,
+    monitor: gdk::Monitor,
     stack: gtk::Stack,
     pictures: [gtk::Picture; 2],
     /// Image affichée (index dans `pictures`).
@@ -69,12 +74,97 @@ impl Wallpaper {
             p.set_can_shrink(true);
             stack.add_named(p, Some(&i.to_string()));
         }
-        window.set_child(Some(&stack));
+        let overlay = gtk::Overlay::new();
+        overlay.set_child(Some(&stack));
+        let fixed = gtk::Fixed::new();
+        overlay.add_overlay(&fixed);
+        window.set_child(Some(&overlay));
+        // Clic droit sur le bureau : mode édition et réglages.
+        {
+            let menu = gtk::Box::new(gtk::Orientation::Vertical, 2);
+            let pop = gtk::Popover::new();
+            pop.set_has_arrow(false);
+            pop.set_child(Some(&menu));
+            pop.set_parent(&overlay);
+            let item = |label: &str, icon: &str, f: Box<dyn Fn()>| {
+                let b = gtk::Button::new();
+                b.add_css_class("flat");
+                let c = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+                c.append(&gtk::Image::from_icon_name(icon));
+                c.append(&gtk::Label::new(Some(label)));
+                b.set_child(Some(&c));
+                let pop = pop.clone();
+                b.connect_clicked(move |_| {
+                    pop.popdown();
+                    f();
+                });
+                menu.append(&b);
+            };
+            let sh = Rc::downgrade(shell);
+            item("Modifier le bureau", "document-edit-symbolic", Box::new(move || {
+                if let Some(s) = sh.upgrade() {
+                    if let Some(e) = s.editmode.borrow().as_ref() {
+                        e.set_active(true);
+                    }
+                }
+            }));
+            let sh = Rc::downgrade(shell);
+            item("Vue des tâches", "window-restore-symbolic", Box::new(move || {
+                if let Some(s) = sh.upgrade() {
+                    if let Some(t) = s.taskview.borrow().as_ref() {
+                        t.toggle();
+                    }
+                }
+            }));
+            item("Changer le fond d'écran", "preferences-desktop-wallpaper-symbolic", Box::new(|| crate::apps::spawn("noos-settings background")));
+            item("Paramètres d'affichage", "video-display-symbolic", Box::new(|| crate::apps::spawn("noos-settings display")));
+            let click = gtk::GestureClick::new();
+            click.set_button(3);
+            click.connect_pressed(move |_, _, x, y| {
+                pop.set_pointing_to(Some(&gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
+                pop.popup();
+            });
+            overlay.add_controller(click);
+        }
 
-        let w = Self { window, stack, pictures, front: Cell::new(0), shown: RefCell::new(None) };
+        let w = Self {
+            window,
+            fixed,
+            widgets: RefCell::new(vec![]),
+            output: monitor.connector().map(|c| c.to_string()).unwrap_or_default(),
+            monitor: monitor.clone(),
+            stack,
+            pictures,
+            front: Cell::new(0),
+            shown: RefCell::new(None),
+        };
         w.apply_config(&shell.config());
         w.window.present();
         w
+    }
+
+    /// (Re)construit les widgets du bureau de cet écran.
+    pub fn build_widgets(&self, shell: &Rc<Shell>, editing: bool) {
+        for w in self.widgets.borrow_mut().drain(..) {
+            self.fixed.remove(&w.frame);
+        }
+        let cfg = shell.config();
+        let primary = shell.primary_output();
+        let geo = self.monitor.geometry();
+        let size = (geo.width(), geo.height());
+        let mut has_note = false;
+        for (i, w) in cfg.desktop_widgets.iter().enumerate() {
+            let mine = if w.output.is_empty() { primary.as_ref().is_none_or(|p| *p == self.output) } else { w.output == self.output };
+            if !mine {
+                continue;
+            }
+            has_note |= w.kind == "note";
+            let dw = crate::editmode::build_widget(shell, i, w, &self.fixed, size);
+            dw.set_editing(editing);
+            self.widgets.borrow_mut().push(dw);
+        }
+        // Une note se tape au clavier : le fond d'écran accepte alors le focus clavier.
+        self.window.set_keyboard_mode(if has_note || editing { KeyboardMode::OnDemand } else { KeyboardMode::None });
     }
 
     /// Fond fixe (hors diaporama).

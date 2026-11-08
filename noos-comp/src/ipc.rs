@@ -237,6 +237,10 @@ impl NoosState {
                 self.ipc.broadcast(&Event::ToggleTaskView);
                 Event::Ok
             }
+            Request::ToggleEditMode => {
+                self.ipc.broadcast(&Event::ToggleEditMode);
+                Event::Ok
+            }
             Request::GetDesktops => Event::Desktops { names: self.desktop_names(), current: self.desktops.current },
             Request::SwitchDesktop { index } => {
                 self.switch_desktop(index);
