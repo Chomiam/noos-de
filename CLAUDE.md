@@ -169,6 +169,8 @@ On ne peut pas cliquer dans l'aperçu : utiliser les variables de test ci-dessou
   (mode `lock`) ou `noos-lock --screensaver` (mode `screensaver` : même protocole, se retire à
   la première entrée). Super+L / mise en veille pendant l'écran de veille : on le tue et
   `check_lock_client` relance le vrai verrouillage (`lock.command`).
+- **Abonnements D-Bus sur le bus système** : garder la connexion (`udisks::watch` la retient),
+  sinon GIO la ferme et les signaux n'arrivent plus, sans erreur (Explorateur non rafraîchi).
 - **udisks2 depuis Rust (gio)** : construire les arguments avec `Variant::tuple_from_iter`
   (`noos_disk::ops::tup`) — `(opts,).to_variant()` emballe un `a{sv}` dans un `v` et udisks
   répond « Type of message (v) does not match (a{sv}) ». Ne jamais tester formatage /

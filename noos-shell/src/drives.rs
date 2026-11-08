@@ -23,15 +23,15 @@ const CSS: &str = r#"
 .drives-menu .drives-title { font-weight: 700; margin: 6px 8px 8px 8px; }
 .drives-menu .drive-item { border-radius: 8px; padding: 8px; }
 .drives-menu .drive-sub { font-size: 0.82em; opacity: 0.65; }
-.autoplay { padding: 18px; min-width: 380px; }
+.autoplay {
+  padding: 18px; min-width: 400px; border-radius: 14px;
+  background-color: @window_bg_color; color: @window_fg_color;
+  border: 1px solid alpha(@window_fg_color, 0.10);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.38);
+}
 .autoplay .ap-icon { min-width: 52px; min-height: 52px; border-radius: 14px; color: @accent_color;
-  background: linear-gradient(135deg, alpha(@accent_bg_color, 0.3), alpha(@accent_bg_color, 0.08)); }
-.autoplay .ap-title { font-weight: 700; font-size: 1.1em; }
-.autoplay .ap-sub { opacity: 0.7; font-size: 0.88em; }
-.autoplay .ap-question { margin: 14px 0 8px 0; font-weight: 600; }
-.autoplay .ap-choice { border-radius: 10px; padding: 10px 12px; }
-.autoplay .ap-choice:hover { background-color: alpha(@accent_bg_color, 0.16); }
-.autoplay .ap-choice .ap-choice-sub { font-size: 0.82em; opacity: 0.65; }
+  background: linear-gradient(135deg, alpha(@accent_bg_color, 0.30), alpha(@accent_bg_color, 0.08)); }
+.autoplay row image.accent { color: @accent_color; }
 "#;
 
 pub struct Drives {
@@ -44,6 +44,20 @@ pub struct Drives {
     /// Disques branchés en attente de la fenêtre (on laisse les volumes apparaître).
     pending: RefCell<Vec<String>>,
     autoplay: RefCell<Option<gtk::Window>>,
+    /// Disque de la fenêtre de lecture automatique ouverte.
+    autoplay_drive: RefCell<Option<String>>,
+}
+
+/// Joue un son de NOOS (`data/sounds`) par PipeWire, sans bloquer.
+pub fn play(name: &str) {
+    let candidates = [noos_core::paths::data_dir().join("sounds").join(name), std::path::PathBuf::from("/opt/noos/share/noos/sounds").join(name)];
+    let Some(file) = candidates.into_iter().find(|p| p.exists()) else { return };
+    std::thread::spawn(move || {
+        let ok = std::process::Command::new("pw-play").arg("--volume=0.7").arg(&file).status().is_ok_and(|s| s.success());
+        if !ok {
+            let _ = std::process::Command::new("paplay").arg(&file).status();
+        }
+    });
 }
 
 /// Notification par le serveur de notifications du shell (appel asynchrone : pas de blocage).
@@ -99,6 +113,7 @@ impl Drives {
             known: RefCell::new(known),
             pending: RefCell::new(vec![]),
             autoplay: RefCell::new(None),
+            autoplay_drive: RefCell::new(None),
         });
         if let Some(c) = &conn {
             let w = Rc::downgrade(&d);
@@ -155,6 +170,13 @@ impl Drives {
         // Nouveaux disques externes (pas les nouveaux volumes d'un disque déjà là : un
         // formatage dans Disques ne doit pas rouvrir la fenêtre ; pas les images disque).
         let mut fresh_drives = vec![];
+        let old = self.model.borrow().clone();
+        let removed: Vec<String> = old
+            .drives
+            .iter()
+            .filter(|d| d.is_external() && d.connection != "loop" && !old.is_system(&d.path) && m.drive(&d.path).is_none())
+            .map(|d| d.path.clone())
+            .collect();
         {
             let mut known = self.known.borrow_mut();
             for d in &m.drives {
@@ -164,7 +186,21 @@ impl Drives {
             }
             known.retain(|p| m.drive(p).is_some());
         }
-        // Retrait d'un disque : fermer sa fenêtre de lecture automatique.
+        let sounds = self.shell.upgrade().is_some_and(|s| s.config().autoplay.sounds);
+        if !removed.is_empty() {
+            if sounds {
+                play("noos-device-removed.wav");
+            }
+            // Retrait du disque de la fenêtre de lecture automatique : on la ferme.
+            if self.autoplay_drive.borrow().as_ref().is_some_and(|d| removed.contains(d)) {
+                if let Some(w) = self.autoplay.borrow_mut().take() {
+                    w.destroy();
+                }
+            }
+        }
+        if !fresh_drives.is_empty() && sounds {
+            play("noos-device-added.wav");
+        }
         *self.model.borrow_mut() = m;
         let buttons: Vec<_> = self.buttons.borrow().clone();
         for (b, l) in &buttons {
@@ -282,6 +318,9 @@ impl Drives {
         let after = {
             let (s, drive, action) = (self.clone(), drive.to_string(), cfg.action.clone());
             move || {
+                if let Some(m) = s.conn.as_ref().and_then(|c| udisks::load(c).ok()) {
+                    *s.model.borrow_mut() = m;
+                }
                 let m = s.model.borrow().clone();
                 let mp = m.volumes(&drive).iter().find_map(|v| v.mounted_at()).map(String::from);
                 match action.as_str() {
@@ -299,7 +338,8 @@ impl Drives {
         mount_each(conn, to_mount, Rc::new(after));
     }
 
-    /// Fenêtre « Lecture automatique » (coin inférieur droit, au-dessus de la barre).
+    /// Fenêtre « Lecture automatique » (coin inférieur droit, au-dessus de la barre), dans le
+    /// style des applications NOOS : en-tête, puis une liste de choix (lignes libAdapta).
     fn show_autoplay(self: &Rc<Self>, drive: &str) {
         if let Some(w) = self.autoplay.borrow_mut().take() {
             w.destroy();
@@ -321,65 +361,69 @@ impl Drives {
         window.set_margin(Edge::Bottom, 12);
         window.set_margin(Edge::Right, 12);
         window.set_keyboard_mode(KeyboardMode::OnDemand);
-        let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        root.add_css_class("noos-flyout");
+        let root = gtk::Box::new(gtk::Orientation::Vertical, 14);
         root.add_css_class("autoplay");
+
+        // En-tête : icône, nom du volume, description du périphérique.
         let head = gtk::Box::new(gtk::Orientation::Horizontal, 14);
         let icon = gtk::Image::from_icon_name(d.icon());
-        icon.set_pixel_size(30);
+        icon.set_pixel_size(28);
         icon.add_css_class("ap-icon");
+        icon.set_valign(gtk::Align::Center);
         head.append(&icon);
         let tv = gtk::Box::new(gtk::Orientation::Vertical, 2);
         tv.set_hexpand(true);
         tv.set_valign(gtk::Align::Center);
         let label_name = m.volumes(drive).iter().map(|v| v.id_label.clone()).find(|l| !l.is_empty());
         let t = gtk::Label::new(Some(&label_name.clone().unwrap_or_else(|| d.name())));
-        t.add_css_class("ap-title");
+        t.add_css_class("title-3");
         t.set_xalign(0.0);
         t.set_ellipsize(gtk::pango::EllipsizeMode::End);
         tv.append(&t);
         let sub = gtk::Label::new(Some(&format!("{}{}", if label_name.is_some() { format!("{} · ", d.name()) } else { String::new() }, volume_desc(&m, &d))));
-        sub.add_css_class("ap-sub");
+        sub.add_css_class("dim-label");
+        sub.add_css_class("caption");
         sub.set_xalign(0.0);
         sub.set_wrap(true);
-        sub.set_max_width_chars(40);
+        sub.set_max_width_chars(42);
         tv.append(&sub);
         head.append(&tv);
         let close = gtk::Button::from_icon_name("window-close-symbolic");
         close.add_css_class("flat");
+        close.add_css_class("circular");
         close.set_valign(gtk::Align::Start);
+        close.set_tooltip_text(Some("Fermer"));
         head.append(&close);
         root.append(&head);
-        let q = gtk::Label::new(Some(if blank { "Ce périphérique n'est pas formaté. Que voulez-vous faire ?" } else { "Choisissez ce qu'il faut faire avec ce périphérique." }));
-        q.add_css_class("ap-question");
+
+        let q = gtk::Label::new(Some(if blank { "Ce périphérique n'est pas formaté" } else { "Que voulez-vous faire ?" }));
+        q.add_css_class("heading");
         q.set_xalign(0.0);
-        q.set_wrap(true);
         root.append(&q);
 
-        let always = gtk::CheckButton::with_label("Toujours faire ceci pour les périphériques amovibles");
-        let choices = gtk::Box::new(gtk::Orientation::Vertical, 2);
-        let add_choice = |icon: &str, title: &str, subtitle: &str, key: &'static str, f: Box<dyn Fn()>| {
-            let b = gtk::Button::new();
-            b.add_css_class("flat");
-            b.add_css_class("ap-choice");
-            let h = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-            let i = gtk::Image::from_icon_name(icon);
-            i.set_pixel_size(22);
-            h.append(&i);
-            let v = gtk::Box::new(gtk::Orientation::Vertical, 1);
-            let l = gtk::Label::new(Some(title));
-            l.set_xalign(0.0);
-            v.append(&l);
+        let always = adap::SwitchRow::new();
+        always.set_title("Toujours faire ceci");
+        always.set_subtitle("Pour les clés USB et disques externes");
+        let list = gtk::ListBox::new();
+        list.add_css_class("boxed-list");
+        list.set_selection_mode(gtk::SelectionMode::None);
+        let add_choice = |icon: &str, title: &str, subtitle: &str, key: &'static str, accent: bool, f: Box<dyn Fn()>| {
+            let r = adap::ActionRow::new();
+            r.set_use_markup(false);
+            r.set_title(title);
             if !subtitle.is_empty() {
-                let s = gtk::Label::new(Some(subtitle));
-                s.add_css_class("ap-choice-sub");
-                s.set_xalign(0.0);
-                v.append(&s);
+                r.set_subtitle(subtitle);
             }
-            h.append(&v);
-            b.set_child(Some(&h));
+            let i = gtk::Image::from_icon_name(icon);
+            i.set_pixel_size(20);
+            if accent {
+                i.add_css_class("accent");
+            }
+            r.add_prefix(&i);
+            r.add_suffix(&gtk::Image::from_icon_name("go-next-symbolic"));
+            r.set_activatable(true);
             let (w, always, shell) = (window.clone(), always.clone(), Rc::downgrade(&shell));
-            b.connect_clicked(move |_| {
+            r.connect_activated(move |_| {
                 if always.is_active() && !key.is_empty() {
                     if let Some(s) = shell.upgrade() {
                         s.update_config(|c| c.autoplay.action = key.to_string());
@@ -388,15 +432,15 @@ impl Drives {
                 w.destroy();
                 f();
             });
-            choices.append(&b);
+            list.append(&r);
         };
         if blank {
             let dev = device.clone();
-            add_choice("edit-clear-all-symbolic", "Formater le périphérique", "exFAT, NTFS, FAT32, ext4… avec l'application Disques", "", Box::new(move || apps::spawn(&format!("noos-disk --format {dev}"))));
+            add_choice("edit-clear-all-symbolic", "Formater", "exFAT, NTFS, FAT32, ext4… avec Disques", "", true, Box::new(move || apps::spawn(&format!("noos-disk --format {dev}"))));
         }
         if let Some(mp) = mount.clone() {
             let mp2 = mp.clone();
-            add_choice("folder-open-symbolic", "Ouvrir le dossier pour afficher les fichiers", "Explorateur de fichiers", "open", Box::new(move || open_folder(&mp2)));
+            add_choice("folder-open-symbolic", "Ouvrir dans l'Explorateur", "Afficher les fichiers", "open", true, Box::new(move || open_folder(&mp2)));
             let media = count_media(&mp);
             if media.0 > 0 {
                 let (mp3, name) = (mp.clone(), d.name());
@@ -405,30 +449,65 @@ impl Drives {
                     "Importer les photos et vidéos",
                     &format!("{} fichier{} vers Images › Importées", media.0, if media.0 > 1 { "s" } else { "" }),
                     "import",
+                    false,
                     Box::new(move || import_media(&mp3, &name)),
                 );
             }
             if media.1 > 0 {
                 let mp4 = mp.clone();
-                add_choice("audio-x-generic-symbolic", "Lire la musique et les vidéos", "Avec l'application par défaut", "", Box::new(move || play_media(&mp4)));
+                add_choice("media-playback-start-symbolic", "Lire la musique et les vidéos", "Avec l'application par défaut", "", false, Box::new(move || play_media(&mp4)));
+            }
+        } else if !blank {
+            // Volume non monté (montage automatique coupé ou refusé) : le monter puis l'ouvrir.
+            let vols: Vec<String> = m.volumes(drive).iter().map(|v| v.path.clone()).collect();
+            if let (Some(conn), false) = (self.conn.clone(), vols.is_empty()) {
+                add_choice(
+                    "folder-open-symbolic",
+                    "Ouvrir dans l'Explorateur",
+                    "Monter le volume et afficher les fichiers",
+                    "open",
+                    true,
+                    Box::new(move || {
+                        let c2 = conn.clone();
+                        ops::mount(&c2, &vols[0], |r| match r {
+                            Ok(mp) => open_folder(&mp),
+                            Err(e) => notify("Ouverture impossible", &e, "dialog-warning-symbolic"),
+                        })
+                    }),
+                );
             }
         }
         let dev2 = device.clone();
-        add_choice("drive-harddisk-symbolic", "Gérer le périphérique", "Partitions, formatage, santé, test de vitesse (Disques)", "", Box::new(move || apps::spawn(&format!("noos-disk {dev2}"))));
+        add_choice("drive-harddisk-symbolic", "Gérer le périphérique", "Partitions, formatage, santé, vitesse", "", false, Box::new(move || apps::spawn(&format!("noos-disk {dev2}"))));
         if mount.is_some() {
             let (s2, path, name) = (self.clone(), d.path.clone(), d.name());
-            add_choice("media-eject-symbolic", "Éjecter", "Retirer en toute sécurité", "", Box::new(move || s2.eject(&path, &name)));
+            add_choice("media-eject-symbolic", "Éjecter", "Retirer en toute sécurité", "", false, Box::new(move || s2.eject(&path, &name)));
         }
-        add_choice("action-unavailable-symbolic", "Ne rien faire", "", "nothing", Box::new(|| {}));
-        root.append(&choices);
-        always.set_margin_top(8);
+        add_choice("action-unavailable-symbolic", "Ne rien faire", "", "nothing", false, Box::new(|| {}));
+        root.append(&list);
         if !blank {
-            root.append(&always);
+            let opts = gtk::ListBox::new();
+            opts.add_css_class("boxed-list");
+            opts.set_selection_mode(gtk::SelectionMode::None);
+            opts.append(&always);
+            root.append(&opts);
         }
         window.set_child(Some(&root));
         {
             let w = window.clone();
             close.connect_clicked(move |_| w.destroy());
+        }
+        {
+            let keys = gtk::EventControllerKey::new();
+            let w = window.clone();
+            keys.connect_key_pressed(move |_, k, _, _| {
+                if k == gtk::gdk::Key::Escape {
+                    w.destroy();
+                    return glib::Propagation::Stop;
+                }
+                glib::Propagation::Proceed
+            });
+            window.add_controller(keys);
         }
         {
             // Fermeture automatique après 30 s sans choix.
@@ -441,6 +520,7 @@ impl Drives {
         }
         window.present();
         *self.autoplay.borrow_mut() = Some(window);
+        *self.autoplay_drive.borrow_mut() = Some(drive.to_string());
     }
 }
 

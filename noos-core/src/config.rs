@@ -280,11 +280,13 @@ pub struct AutoPlay {
     /// Que faire : `ask` (fenêtre de choix), `open` (Explorateur), `import` (photos),
     /// `nothing` (simple notification).
     pub action: String,
+    /// Sons au branchement et au retrait d'un périphérique.
+    pub sounds: bool,
 }
 
 impl Default for AutoPlay {
     fn default() -> Self {
-        Self { mount: true, action: "ask".into() }
+        Self { mount: true, action: "ask".into(), sounds: true }
     }
 }
 

@@ -487,6 +487,9 @@ pub fn load(conn: &gio::DBusConnection) -> Result<Model, String> {
 /// Appelle `f` (avec un délai de regroupement de 250 ms) à chaque changement côté udisks :
 /// disque branché / retiré, montage, formatage, progression d'une tâche…
 pub fn watch(conn: &gio::DBusConnection, f: impl Fn() + 'static) -> Vec<gio::SignalSubscriptionId> {
+    // GIO ne garde qu'une référence faible sur la connexion au bus système : si l'appelant
+    // la relâche, elle est fermée et les abonnements meurent en silence. On la garde.
+    std::mem::forget(conn.clone());
     let f = std::rc::Rc::new(f);
     let pending = std::rc::Rc::new(std::cell::Cell::new(false));
     let mut ids = vec![];

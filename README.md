@@ -222,7 +222,8 @@ Dans la barre des tâches, l'icône **« Retirer le périphérique en toute séc
 périphériques externes (ouvrir, éjecter). Au branchement, la fenêtre **Lecture automatique**
 propose d'ouvrir les fichiers, d'importer photos et vidéos (Images › Importées), de lire les
 médias, de gérer ou de formater le périphérique ; « Toujours faire ceci » mémorise le choix
-(`[autoplay]`). L'Explorateur affiche tous les volumes, montés ou non, avec un bouton
+(`[autoplay]`). Un son (créé pour NOOS, `data/sounds/generate.py`) accompagne le branchement
+et le retrait (`[autoplay] sounds`). L'Explorateur affiche tous les volumes, montés ou non, avec un bouton
 d'éjection.
 
 ## Réseau et Internet (Paramètres)
