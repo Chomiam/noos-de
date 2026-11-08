@@ -143,6 +143,8 @@ impl NoosState {
                 }
                 let outputs = self.backend.output_infos(&self.space, &self.config);
                 self.ipc.send_to(client, &Event::Outputs { outputs });
+                let desktops = Event::Desktops { names: self.desktop_names(), current: self.desktops.current };
+                self.ipc.send_to(client, &desktops);
                 Event::Windows { windows: self.window_list() }
             }
             Request::GetWindows => {
@@ -150,6 +152,10 @@ impl NoosState {
                 for info in windows.iter_mut().filter(|w| !w.minimized) {
                     if let Some(geo) = self.window_by_id(info.id).and_then(|w| self.space.element_geometry(&w)) {
                         info.geometry = Some([geo.loc.x, geo.loc.y, geo.size.w, geo.size.h]);
+                    } else if let Some((w, loc)) = self.desktops.parked.iter().find(|(w, _)| crate::state::window_data(w).id == info.id) {
+                        // Fenêtre d'un autre bureau : sa position garée (miniatures des bureaux).
+                        let size = w.geometry().size;
+                        info.geometry = Some([loc.x, loc.y, size.w, size.h]);
                     }
                 }
                 Event::Windows { windows }
@@ -227,6 +233,43 @@ impl NoosState {
                     Event::Error { message: format!("écran {output} inconnu") }
                 }
             }
+            Request::ToggleTaskView => {
+                self.ipc.broadcast(&Event::ToggleTaskView);
+                Event::Ok
+            }
+            Request::GetDesktops => Event::Desktops { names: self.desktop_names(), current: self.desktops.current },
+            Request::SwitchDesktop { index } => {
+                self.switch_desktop(index);
+                Event::Ok
+            }
+            Request::SwitchDesktopRelative { delta } => {
+                self.switch_desktop_relative(delta);
+                Event::Ok
+            }
+            Request::AddDesktop { name, switch } => {
+                self.add_desktop(name, switch);
+                Event::Ok
+            }
+            Request::RemoveDesktop { index } => {
+                self.remove_desktop(index);
+                Event::Ok
+            }
+            Request::RenameDesktop { index, name } => {
+                self.rename_desktop(index, name);
+                Event::Ok
+            }
+            Request::MoveDesktop { from, to } => {
+                self.move_desktop(from, to);
+                Event::Ok
+            }
+            Request::MoveWindowToDesktop { id, index, follow } => self.with_window(id, |s, w| s.move_window_to_desktop(&w, index, follow)),
+            Request::SetSticky { id, sticky } => self.with_window(id, |s, w| s.set_sticky(&w, sticky)),
+            Request::MoveWindowToOutput { id, output } => self.with_window(id, |s, w| {
+                let target = s.space.outputs().find(|o| o.name() == output).cloned();
+                if let Some(o) = target {
+                    s.move_window_to_output(&w, &o);
+                }
+            }),
             Request::ToggleStartMenu => {
                 self.ipc.broadcast(&Event::ToggleStartMenu);
                 Event::Ok

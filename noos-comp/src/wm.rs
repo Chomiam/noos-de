@@ -48,9 +48,7 @@ impl NoosState {
     /// Après un changement de géométrie d'écran : couches, fenêtres maximisées, clients.
     pub fn output_changed(&mut self, output: &Output) {
         smithay::desktop::layer_map_for_output(output).arrange();
-        if let crate::backend::Backend::Udev(_) = self.backend {
-            self.arrange_outputs();
-        }
+        self.apply_output_layout();
         self.relayout_maximized(output);
         let outputs = self.backend.output_infos(&self.space, &self.config);
         self.ipc.broadcast(&Event::Outputs { outputs });
@@ -88,6 +86,8 @@ impl NoosState {
 
     /// Restaure si réduite, puis donne le focus.
     pub fn activate_window(&mut self, window: &Window) {
+        // Fenêtre d'un autre bureau : on y va d'abord.
+        self.bring_desktop_of(window);
         if let Some(pos) = self.minimized.iter().position(|w| w == window) {
             let w = self.minimized.remove(pos);
             let restore = window_data(&w).restore.borrow_mut().take();
@@ -398,6 +398,7 @@ impl NoosState {
             .elements()
             .map(|w| (w, false))
             .chain(self.minimized.iter().map(|w| (w, true)))
+            .chain(self.desktops.parked.iter().map(|(w, _)| (w, false)))
             .filter(|(w, _)| window_data(w).placed.get())
             .map(|(w, minimized)| {
                 let (title, app_id) = w
@@ -418,6 +419,9 @@ impl NoosState {
                     minimized,
                     maximized: d.maximized.get(),
                     fullscreen: d.fullscreen.get(),
+                    desktop: d.desktop.get(),
+                    sticky: d.sticky.get(),
+                    output: self.space.outputs_for_element(w).first().map(|o| o.name()).unwrap_or_default(),
                     geometry: None,
                 }
             })

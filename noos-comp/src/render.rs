@@ -207,8 +207,26 @@ pub fn output_elements(
         .cloned()
         .collect();
     let dragged = state.dragged_window().cloned();
+    // Changement de bureau : le nouveau entre par le côté pendant que l'ancien sort.
+    let slide = state.desktop_slide_offsets(output_geo.size.w);
+    let (in_off, out_off) = slide.unwrap_or((0, 0));
+    if slide.is_some() {
+        let leaving: Vec<(Window, smithay::utils::Point<i32, Logical>)> =
+            state.desktops.slide.as_ref().map(|s| s.leaving.clone()).unwrap_or_default();
+        for (window, loc) in leaving.iter().rev() {
+            if !window.alive() {
+                continue;
+            }
+            let loc = *loc + smithay::utils::Point::from((out_off, 0));
+            let render_loc = (loc - window.geometry().loc - output_geo.loc).to_physical_precise_round(scale);
+            let we: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = window.render_elements(renderer, render_loc, scale, 1.0);
+            elements.extend(we.into_iter().map(NoosElement::Surface));
+        }
+    }
     for window in windows {
         let Some(loc) = state.space.element_location(&window) else { continue };
+        let sticky = crate::state::window_data(&window).sticky.get();
+        let loc = if sticky { loc } else { loc + smithay::utils::Point::from((in_off, 0)) };
         let wgeo = window.geometry();
         let animating = window_data_anim(&window);
         let geo = match state.window_anim_rect(&window) {

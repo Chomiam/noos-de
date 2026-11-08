@@ -22,6 +22,7 @@ pub struct NoosConfig {
     pub lock: Lock,
     pub autoplay: AutoPlay,
     pub updates: Updates,
+    pub desktops: Desktops,
     pub notifications: Notifications,
     pub tiling: Tiling,
     /// Réglages par écran (nom du connecteur DRM, ex. `DP-1`, `HDMI-A-1`).
@@ -125,6 +126,10 @@ pub struct Taskbar {
     pub tray_expanded: bool,
     /// Widget « Ressources » à gauche de la barre (processeur, mémoire, disque…).
     pub show_vitals: bool,
+    /// Barre des tâches sur tous les écrans (sinon seulement l'écran principal).
+    pub all_outputs: bool,
+    /// Écrans secondaires : seulement les fenêtres de cet écran.
+    pub windows_on_own_output: bool,
 }
 
 impl Default for Taskbar {
@@ -137,6 +142,8 @@ impl Default for Taskbar {
             show_search: true,
             tray_expanded: false,
             show_vitals: true,
+            all_outputs: true,
+            windows_on_own_output: false,
             start_pinned: [
                 "org.noos.Files",
                 "org.noos.Settings",
@@ -271,6 +278,32 @@ impl Default for Power {
 }
 
 // ───────────────────────────── Verrouillage ─────────────────────────────
+
+/// Bureaux virtuels.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct Desktops {
+    /// Noms des bureaux (au moins un).
+    pub names: Vec<String>,
+    /// Barre des tâches : fenêtres de tous les bureaux (sinon seulement du bureau actif).
+    pub taskbar_all: bool,
+    /// Alt+Tab : fenêtres de tous les bureaux.
+    pub alt_tab_all: bool,
+    /// Passer du dernier bureau au premier (et inversement).
+    pub wrap: bool,
+    /// Glissement animé au changement de bureau.
+    pub animation: bool,
+    /// Nom du bureau affiché brièvement au changement.
+    pub osd: bool,
+    /// Bouton « Vue des tâches » dans la barre des tâches.
+    pub taskbar_button: bool,
+}
+
+impl Default for Desktops {
+    fn default() -> Self {
+        Self { names: vec!["Bureau 1".into()], taskbar_all: false, alt_tab_all: false, wrap: false, animation: true, osd: true, taskbar_button: true }
+    }
+}
 
 /// Vérification automatique des mises à jour (timer utilisateur `noos-update-check.timer`).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -438,6 +471,10 @@ pub struct OutputConfig {
     pub enabled: Option<bool>,
     /// Orientation : `normal`, `90`, `180`, `270` (sens horaire).
     pub transform: Option<String>,
+    /// Position dans l'espace des écrans (logique) ; absent = rangé automatiquement.
+    pub position: Option<[i32; 2]>,
+    /// Écran principal.
+    pub primary: Option<bool>,
 }
 
 impl NoosConfig {

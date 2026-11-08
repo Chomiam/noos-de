@@ -67,6 +67,10 @@ pub struct WindowData {
     pub zone: Cell<Option<crate::tiling::Zone>>,
     /// Animation de déplacement / redimensionnement en cours.
     pub anim: RefCell<Option<crate::tiling::Anim>>,
+    /// Bureau virtuel de la fenêtre.
+    pub desktop: Cell<usize>,
+    /// Visible sur tous les bureaux.
+    pub sticky: Cell<bool>,
 }
 
 pub fn window_data(window: &Window) -> &WindowData {
@@ -86,6 +90,8 @@ pub struct NoosState {
     pub space: Space<Window>,
     pub popups: PopupManager,
     pub minimized: Vec<Window>,
+    /// Bureaux virtuels (voir `desktops.rs`).
+    pub desktops: crate::desktops::Desktops,
     /// Fenêtre plein écran par nom d'écran.
     pub fullscreen: HashMap<String, Window>,
     pub next_window_id: u64,
@@ -260,6 +266,7 @@ impl NoosState {
             space: Space::default(),
             popups: PopupManager::default(),
             minimized: Vec::new(),
+            desktops: Default::default(),
             fullscreen: HashMap::new(),
             next_window_id: 1,
             compositor_state,
@@ -356,6 +363,7 @@ impl NoosState {
         self.space
             .elements()
             .chain(self.minimized.iter())
+            .chain(self.desktops.parked.iter().map(|(w, _)| w))
             .find(|w| window_data(w).id == id)
             .cloned()
     }
@@ -465,6 +473,8 @@ impl NoosState {
         }
         info!("configuration rechargée");
         self.backend.apply_config(&self.config);
+        self.apply_output_layout();
+        self.clamp_desktops();
         self.update_vrr();
         self.ipc.broadcast(&noos_core::ipc::Event::ConfigReloaded);
     }

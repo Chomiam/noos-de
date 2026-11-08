@@ -49,6 +49,29 @@ pub enum Request {
     SetTransform { output: String, transform: String },
     /// Ouvre / ferme le menu Démarrer (équivalent de la touche Super).
     ToggleStartMenu,
+    /// Ouvre / ferme la vue des tâches (Super+Tab).
+    ToggleTaskView,
+    // ── Bureaux virtuels ──
+    /// État des bureaux (réponse : `Desktops`).
+    GetDesktops,
+    /// Aller au bureau `index` (0 = premier).
+    SwitchDesktop { index: usize },
+    /// Bureau suivant (+1) / précédent (-1).
+    SwitchDesktopRelative { delta: i32 },
+    /// Nouveau bureau (nom par défaut « Bureau n »), devient le bureau actif si `switch`.
+    AddDesktop { name: Option<String>, switch: bool },
+    /// Supprime un bureau : ses fenêtres rejoignent le bureau voisin.
+    RemoveDesktop { index: usize },
+    RenameDesktop { index: usize, name: String },
+    /// Déplace un bureau dans la liste (réordonner).
+    MoveDesktop { from: usize, to: usize },
+    /// Envoie une fenêtre sur un bureau (`follow` : on y va aussi).
+    MoveWindowToDesktop { id: WindowId, index: usize, follow: bool },
+    /// Fenêtre visible sur tous les bureaux.
+    SetSticky { id: WindowId, sticky: bool },
+    // ── Écrans multiples ──
+    /// Envoie une fenêtre sur un autre écran (nom du connecteur).
+    MoveWindowToOutput { id: WindowId, output: String },
     /// Capture de l'écran (premier écran) au format PNG.
     Screenshot { path: String },
     /// Verrouiller la session (lance `noos-lock`).
@@ -66,6 +89,10 @@ pub enum Event {
     Outputs { outputs: Vec<OutputInfo> },
     /// La touche Super a été pressée seule : ouvrir/fermer le menu Démarrer.
     ToggleStartMenu,
+    /// Super+Tab : vue des tâches.
+    ToggleTaskView,
+    /// Bureaux virtuels : noms et bureau actif (diffusé à chaque changement).
+    Desktops { names: Vec<String>, current: usize },
     ConfigReloaded,
     Error { message: String },
     Ok,
@@ -80,6 +107,15 @@ pub struct WindowInfo {
     pub minimized: bool,
     pub maximized: bool,
     pub fullscreen: bool,
+    /// Bureau virtuel de la fenêtre (index).
+    #[serde(default)]
+    pub desktop: usize,
+    /// Visible sur tous les bureaux.
+    #[serde(default)]
+    pub sticky: bool,
+    /// Écran où se trouve la fenêtre (nom du connecteur, vide si inconnue).
+    #[serde(default)]
+    pub output: String,
     /// Position et taille (coordonnées logiques globales : x, y, largeur, hauteur).
     /// Renseignée seulement en réponse à `GetWindows` (pas dans les diffusions).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -112,6 +148,19 @@ pub struct OutputInfo {
     pub format: String,
     /// Le compositeur tourne en fenêtre (mode développement imbriqué).
     pub nested: bool,
+    /// Position dans l'espace des écrans (logique, coin supérieur gauche).
+    #[serde(default)]
+    pub x: i32,
+    #[serde(default)]
+    pub y: i32,
+    /// Taille logique (après échelle et rotation).
+    #[serde(default)]
+    pub logical_width: i32,
+    #[serde(default)]
+    pub logical_height: i32,
+    /// Écran principal (barre des tâches complète, nouvelles fenêtres).
+    #[serde(default)]
+    pub primary: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]

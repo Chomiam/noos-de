@@ -47,6 +47,15 @@ enum Action {
     AltTab,
     ReloadConfig,
     Lock,
+    /// Bureau virtuel suivant / précédent.
+    Desktop(i32),
+    /// Emporter la fenêtre active sur le bureau voisin.
+    WindowToDesktop(i32),
+    NewDesktop,
+    CloseDesktop,
+    TaskView,
+    /// Envoyer la fenêtre active sur l'écran voisin.
+    WindowToOutput(i32),
 }
 
 fn terminal_command() -> String {
@@ -92,6 +101,19 @@ fn shortcut(mods: &ModifiersState, sym: Keysym) -> Option<Action> {
     }
     if !mods.logo {
         return None;
+    }
+    // Bureaux virtuels et écrans (comme Windows).
+    match sym {
+        Keysym::Left if mods.ctrl && mods.shift => return Some(Action::WindowToDesktop(-1)),
+        Keysym::Right if mods.ctrl && mods.shift => return Some(Action::WindowToDesktop(1)),
+        Keysym::Left if mods.ctrl => return Some(Action::Desktop(-1)),
+        Keysym::Right if mods.ctrl => return Some(Action::Desktop(1)),
+        Keysym::Left if mods.shift => return Some(Action::WindowToOutput(-1)),
+        Keysym::Right if mods.shift => return Some(Action::WindowToOutput(1)),
+        Keysym::d | Keysym::D if mods.ctrl => return Some(Action::NewDesktop),
+        Keysym::F4 if mods.ctrl => return Some(Action::CloseDesktop),
+        Keysym::Tab | Keysym::ISO_Left_Tab => return Some(Action::TaskView),
+        _ => {}
     }
     match sym {
         Keysym::e | Keysym::E => Some(Action::Spawn("noos-file".into())),
@@ -187,6 +209,27 @@ impl NoosState {
                 }
             }
             Action::ShowDesktop => self.show_desktop(),
+            Action::Desktop(d) => self.switch_desktop_relative(d),
+            Action::WindowToDesktop(d) => {
+                if let Some(w) = self.focused_window() {
+                    let n = self.desktop_count() as i32;
+                    let target = self.desktops.current as i32 + d;
+                    if (0..n).contains(&target) {
+                        self.move_window_to_desktop(&w, target as usize, true);
+                    }
+                }
+            }
+            Action::NewDesktop => self.add_desktop(None, true),
+            Action::CloseDesktop => {
+                let cur = self.desktops.current;
+                self.remove_desktop(cur);
+            }
+            Action::TaskView => self.ipc.broadcast(&noos_core::ipc::Event::ToggleTaskView),
+            Action::WindowToOutput(d) => {
+                if let Some(w) = self.focused_window() {
+                    self.move_window_to_adjacent_output(&w, d);
+                }
+            }
             Action::AltTab => self.cycle_windows(),
             Action::ReloadConfig => self.reload_config(),
             Action::Close => {
@@ -272,9 +315,14 @@ impl NoosState {
     }
 
     fn on_pointer_motion_absolute<I: InputBackend>(&mut self, event: I::PointerMotionAbsoluteEvent) {
-        let Some(output) = self.space.outputs().next().cloned() else { return };
-        let geo = self.space.output_geometry(&output).unwrap_or_default();
-        let pos = event.position_transformed(geo.size) + geo.loc.to_f64();
+        let pos = if let crate::backend::Backend::Winit(d) = &self.backend {
+            // Fenêtre de développement (éventuellement découpée en plusieurs écrans).
+            d.window_to_global(event.position_transformed(d.backend.window_size().to_logical(1)), &self.space)
+        } else {
+            let Some(output) = self.space.outputs().next().cloned() else { return };
+            let geo = self.space.output_geometry(&output).unwrap_or_default();
+            event.position_transformed(geo.size) + geo.loc.to_f64()
+        };
         let serial = SERIAL_COUNTER.next_serial();
         let under = self.surface_under(pos);
         let pointer = self.pointer.clone();

@@ -239,7 +239,9 @@ impl XdgShellHandler for NoosState {
         let window = Window::new_wayland_window(surface.clone());
         let id = self.next_window_id;
         self.next_window_id += 1;
+        let desktop = self.desktops.current;
         window.user_data().insert_if_missing(|| WindowData { id, ..Default::default() });
+        crate::state::window_data(&window).desktop.set(desktop);
 
         // Les applis GTK4/libadwaita dessinent leurs propres décorations (CSD).
         surface.with_pending_state(|state| {
@@ -372,6 +374,7 @@ impl XdgShellHandler for NoosState {
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
         self.minimized.retain(|w| w.toplevel().is_some_and(|t| t != &surface));
+        self.desktops.parked.retain(|(w, _)| w.toplevel().is_some_and(|t| t != &surface));
         self.fullscreen.retain(|_, w| w.toplevel().is_some_and(|t| t != &surface));
         if let Some(window) = self.window_for_surface(surface.wl_surface()) {
             let id = window_data(&window).id;

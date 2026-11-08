@@ -1,5 +1,7 @@
 //! Backend imbriqué : NOOS s'affiche dans une fenêtre de la session courante (GNOME…).
 //! Idéal pour développer sans quitter son bureau : `cargo run -p noos-comp -- --winit`.
+//! `NOOS_WINIT_OUTPUTS=2` (ou 3) : la fenêtre est découpée en plusieurs écrans côte à côte,
+//! pour tester le multi-écrans sans second moniteur.
 
 use std::time::Duration;
 
@@ -8,12 +10,17 @@ use smithay::{
     backend::{
         allocator::dmabuf::Dmabuf,
         egl::EGLDevice,
-        renderer::{ImportDma, ImportMemWl, damage::OutputDamageTracker, gles::GlesRenderer},
+        renderer::{
+            ImportDma, ImportMemWl,
+            damage::OutputDamageTracker,
+            element::utils::{Relocate, RelocateRenderElement},
+            gles::GlesRenderer,
+        },
         winit::{self, WinitEvent, WinitGraphicsBackend},
     },
     output::{Mode, Output, PhysicalProperties, Subpixel},
     reexports::{calloop::EventLoop, wayland_server::Display},
-    utils::Transform,
+    utils::{Logical, Point, Transform},
     wayland::dmabuf::{DmabufFeedbackBuilder, DmabufState},
 };
 use tracing::warn;
@@ -22,7 +29,8 @@ use crate::{backend::Backend, render, state::NoosState};
 
 pub struct WinitData {
     pub backend: WinitGraphicsBackend<GlesRenderer>,
-    pub output: Output,
+    /// Écrans simulés, de gauche à droite dans la fenêtre.
+    pub outputs: Vec<Output>,
     pub damage_tracker: OutputDamageTracker,
     last_render: std::time::Instant,
     swap_interval_set: bool,
@@ -39,17 +47,31 @@ impl WinitData {
         Err("en mode imbriqué, redimensionnez la fenêtre de développement à la souris".into())
     }
 
-    pub fn output_info(&self) -> OutputInfo {
-        let mode = self.output.current_mode().unwrap_or(Mode { size: (0, 0).into(), refresh: 60_000 });
+    /// Position d'un point de la fenêtre hôte dans l'espace des écrans.
+    pub fn window_to_global(&self, p: Point<f64, Logical>, space: &smithay::desktop::Space<smithay::desktop::Window>) -> Point<f64, Logical> {
+        let n = self.outputs.len().max(1) as f64;
+        let w = self.backend.window_size().w as f64 / n;
+        let k = ((p.x / w).floor().max(0.0) as usize).min(self.outputs.len() - 1);
+        let o = &self.outputs[k];
+        let g = space.output_geometry(o).unwrap_or_default();
+        Point::from((g.loc.x as f64 + p.x - w * k as f64, g.loc.y as f64 + p.y))
+    }
+
+    pub fn output_infos(&self) -> Vec<OutputInfo> {
+        self.outputs.iter().map(|o| Self::output_info(o)).collect()
+    }
+
+    fn output_info(output: &Output) -> OutputInfo {
+        let mode = output.current_mode().unwrap_or(Mode { size: (0, 0).into(), refresh: 60_000 });
         let modes = vec![ModeInfo { width: mode.size.w, height: mode.size.h, refresh: mode.refresh, preferred: true }];
         OutputInfo {
-            name: self.output.name(),
+            name: output.name(),
             make: "NOOS".into(),
             model: "Fenêtre de développement".into(),
             width: mode.size.w,
             height: mode.size.h,
             refresh: mode.refresh,
-            scale: self.output.current_scale().fractional_scale(),
+            scale: output.current_scale().fractional_scale(),
             modes,
             transform: "normal".into(),
             can_set_mode: false,
@@ -59,6 +81,7 @@ impl WinitData {
             hdr_active: false,
             format: "ARGB8888".into(),
             nested: true,
+            ..Default::default()
         }
     }
 }
@@ -68,24 +91,47 @@ pub fn run() -> anyhow::Result<()> {
     let display: Display<NoosState> = Display::new()?;
     let dh = display.handle();
 
-    let (mut backend, winit) =
-        winit::init::<GlesRenderer>().map_err(|e| anyhow::anyhow!("initialisation winit : {e}"))?;
+    // NOOS_WINIT_SIZE=2560x800 : taille de la fenêtre de développement (tests multi-écrans).
+    let size = std::env::var("NOOS_WINIT_SIZE").ok().and_then(|v| {
+        let (w, h) = v.split_once('x')?;
+        Some((w.parse::<u32>().ok()?, h.parse::<u32>().ok()?))
+    });
+    let (mut backend, winit) = match size {
+        Some((w, h)) => winit::init_from_attributes::<GlesRenderer>(
+            smithay::reexports::winit::window::Window::default_attributes()
+                .with_inner_size(smithay::reexports::winit::dpi::LogicalSize::new(w as f64, h as f64))
+                .with_title("NOOS — compositeur (mode imbriqué)")
+                .with_visible(true),
+        ),
+        None => winit::init::<GlesRenderer>(),
+    }
+    .map_err(|e| anyhow::anyhow!("initialisation winit : {e}"))?;
     backend.window().set_title("NOOS — compositeur (mode imbriqué)");
 
-    let mode = Mode { size: backend.window_size(), refresh: 60_000 };
-    let output = Output::new(
-        "NOOS-1".into(),
-        PhysicalProperties {
-            size: (0, 0).into(),
-            subpixel: Subpixel::Unknown,
-            make: "NOOS".into(),
-            model: "winit".into(),
-            serial_number: "0".into(),
-        },
-    );
-    let _global = output.create_global::<NoosState>(&dh);
-    output.change_current_state(Some(mode), Some(Transform::Flipped180), None, Some((0, 0).into()));
-    output.set_preferred(mode);
+    let count = std::env::var("NOOS_WINIT_OUTPUTS").ok().and_then(|v| v.parse::<i32>().ok()).unwrap_or(1).clamp(1, 3);
+    let win = backend.window_size();
+    let mut outputs = vec![];
+    for k in 0..count {
+        let mode = Mode { size: (win.w / count, win.h).into(), refresh: 60_000 };
+        let output = Output::new(
+            format!("NOOS-{}", k + 1),
+            PhysicalProperties {
+                size: (0, 0).into(),
+                subpixel: Subpixel::Unknown,
+                make: "NOOS".into(),
+                model: if count > 1 { format!("Écran simulé {}", k + 1) } else { "winit".into() },
+                serial_number: k.to_string(),
+            },
+        );
+        std::mem::forget(output.create_global::<NoosState>(&dh));
+        // Un seul écran : transformation Flipped180 (rendu GL à l'envers dans la fenêtre).
+        // Plusieurs : rendu commun, la transformation est appliquée par le suivi des dégâts.
+        let t = if count == 1 { Transform::Flipped180 } else { Transform::Normal };
+        output.change_current_state(Some(mode), Some(t), None, Some((mode.size.w * k, 0).into()));
+        output.set_preferred(mode);
+        outputs.push(output);
+    }
+    let output = outputs[0].clone();
 
     // linux-dmabuf : indispensable pour les clients GTK4 accélérés (GL/Vulkan).
     let mut dmabuf_state = DmabufState::new();
@@ -103,24 +149,35 @@ pub fn run() -> anyhow::Result<()> {
         }
     };
 
-    let damage_tracker = OutputDamageTracker::from_output(&output);
+    let damage_tracker = if count == 1 { OutputDamageTracker::from_output(&output) } else { OutputDamageTracker::new(win, 1.0, Transform::Flipped180) };
     let shm_formats = backend.renderer().shm_formats();
-    let data = WinitData { backend, output: output.clone(), damage_tracker, last_render: std::time::Instant::now(), swap_interval_set: false };
+    let data = WinitData { backend, outputs: outputs.clone(), damage_tracker, last_render: std::time::Instant::now(), swap_interval_set: false };
 
     let mut state = NoosState::new(display, event_loop.handle(), event_loop.get_signal(), Backend::Winit(data));
     state.dmabuf_state = Some((dmabuf_state, dmabuf_global));
     state.shm_state.update_formats(shm_formats);
-    state.space.map_output(&output, (0, 0));
+    for o in &outputs {
+        let loc = o.current_location();
+        state.space.map_output(o, loc);
+    }
+    state.apply_output_layout();
 
     event_loop
         .handle()
         .insert_source(winit, move |event, _, state| match event {
             WinitEvent::Resized { size, .. } => {
-                let mode = Mode { size, refresh: 60_000 };
-                output.change_current_state(Some(mode), None, None, None);
-                output.set_preferred(mode);
-                smithay::desktop::layer_map_for_output(&output).arrange();
-                state.relayout_maximized(&output);
+                let n = outputs.len() as i32;
+                for o in &outputs {
+                    let mode = Mode { size: (size.w / n, size.h).into(), refresh: 60_000 };
+                    o.change_current_state(Some(mode), None, None, None);
+                    o.set_preferred(mode);
+                }
+                if n > 1 {
+                    if let Backend::Winit(d) = &mut state.backend {
+                        d.damage_tracker = OutputDamageTracker::new(size, 1.0, Transform::Flipped180);
+                    }
+                }
+                state.apply_output_layout();
                 state.update_vrr();
             }
             WinitEvent::Input(event) => state.process_input_event(event),
@@ -156,11 +213,12 @@ impl NoosState {
             return;
         };
         data.last_render = std::time::Instant::now();
-        let output = data.output.clone();
+        let outputs = data.outputs.clone();
         let clear = render::clear_color(self);
         // Capture demandée : rendu complet pour ne pas lire un tampon périmé.
         let age = if self.pending_screenshot.is_some() { 0 } else { data.backend.buffer_age().unwrap_or(0) };
         let size = data.backend.window_size();
+        let slice = size.w / outputs.len().max(1) as i32;
 
         let swap_set = data.swap_interval_set;
         let mut swap_now_set = false;
@@ -170,12 +228,22 @@ impl NoosState {
                 // par défaut, que Smithay ne modifie pas). Si la fenêtre est cachée côté GNOME,
                 // tout le compositeur se figeait (IPC compris) : on passe l'intervalle à 0.
                 // Dans une fenêtre, c'est le compositeur hôte qui dessine le curseur par défaut.
-                let elements = render::output_elements(self, renderer, &output, None);
-                let res = data
-                    .damage_tracker
-                    .render_output(renderer, &mut fb, age, &elements, clear)
-                    .map(|r| r.damage.cloned())
-                    .map_err(|e| format!("{e:?}"));
+                let res = if outputs.len() == 1 {
+                    let elements = render::output_elements(self, renderer, &outputs[0], None);
+                    data.damage_tracker.render_output(renderer, &mut fb, age, &elements, clear).map(|r| r.damage.cloned()).map_err(|e| format!("{e:?}"))
+                } else {
+                    // Plusieurs écrans simulés : chacun décalé dans sa tranche de la fenêtre.
+                    let mut elements = vec![];
+                    for (k, o) in outputs.iter().enumerate() {
+                        let off: Point<i32, smithay::utils::Physical> = (slice * k as i32, 0).into();
+                        elements.extend(
+                            render::output_elements(self, renderer, o, None)
+                                .into_iter()
+                                .map(|e| RelocateRenderElement::from_element(e, off, Relocate::Relative)),
+                        );
+                    }
+                    data.damage_tracker.render_output(renderer, &mut fb, age, &elements, clear).map(|r| r.damage.cloned()).map_err(|e| format!("{e:?}"))
+                };
                 // Après le rendu : le contexte est alors forcément actif sur la surface de la
                 // fenêtre (avant, Smithay ne l'active pas toujours → EGL_BAD_CONTEXT). On
                 // réessaie à chaque frame tant que l'appel échoue.
@@ -204,15 +272,19 @@ impl NoosState {
             data.swap_interval_set = true;
         }
         // Captures (après submit : on ne touche pas au tampon de la fenêtre).
-        if self.capture.has_pending() && self.capture_wanted(&output) {
-            let renderer = data.backend.renderer();
-            let elements = render::output_elements(self, renderer, &output, None);
-            self.process_captures(renderer, &output, &elements, clear);
+        for output in &outputs {
+            if self.capture.has_pending() && self.capture_wanted(output) {
+                let renderer = data.backend.renderer();
+                let elements = render::output_elements(self, renderer, output, None);
+                self.process_captures(renderer, output, &elements, clear);
+            }
         }
         let cursor_visible = matches!(self.cursor_status, smithay::input::pointer::CursorImageStatus::Named(_));
         data.backend.window().set_cursor_visible(cursor_visible);
         self.backend = Backend::Winit(data);
 
-        self.send_frames(&output);
+        for output in &outputs {
+            self.send_frames(output);
+        }
     }
 }

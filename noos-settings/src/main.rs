@@ -6,6 +6,7 @@
 
 mod apps;
 mod default_apps;
+mod desktops;
 mod lockscreen;
 mod login;
 mod network;
@@ -31,6 +32,7 @@ const CATEGORIES: &[(&str, &str, &str, Builder)] = &[
     ("Réseau et Internet", "network-wireless-symbolic", "nav-teal", network::root),
     ("Personnalisation", "applications-graphics-symbolic", "nav-orange", personalization::root),
     ("Applications", "view-app-grid-symbolic", "nav-purple", apps::root),
+    ("Bureaux virtuels", "window-restore-symbolic", "nav-purple", desktops::root),
     ("Jeux", "input-gaming-symbolic", "nav-green", other::gaming),
     ("Confidentialité et sécurité", "security-high-symbolic", "nav-grey", security::root),
     ("Mises à jour", "software-update-available-symbolic", "nav-teal", other::updates),
@@ -67,11 +69,13 @@ const SEARCH: &[(&str, &str, usize, Option<Builder>)] = &[
     ("Polices", "police font texte", 3, Some(personalization::fonts)),
     ("Écran de verrouillage", "verrouillage verrouiller écran de veille animation shader catalogue importer assombrir éteindre super+l", 3, Some(lockscreen::root)),
     ("Applications par défaut", "applications par défaut ouvrir avec associations type de fichier navigateur", 4, Some(apps::default_apps)),
-    ("VRR / FreeSync", "vrr freesync gsync variable jeux", 5, None),
-    ("Mode Jeu", "mode jeu gaming", 5, None),
-    ("Pare-feu", "pare-feu firewall ports sécurité ufw firewalld", 6, Some(security::firewall_page)),
-    ("Ouvrir un port", "port ouvrir pare-feu serveur", 6, Some(security::firewall_page)),
-    ("Mises à jour", "mise à jour updates logiciels", 7, None),
+    ("Bureaux virtuels", "bureaux virtuels espaces de travail vue des tâches super+tab multitâche", 5, None),
+    ("Disposition des écrans", "plusieurs écrans moniteurs disposition principal second écran multi", 0, Some(system::display)),
+    ("VRR / FreeSync", "vrr freesync gsync variable jeux", 6, None),
+    ("Mode Jeu", "mode jeu gaming", 6, None),
+    ("Pare-feu", "pare-feu firewall ports sécurité ufw firewalld", 7, Some(security::firewall_page)),
+    ("Ouvrir un port", "port ouvrir pare-feu serveur", 7, Some(security::firewall_page)),
+    ("Mises à jour", "mise à jour updates logiciels", 8, None),
 ];
 
 /// Pages ouvrables directement : `noos-settings firewall`, `noos-settings display`…
@@ -100,10 +104,11 @@ const PAGES: &[(&str, usize, Option<Builder>)] = &[
     ("lockscreen", 3, Some(lockscreen::root)),
     ("apps", 4, None),
     ("default-apps", 4, Some(apps::default_apps)),
-    ("gaming", 5, None),
-    ("privacy", 6, None),
-    ("firewall", 6, Some(security::firewall_page)),
-    ("updates", 7, None),
+    ("desktops", 5, None),
+    ("gaming", 6, None),
+    ("privacy", 7, None),
+    ("firewall", 7, Some(security::firewall_page)),
+    ("updates", 8, None),
 ];
 
 thread_local! {

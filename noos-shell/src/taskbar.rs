@@ -20,6 +20,8 @@ use crate::{Shell, apps};
 pub struct Taskbar {
     pub window: gtk::Window,
     shell: Weak<Shell>,
+    /// Écran de cette barre (nom du connecteur).
+    output: String,
     root: gtk::CenterBox,
     /// Zone de gauche : widget Ressources (+ les icônes si la barre est alignée à gauche).
     left: gtk::Box,
@@ -129,6 +131,33 @@ impl Taskbar {
         main.set_valign(gtk::Align::Center);
         main.append(&start_btn);
         main.append(&search);
+        // ── Vue des tâches (bureaux virtuels) : clic = vue, molette = bureau voisin ──
+        let tv_btn = gtk::Button::new();
+        let tv_icon = gtk::Image::from_icon_name("window-restore-symbolic");
+        tv_icon.set_pixel_size(icon_size(cfg.taskbar.height as i32));
+        tv_btn.set_child(Some(&tv_icon));
+        tv_btn.add_css_class("task");
+        tv_btn.add_css_class("taskview-button");
+        tv_btn.set_tooltip_text(Some("Vue des tâches et bureaux (Super+Tab)\nMolette : bureau suivant / précédent"));
+        tv_btn.set_visible(cfg.desktops.taskbar_button);
+        {
+            let shell = shell.clone();
+            tv_btn.connect_clicked(move |_| {
+                if let Some(tv) = shell.taskview.borrow().as_ref() {
+                    tv.toggle();
+                }
+            });
+        }
+        {
+            let scroll = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL | gtk::EventControllerScrollFlags::DISCRETE);
+            scroll.connect_scroll(|_, _, dy| {
+                let delta = if dy > 0.0 { 1 } else { -1 };
+                apps::request(Request::SwitchDesktopRelative { delta });
+                glib::Propagation::Stop
+            });
+            tv_btn.add_controller(scroll);
+        }
+        main.append(&tv_btn);
         main.append(&tasks);
 
         // ── Zone de droite ──
@@ -395,6 +424,7 @@ impl Taskbar {
             main,
             search,
             tasks,
+            output: monitor.connector().map(|c| c.to_string()).unwrap_or_default(),
             pressed: std::rc::Rc::new(Cell::new(false)),
             pending: std::rc::Rc::new(std::cell::RefCell::new(None)),
             menu_open: std::rc::Rc::new(Cell::new(false)),
@@ -478,10 +508,24 @@ impl Taskbar {
             *self.pending.borrow_mut() = Some((windows.to_vec(), cfg.clone()));
             return;
         }
+        // Bureau actif seulement (sauf réglage), et écran de cette barre si demandé.
+        let (current, primary) = self
+            .shell
+            .upgrade()
+            .map(|s| (s.desktops.borrow().1, s.primary_output()))
+            .unwrap_or((0, None));
+        let is_primary = primary.as_ref().is_none_or(|p| *p == self.output);
+        let windows: Vec<WindowInfo> = windows
+            .iter()
+            .filter(|w| cfg.desktops.taskbar_all || w.sticky || w.desktop == current)
+            .filter(|w| !cfg.taskbar.windows_on_own_output || w.output == self.output || (w.output.is_empty() && is_primary))
+            .cloned()
+            .collect();
+        let windows = &windows[..];
         let key = format!(
-            "{:?}|{:?}|{}",
+            "{:?}|{:?}|{}|{current}",
             cfg.taskbar.pinned,
-            windows.iter().map(|w| (w.id, &w.app_id, &w.title, w.focused, w.minimized)).collect::<Vec<_>>(),
+            windows.iter().map(|w| (w.id, &w.app_id, &w.title, w.focused, w.minimized, w.desktop, w.sticky)).collect::<Vec<_>>(),
             self.height.get()
         );
         if *self.shown.borrow() == key {
@@ -815,6 +859,54 @@ fn task_button(item: Item, icon_px: i32, shell: &Weak<Shell>, hold: Hold) -> gtk
     }
 
     if !item.windows.is_empty() {
+        let ids: Vec<u64> = item.windows.iter().map(|w| w.id).collect();
+        let (desktops, outputs) = shell.upgrade().map(|s| (s.desktops.borrow().clone(), s.outputs.borrow().clone())).unwrap_or_default();
+        let sticky = item.windows.iter().all(|w| w.sticky);
+        let win_desktop = item.windows[0].desktop;
+        if desktops.0.len() > 1 && !sticky {
+            for (i, name) in desktops.0.iter().enumerate() {
+                if i == win_desktop {
+                    continue;
+                }
+                let b = entry(&format!("Déplacer vers « {name} »"), "go-next-symbolic");
+                let (ids, popover) = (ids.clone(), popover.clone());
+                b.connect_clicked(move |_| {
+                    popover.popdown();
+                    for id in &ids {
+                        apps::request(Request::MoveWindowToDesktop { id: *id, index: i, follow: false });
+                    }
+                });
+                menu.append(&b);
+            }
+        }
+        {
+            let b = entry(if sticky { "Afficher seulement sur ce bureau" } else { "Afficher sur tous les bureaux" }, "view-pin-symbolic");
+            let (ids, popover) = (ids.clone(), popover.clone());
+            b.connect_clicked(move |_| {
+                popover.popdown();
+                for id in &ids {
+                    apps::request(Request::SetSticky { id: *id, sticky: !sticky });
+                }
+            });
+            menu.append(&b);
+        }
+        if outputs.len() > 1 {
+            let here = item.windows[0].output.clone();
+            for (k, o) in outputs.iter().enumerate() {
+                if o.name == here {
+                    continue;
+                }
+                let b = entry(&format!("Déplacer vers l'écran {} ({})", k + 1, o.model), "video-display-symbolic");
+                let (ids, popover, name) = (ids.clone(), popover.clone(), o.name.clone());
+                b.connect_clicked(move |_| {
+                    popover.popdown();
+                    for id in &ids {
+                        apps::request(Request::MoveWindowToOutput { id: *id, output: name.clone() });
+                    }
+                });
+                menu.append(&b);
+            }
+        }
         let label = if item.windows.len() > 1 { "Fermer toutes les fenêtres" } else { "Fermer la fenêtre" };
         let close = entry(label, "window-close-symbolic");
         let ids: Vec<u64> = item.windows.iter().map(|w| w.id).collect();

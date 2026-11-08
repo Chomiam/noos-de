@@ -15,6 +15,7 @@ mod reorder;
 mod startmenu;
 mod style;
 mod taskbar;
+mod taskview;
 mod tray;
 mod updates;
 mod wallpaper;
@@ -83,6 +84,11 @@ pub struct Shell {
     /// Icône « mises à jour disponibles ».
     pub updates: RefCell<Option<Rc<updates::UpdateIcon>>>,
     status: RefCell<StatusIcons>,
+    /// Bureaux virtuels (noms, bureau actif) et écrans (positions, principal), d'après le
+    /// compositeur.
+    pub desktops: RefCell<(Vec<String>, usize)>,
+    pub outputs: RefCell<Vec<noos_core::ipc::OutputInfo>>,
+    pub taskview: RefCell<Option<Rc<taskview::TaskView>>>,
     pub slideshow: wallpaper::Slideshow,
     css: gtk::CssProvider,
 }
@@ -114,10 +120,15 @@ impl Shell {
         for w in self.wallpapers.borrow_mut().drain(..) {
             w.window.destroy();
         }
+        let all = self.config().taskbar.all_outputs;
+        let primary = self.primary_output();
         for i in 0..monitors.n_items() {
             let Some(monitor) = monitors.item(i).and_downcast::<gdk::Monitor>() else { continue };
             self.wallpapers.borrow_mut().push(wallpaper::Wallpaper::new(self, &monitor));
-            self.taskbars.borrow_mut().push(taskbar::Taskbar::new(self, &monitor));
+            let name = monitor.connector().map(|c| c.to_string()).unwrap_or_default();
+            if all || primary.as_ref().is_none_or(|p| *p == name) {
+                self.taskbars.borrow_mut().push(taskbar::Taskbar::new(self, &monitor));
+            }
         }
         self.refresh_tasks();
     }
@@ -154,6 +165,11 @@ impl Shell {
         for t in self.taskbars.borrow().iter() {
             t.update_indicators(tray.as_ref(), &cfg, notifs);
         }
+    }
+
+    /// Écran principal (nom du connecteur), d'après le compositeur.
+    pub fn primary_output(&self) -> Option<String> {
+        self.outputs.borrow().iter().find(|o| o.primary).map(|o| o.name.clone())
     }
 
     pub fn refresh_tasks(&self) {
@@ -198,7 +214,45 @@ impl Shell {
                     s.toggle(None);
                 }
             }
-            Event::Outputs { .. } | Event::ConfigReloaded => {
+            Event::Desktops { names, current } => {
+                let changed = self.desktops.borrow().1 != current;
+                let first = self.desktops.borrow().0.len() == 1 && self.desktops.borrow().0[0] == "Bureau 1" && current == 0;
+                *self.desktops.borrow_mut() = (names.clone(), current);
+                if changed && !first && self.config().desktops.osd {
+                    if let Some(tv) = self.taskview.borrow().as_ref() {
+                        tv.show_osd();
+                    }
+                }
+                if let Some(tv) = self.taskview.borrow().as_ref() {
+                    tv.refresh_if_open();
+                }
+                self.refresh_tasks();
+            }
+            Event::ToggleTaskView => {
+                self.close_flyouts();
+                if let Some(tv) = self.taskview.borrow().as_ref() {
+                    tv.toggle();
+                }
+            }
+            Event::Outputs { outputs } => {
+                let layout_changed = {
+                    let old = self.outputs.borrow();
+                    old.iter().map(|o| (&o.name, o.primary)).collect::<Vec<_>>() != outputs.iter().map(|o| (&o.name, o.primary)).collect::<Vec<_>>()
+                };
+                *self.outputs.borrow_mut() = outputs;
+                if let Some(q) = self.quick.borrow().as_ref() {
+                    q.refresh();
+                }
+                // Écran principal changé : la barre « secondaire » n'est plus la même.
+                if layout_changed && !self.taskbars.borrow().is_empty() {
+                    let s = self.clone();
+                    glib::idle_add_local_once(move || {
+                        s.rebuild_outputs();
+                        s.apply_style(&s.config());
+                    });
+                }
+            }
+            Event::ConfigReloaded => {
                 if let Some(u) = self.updates.borrow().as_ref() {
                     u.refresh();
                 }
@@ -341,6 +395,9 @@ fn main() -> glib::ExitCode {
             drives: RefCell::new(None),
             updates: RefCell::new(None),
             status: RefCell::new(StatusIcons::default()),
+            desktops: RefCell::new((vec!["Bureau 1".into()], 0)),
+            outputs: RefCell::new(vec![]),
+            taskview: RefCell::new(None),
             slideshow: wallpaper::Slideshow::default(),
             css,
         });
@@ -353,6 +410,7 @@ fn main() -> glib::ExitCode {
         *shell.audio.borrow_mut() = Some(audio::AudioFlyout::new(&shell));
         *shell.drives.borrow_mut() = Some(drives::Drives::new(&shell));
         *shell.updates.borrow_mut() = Some(updates::UpdateIcon::new(&shell));
+        *shell.taskview.borrow_mut() = Some(taskview::TaskView::new(&shell));
         {
             // Icônes réseau / volume : toutes les 5 s (et juste après une action).
             shell.refresh_status_soon();

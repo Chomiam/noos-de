@@ -93,10 +93,20 @@ impl Backend {
     }
 
     pub fn output_infos(&self, space: &Space<Window>, config: &NoosConfig) -> Vec<OutputInfo> {
-        match self {
-            Backend::Winit(d) => vec![d.output_info()],
+        let mut infos = match self {
+            Backend::Winit(d) => d.output_infos(),
             Backend::Udev(d) => d.output_infos(space, config),
             Backend::Detached => vec![],
+        };
+        // Position, taille logique et écran principal (communs aux deux backends).
+        let primary = crate::outputs::primary_name(space, config);
+        for i in infos.iter_mut() {
+            if let Some(o) = space.outputs().find(|o| o.name() == i.name) {
+                let g = space.output_geometry(o).unwrap_or_default();
+                (i.x, i.y, i.logical_width, i.logical_height) = (g.loc.x, g.loc.y, g.size.w, g.size.h);
+            }
+            i.primary = primary.as_deref() == Some(i.name.as_str());
         }
+        infos
     }
 }

@@ -1371,6 +1371,27 @@ pub fn taskbar(app: &Rc<App>) -> adap::NavigationPage {
     g.add(&vitals);
     content.append(&g);
 
+    let multi = group("Plusieurs écrans");
+    let all = switch("video-display-symbolic", "Barre des tâches sur tous les écrans", "Sinon, seulement sur l'écran principal", t.all_outputs);
+    {
+        let app = app.clone();
+        all.connect_active_notify(move |r| {
+            let v = r.is_active();
+            app.update(|c| c.taskbar.all_outputs = v);
+        });
+    }
+    multi.add(&all);
+    let own = switch("view-grid-symbolic", "Chaque barre montre les fenêtres de son écran", "Sinon, toutes les barres montrent toutes les fenêtres", t.windows_on_own_output);
+    {
+        let app = app.clone();
+        own.connect_active_notify(move |r| {
+            let v = r.is_active();
+            app.update(|c| c.taskbar.windows_on_own_output = v);
+        });
+    }
+    multi.add(&own);
+    content.append(&multi);
+
     let tray = group("Zone de notification");
     let expanded = switch(
         "view-app-grid-symbolic",

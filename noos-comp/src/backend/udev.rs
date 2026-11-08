@@ -262,6 +262,7 @@ impl UdevData {
                     format: format!("{format}"),
                     nested: false,
                     name,
+                    ..Default::default()
                 }
             })
             .collect();
@@ -693,25 +694,9 @@ impl NoosState {
     }
 
     /// Range les écrans de gauche à droite et replace les fenêtres orphelines.
+    /// Range les écrans (positions de la configuration) et replace les fenêtres orphelines.
     pub(crate) fn arrange_outputs(&mut self) {
-        let mut x = 0;
-        for output in self.space.outputs().cloned().collect::<Vec<_>>() {
-            let w = self.space.output_geometry(&output).map(|g| g.size.w).unwrap_or(0);
-            self.space.map_output(&output, (x, 0));
-            layer_map_for_output(&output).arrange();
-            x += w;
-        }
-        let Some(first) = self.space.outputs().next().cloned() else { return };
-        let area = self.usable_area(&first);
-        let orphans: Vec<Window> = self
-            .space
-            .elements()
-            .filter(|w| self.space.outputs_for_element(w).is_empty())
-            .cloned()
-            .collect();
-        for w in orphans {
-            self.space.map_element(w, area.loc, false);
-        }
+        self.apply_output_layout();
     }
 
     pub(crate) fn render_all(&mut self) {

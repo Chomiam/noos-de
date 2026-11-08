@@ -127,6 +127,209 @@ pub fn display(app: &Rc<App>) -> adap::NavigationPage {
     p
 }
 
+/// Disposition des écrans (plusieurs moniteurs) : glisser les écrans, ils se collent bord à
+/// bord ; « Appliquer » enregistre les positions (`[[output]] position`).
+fn arrangement(app: &Rc<App>, holder: &gtk::Box, outputs: Rc<Vec<OutputInfo>>, selected: Rc<RefCell<usize>>) -> gtk::Box {
+    let v = gtk::Box::new(gtk::Orientation::Vertical, 10);
+    v.add_css_class("monitor-box");
+    let hint = gtk::Label::new(Some("Faites glisser les écrans pour les disposer comme sur votre bureau ; cliquez sur un écran pour le régler."));
+    hint.add_css_class("dim-label");
+    hint.set_wrap(true);
+    v.append(&hint);
+    // Rectangles logiques (x, y, largeur, hauteur) modifiables.
+    let rects: Rc<RefCell<Vec<[i32; 4]>>> =
+        Rc::new(RefCell::new(outputs.iter().map(|o| [o.x, o.y, o.logical_width.max(1), o.logical_height.max(1)]).collect()));
+    let area = gtk::DrawingArea::new();
+    area.set_content_height(260);
+    area.set_hexpand(true);
+    // Échelle et décalage de la vue (recalculés à chaque dessin, partagés avec le glisser).
+    let view: Rc<std::cell::Cell<(f64, f64, f64)>> = Rc::new(std::cell::Cell::new((0.1, 0.0, 0.0)));
+    let dragging: Rc<std::cell::Cell<Option<(usize, [i32; 4])>>> = Rc::new(std::cell::Cell::new(None));
+    {
+        let (rects, view, selected) = (rects.clone(), view.clone(), selected.clone());
+        let names: Vec<(String, bool)> = outputs.iter().map(|o| (format!("{} {}", o.make, o.model), o.primary)).collect();
+        area.set_draw_func(move |a, cr, w, h| {
+            let r = rects.borrow();
+            let (x0, y0) = (r.iter().map(|q| q[0]).min().unwrap_or(0), r.iter().map(|q| q[1]).min().unwrap_or(0));
+            let (x1, y1) = (r.iter().map(|q| q[0] + q[2]).max().unwrap_or(1), r.iter().map(|q| q[1] + q[3]).max().unwrap_or(1));
+            // Marge pour pouvoir déplacer un écran autour des autres.
+            let (bw, bh) = ((x1 - x0) as f64 * 1.35, (y1 - y0) as f64 * 1.35);
+            let k = ((w as f64 - 40.0) / bw).min((h as f64 - 30.0) / bh);
+            let ox = (w as f64 - (x1 - x0) as f64 * k) / 2.0 - x0 as f64 * k;
+            let oy = (h as f64 - (y1 - y0) as f64 * k) / 2.0 - y0 as f64 * k;
+            view.set((k, ox, oy));
+            let accent = a.color();
+            let sel = *selected.borrow();
+            for (i, q) in r.iter().enumerate() {
+                let (rx, ry, rw, rh) = (ox + q[0] as f64 * k + 2.0, oy + q[1] as f64 * k + 2.0, q[2] as f64 * k - 4.0, q[3] as f64 * k - 4.0);
+                let rad = 10.0f64.min(rw / 4.0);
+                cr.new_sub_path();
+                cr.arc(rx + rw - rad, ry + rad, rad, -std::f64::consts::FRAC_PI_2, 0.0);
+                cr.arc(rx + rw - rad, ry + rh - rad, rad, 0.0, std::f64::consts::FRAC_PI_2);
+                cr.arc(rx + rad, ry + rh - rad, rad, std::f64::consts::FRAC_PI_2, std::f64::consts::PI);
+                cr.arc(rx + rad, ry + rad, rad, std::f64::consts::PI, 1.5 * std::f64::consts::PI);
+                cr.close_path();
+                if i == sel {
+                    cr.set_source_rgba(0.35, 0.55, 0.95, 0.9);
+                } else {
+                    cr.set_source_rgba(accent.red() as f64, accent.green() as f64, accent.blue() as f64, 0.14);
+                }
+                let _ = cr.fill_preserve();
+                cr.set_source_rgba(accent.red() as f64, accent.green() as f64, accent.blue() as f64, 0.5);
+                cr.set_line_width(1.5);
+                let _ = cr.stroke();
+                // Numéro et nom.
+                cr.set_source_rgba(if i == sel { 1.0 } else { accent.red() as f64 }, if i == sel { 1.0 } else { accent.green() as f64 }, if i == sel { 1.0 } else { accent.blue() as f64 }, 0.95);
+                cr.select_font_face("Sans", gtk::cairo::FontSlant::Normal, gtk::cairo::FontWeight::Bold);
+                cr.set_font_size((rh * 0.32).clamp(14.0, 48.0));
+                let label = (i + 1).to_string();
+                if let Ok(ext) = cr.text_extents(&label) {
+                    cr.move_to(rx + (rw - ext.width()) / 2.0, ry + rh / 2.0 + ext.height() / 2.0);
+                    let _ = cr.show_text(&label);
+                }
+                cr.select_font_face("Sans", gtk::cairo::FontSlant::Normal, gtk::cairo::FontWeight::Normal);
+                cr.set_font_size(11.0);
+                let sub = if names[i].1 { format!("{} · principal", names[i].0) } else { names[i].0.clone() };
+                if let Ok(ext) = cr.text_extents(&sub) {
+                    if ext.width() < rw - 8.0 {
+                        cr.move_to(rx + (rw - ext.width()) / 2.0, ry + rh - 10.0);
+                        let _ = cr.show_text(&sub);
+                    }
+                }
+            }
+        });
+    }
+    let apply = gtk::Button::with_label("Appliquer la disposition");
+    apply.add_css_class("pill");
+    apply.add_css_class("suggested-action");
+    apply.set_sensitive(false);
+    // Glisser un écran.
+    let drag = gtk::GestureDrag::new();
+    {
+        let (rects, view, dragging, selected, area2) = (rects.clone(), view.clone(), dragging.clone(), selected.clone(), area.clone());
+        drag.connect_drag_begin(move |_, x, y| {
+            let (k, ox, oy) = view.get();
+            let (lx, ly) = ((x - ox) / k, (y - oy) / k);
+            let hit = rects.borrow().iter().position(|q| lx >= q[0] as f64 && lx <= (q[0] + q[2]) as f64 && ly >= q[1] as f64 && ly <= (q[1] + q[3]) as f64);
+            if let Some(i) = hit {
+                dragging.set(Some((i, rects.borrow()[i])));
+                *selected.borrow_mut() = i;
+                area2.queue_draw();
+            }
+        });
+    }
+    {
+        let (rects, view, dragging, area2) = (rects.clone(), view.clone(), dragging.clone(), area.clone());
+        drag.connect_drag_update(move |_, dx, dy| {
+            let Some((i, start)) = dragging.get() else { return };
+            let (k, _, _) = view.get();
+            let mut r = rects.borrow_mut();
+            r[i][0] = start[0] + (dx / k) as i32;
+            r[i][1] = start[1] + (dy / k) as i32;
+            drop(r);
+            area2.queue_draw();
+        });
+    }
+    {
+        let (rects, dragging, area2, apply2, app2, holder2, outputs2, selected2) =
+            (rects.clone(), dragging.clone(), area.clone(), apply.clone(), app.clone(), holder.clone(), outputs.clone(), selected.clone());
+        drag.connect_drag_end(move |_, dx, dy| {
+            let Some((i, _)) = dragging.take() else { return };
+            if dx.abs() < 3.0 && dy.abs() < 3.0 {
+                // Simple clic : régler cet écran.
+                render_display(&app2, &holder2, outputs2.clone(), selected2.clone());
+                return;
+            }
+            snap_monitor(&mut rects.borrow_mut(), i);
+            apply2.set_sensitive(true);
+            area2.queue_draw();
+        });
+    }
+    area.add_controller(drag);
+    v.append(&area);
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    row.set_halign(gtk::Align::End);
+    let auto = gtk::Button::with_label("Disposition automatique");
+    auto.add_css_class("pill");
+    {
+        let (app, holder, outputs, selected) = (app.clone(), holder.clone(), outputs.clone(), selected.clone());
+        auto.connect_clicked(move |_| {
+            let names: Vec<String> = outputs.iter().map(|o| o.name.clone()).collect();
+            app.update(|c| {
+                for n in &names {
+                    c.output_mut(n).position = None;
+                }
+            });
+            {
+                // Le compositeur relit la configuration (ReloadConfig) : on attend un peu.
+                let (a, h, sel) = (app.clone(), holder.clone(), selected.clone());
+                glib::timeout_add_local_once(std::time::Duration::from_millis(350), move || reload_display(&a, &h, &sel));
+            }
+        });
+    }
+    {
+        let (app, holder, outputs, selected, rects) = (app.clone(), holder.clone(), outputs.clone(), selected.clone(), rects.clone());
+        apply.connect_clicked(move |_| {
+            let r = rects.borrow().clone();
+            let (x0, y0) = (r.iter().map(|q| q[0]).min().unwrap_or(0), r.iter().map(|q| q[1]).min().unwrap_or(0));
+            let names: Vec<String> = outputs.iter().map(|o| o.name.clone()).collect();
+            app.update(|c| {
+                for (n, q) in names.iter().zip(r.iter()) {
+                    c.output_mut(n).position = Some([q[0] - x0, q[1] - y0]);
+                }
+            });
+            app.toast("Disposition des écrans appliquée");
+            {
+                // Le compositeur relit la configuration (ReloadConfig) : on attend un peu.
+                let (a, h, sel) = (app.clone(), holder.clone(), selected.clone());
+                glib::timeout_add_local_once(std::time::Duration::from_millis(350), move || reload_display(&a, &h, &sel));
+            }
+        });
+    }
+    row.append(&auto);
+    row.append(&apply);
+    v.append(&row);
+    v
+}
+
+/// Colle l'écran `i` contre le plus proche des autres (côte à côte, sans chevauchement ni
+/// trou), en gardant au mieux l'endroit où il a été lâché.
+fn snap_monitor(r: &mut [[i32; 4]], i: usize) {
+    let me = r[i];
+    let mut best: Option<([i32; 2], i64)> = None;
+    for (j, o) in r.iter().enumerate() {
+        if j == i {
+            continue;
+        }
+        let clamp_y = |y: i32| y.clamp(o[1] - me[3] + 1, o[1] + o[3] - 1);
+        let clamp_x = |x: i32| x.clamp(o[0] - me[2] + 1, o[0] + o[2] - 1);
+        // À droite, à gauche, en dessous, au-dessus ; alignement aimanté sur les bords proches.
+        let snap = |v: i32, edges: &[i32]| edges.iter().copied().find(|e| (v - e).abs() < 60).unwrap_or(v);
+        for cand in [
+            [o[0] + o[2], snap(clamp_y(me[1]), &[o[1], o[1] + o[3] - me[3]])],
+            [o[0] - me[2], snap(clamp_y(me[1]), &[o[1], o[1] + o[3] - me[3]])],
+            [snap(clamp_x(me[0]), &[o[0], o[0] + o[2] - me[2]]), o[1] + o[3]],
+            [snap(clamp_x(me[0]), &[o[0], o[0] + o[2] - me[2]]), o[1] - me[3]],
+        ] {
+            // Refusé s'il chevauche un autre écran.
+            let overlaps = r.iter().enumerate().any(|(k, q)| {
+                k != i && cand[0] < q[0] + q[2] && cand[0] + me[2] > q[0] && cand[1] < q[1] + q[3] && cand[1] + me[3] > q[1]
+            });
+            if overlaps {
+                continue;
+            }
+            let d = ((cand[0] - me[0]) as i64).pow(2) + ((cand[1] - me[1]) as i64).pow(2);
+            if best.is_none_or(|(_, bd)| d < bd) {
+                best = Some((cand, d));
+            }
+        }
+    }
+    if let Some((p, _)) = best {
+        r[i][0] = p[0];
+        r[i][1] = p[1];
+    }
+}
+
 fn render_display(app: &Rc<App>, holder: &gtk::Box, outputs: Rc<Vec<OutputInfo>>, selected: Rc<RefCell<usize>>) {
     while let Some(c) = holder.first_child() {
         holder.remove(&c);
@@ -160,7 +363,11 @@ fn render_display(app: &Rc<App>, holder: &gtk::Box, outputs: Rc<Vec<OutputInfo>>
         inner.append(&b);
     }
     mon_box.append(&inner);
-    holder.append(&mon_box);
+    if outputs.len() > 1 {
+        holder.append(&arrangement(app, holder, outputs.clone(), selected.clone()));
+    } else {
+        holder.append(&mon_box);
+    }
 
     let cfg = app.cfg();
     let oc = cfg.output(&o.name).cloned().unwrap_or_default();
@@ -169,6 +376,28 @@ fn render_display(app: &Rc<App>, holder: &gtk::Box, outputs: Rc<Vec<OutputInfo>>
     // ── Échelle et disposition ──
     let g = group("Échelle et disposition");
     g.set_description(Some(&title));
+    if outputs.len() > 1 {
+        let primary = switch("starred-symbolic", "Écran principal", "Barre des tâches complète et nouvelles fenêtres", o.primary);
+        primary.set_sensitive(!o.primary);
+        let (app, holder, outputs2, selected2, name) = (app.clone(), holder.clone(), outputs.clone(), selected.clone(), o.name.clone());
+        primary.connect_active_notify(move |r| {
+            if !r.is_active() {
+                return;
+            }
+            let names: Vec<String> = outputs2.iter().map(|o| o.name.clone()).collect();
+            app.update(|c| {
+                for n in &names {
+                    c.output_mut(n).primary = Some(*n == name);
+                }
+            });
+            {
+                // Le compositeur relit la configuration (ReloadConfig) : on attend un peu.
+                let (a, h, sel) = (app.clone(), holder.clone(), selected2.clone());
+                glib::timeout_add_local_once(std::time::Duration::from_millis(350), move || reload_display(&a, &h, &sel));
+            }
+        });
+        g.add(&primary);
+    }
     let scale_labels: Vec<String> = SCALES
         .iter()
         .map(|s| format!("{} %{}", (s * 100.0).round(), if *s == 1.0 { " (recommandé)" } else { "" }))
@@ -845,4 +1074,35 @@ pub fn notifications(app: &Rc<App>) -> adap::NavigationPage {
     test.add(&row);
     content.append(&test);
     p
+}
+
+#[cfg(test)]
+mod arrangement_tests {
+    use super::snap_monitor;
+
+    #[test]
+    fn colle_a_droite() {
+        // Écran 2 lâché un peu à droite et en dessous : il se colle au bord droit de l'écran 1,
+        // aligné en haut (aimant).
+        let mut r = [[0, 0, 1920, 1080], [2000, 40, 1920, 1080]];
+        snap_monitor(&mut r, 1);
+        assert_eq!(r[1], [1920, 0, 1920, 1080]);
+    }
+
+    #[test]
+    fn colle_au_dessus_sans_chevauchement() {
+        let mut r = [[0, 0, 1920, 1080], [300, -900, 1280, 720]];
+        snap_monitor(&mut r, 1);
+        assert_eq!((r[1][1], r[1][0]), (-720, 300));
+    }
+
+    #[test]
+    fn jamais_par_dessus() {
+        // Lâché en plein sur l'écran 1 : poussé sur un côté libre.
+        let mut r = [[0, 0, 1920, 1080], [100, 100, 1920, 1080]];
+        snap_monitor(&mut r, 1);
+        let o = r[0];
+        let m = r[1];
+        assert!(!(m[0] < o[0] + o[2] && m[0] + m[2] > o[0] && m[1] < o[1] + o[3] && m[1] + m[3] > o[1]));
+    }
 }
