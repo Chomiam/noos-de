@@ -23,6 +23,8 @@ pub struct NoosConfig {
     pub autoplay: AutoPlay,
     pub updates: Updates,
     pub desktops: Desktops,
+    /// Barre supérieure fine (bureaux virtuels, éléments déplacés en mode édition).
+    pub topbar: TopBar,
     /// Widgets posés sur le bureau (mode édition).
     #[serde(rename = "desktop_widget")]
     pub desktop_widgets: Vec<DesktopWidget>,
@@ -141,20 +143,38 @@ pub struct Taskbar {
     pub zone_left: Vec<String>,
     pub zone_center: Vec<String>,
     pub zone_right: Vec<String>,
+    /// Éléments retirés de la barre (mode édition).
+    pub hidden: Vec<String>,
 }
 
 impl Taskbar {
     pub const DEFAULT_LEFT: &'static [&'static str] = &["vitals"];
     pub const DEFAULT_CENTER: &'static [&'static str] = &["start", "search", "taskview", "tasks"];
     pub const DEFAULT_RIGHT: &'static [&'static str] = &["tray", "status", "clock", "notifications", "showdesktop"];
+    /// Barre supérieure (fine) : sélecteur de bureaux au centre.
+    pub const DEFAULT_TOP_CENTER: &'static [&'static str] = &["desktops"];
 
-    /// Zones validées : chaque élément connu une seule fois ; ceux qui manquent reprennent
-    /// leur zone par défaut.
-    pub fn zones(&self) -> [Vec<String>; 3] {
-        let all: Vec<&str> = Self::DEFAULT_LEFT.iter().chain(Self::DEFAULT_CENTER).chain(Self::DEFAULT_RIGHT).copied().collect();
-        let mut seen: Vec<String> = vec![];
-        let mut z: [Vec<String>; 3] = Default::default();
-        for (k, list) in [&self.zone_left, &self.zone_center, &self.zone_right].into_iter().enumerate() {
+    /// Barre verticale (dock à gauche ou à droite).
+    pub fn vertical(&self) -> bool {
+        matches!(self.position.as_str(), "left" | "right")
+    }
+}
+
+impl NoosConfig {
+    /// Zones validées des deux barres : 0–2 barre principale (gauche, centre, droite),
+    /// 3–5 barre supérieure. Chaque élément connu une seule fois ; ceux qui manquent (et ne
+    /// sont pas retirés) reprennent leur zone par défaut.
+    pub fn bar_zones(&self) -> [Vec<String>; 6] {
+        let t = &self.taskbar;
+        let defaults: [&[&str]; 6] = [Taskbar::DEFAULT_LEFT, Taskbar::DEFAULT_CENTER, Taskbar::DEFAULT_RIGHT, &[], Taskbar::DEFAULT_TOP_CENTER, &[]];
+        let all: Vec<&str> = defaults.iter().flat_map(|d| d.iter().copied()).collect();
+        // Barre fine désactivée : ses éléments reviennent à leur zone par défaut (le dock).
+        let none = vec![];
+        let tb = |l| if self.topbar.enabled { l } else { &none };
+        let lists = [&t.zone_left, &t.zone_center, &t.zone_right, tb(&self.topbar.zone_left), tb(&self.topbar.zone_center), tb(&self.topbar.zone_right)];
+        let mut seen: Vec<String> = t.hidden.clone();
+        let mut z: [Vec<String>; 6] = Default::default();
+        for (k, list) in lists.into_iter().enumerate() {
             for id in list {
                 if all.contains(&id.as_str()) && !seen.contains(id) {
                     seen.push(id.clone());
@@ -162,14 +182,25 @@ impl Taskbar {
                 }
             }
         }
-        for (k, defaults) in [Self::DEFAULT_LEFT, Self::DEFAULT_CENTER, Self::DEFAULT_RIGHT].into_iter().enumerate() {
-            for id in defaults {
+        for (k, d) in defaults.iter().enumerate() {
+            for id in d.iter() {
                 if !seen.iter().any(|s| s == id) {
+                    seen.push(id.to_string());
                     z[k].push(id.to_string());
                 }
             }
         }
         z
+    }
+
+    /// Enregistre des zones (après un glisser-déposer).
+    pub fn set_bar_zones(&mut self, z: [Vec<String>; 6]) {
+        let [a, b, c, d, e, f] = z;
+        (self.taskbar.zone_left, self.taskbar.zone_center, self.taskbar.zone_right) = (a, b, c);
+        // Sans barre fine, on garde sa disposition pour la prochaine activation.
+        if self.topbar.enabled {
+            (self.topbar.zone_left, self.topbar.zone_center, self.topbar.zone_right) = (d, e, f);
+        }
     }
 }
 
@@ -186,6 +217,7 @@ impl Default for Taskbar {
             all_outputs: true,
             windows_on_own_output: false,
             position: "bottom".into(),
+            hidden: vec![],
             zone_left: Taskbar::DEFAULT_LEFT.iter().map(|s| s.to_string()).collect(),
             zone_center: Taskbar::DEFAULT_CENTER.iter().map(|s| s.to_string()).collect(),
             zone_right: Taskbar::DEFAULT_RIGHT.iter().map(|s| s.to_string()).collect(),
@@ -323,6 +355,23 @@ impl Default for Power {
 }
 
 // ───────────────────────────── Verrouillage ─────────────────────────────
+
+/// Barre fine, au bord opposé du dock.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct TopBar {
+    pub enabled: bool,
+    pub height: u32,
+    pub zone_left: Vec<String>,
+    pub zone_center: Vec<String>,
+    pub zone_right: Vec<String>,
+}
+
+impl Default for TopBar {
+    fn default() -> Self {
+        Self { enabled: false, height: 32, zone_left: vec![], zone_center: vec!["desktops".into()], zone_right: vec![] }
+    }
+}
 
 /// Widget du bureau : `clock`, `vitals`, `note`, `calendar`, placé en fraction de l'écran.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -483,11 +532,13 @@ pub struct Notifications {
     pub banner_seconds: u32,
     /// Son à l'arrivée d'une notification.
     pub sound: bool,
+    /// Coin des bannières : `bottom-right` (défaut), `bottom-left`, `top-right`, `top-left`.
+    pub position: String,
 }
 
 impl Default for Notifications {
     fn default() -> Self {
-        Self { do_not_disturb: false, banner_seconds: 6, sound: true }
+        Self { do_not_disturb: false, banner_seconds: 6, sound: true, position: "bottom-right".into() }
     }
 }
 
@@ -560,6 +611,13 @@ impl NoosConfig {
             fs::create_dir_all(dir)?;
         }
         let text = toml::to_string_pretty(self)?;
+        // Fichier existant illisible (erreur de saisie) : on en garde une copie avant de
+        // l'écraser, pour que l'utilisateur ne perde pas ses réglages.
+        if let Ok(old) = fs::read_to_string(&path) {
+            if toml::from_str::<Self>(&old).is_err() {
+                let _ = fs::write(path.with_extension("toml.illisible"), old);
+            }
+        }
         let tmp = path.with_extension("toml.tmp");
         fs::write(&tmp, text)?;
         fs::rename(&tmp, &path)?;
@@ -592,6 +650,29 @@ impl NoosConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bar_zones_hidden_and_topbar() {
+        let mut cfg = NoosConfig::default();
+        let z = cfg.bar_zones();
+        assert_eq!(z[0], ["vitals"]);
+        assert_eq!(z[4], ["desktops"]);
+        // Élément retiré : absent de toutes les zones.
+        cfg.taskbar.hidden = vec!["clock".into()];
+        assert!(!cfg.bar_zones().iter().any(|l| l.iter().any(|i| i == "clock")));
+        // Élément déplacé dans la barre fine…
+        cfg.topbar.enabled = true;
+        let mut z = cfg.bar_zones();
+        z[2].retain(|i| i != "tray");
+        z[5].push("tray".into());
+        cfg.set_bar_zones(z);
+        assert_eq!(cfg.bar_zones()[5], ["tray"]);
+        // … revient dans le dock si la barre fine est désactivée, sans perdre sa place.
+        cfg.topbar.enabled = false;
+        assert!(cfg.bar_zones()[2].contains(&"tray".to_string()));
+        cfg.topbar.enabled = true;
+        assert_eq!(cfg.bar_zones()[5], ["tray"]);
+    }
 
     #[test]
     fn roundtrip() {

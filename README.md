@@ -218,9 +218,14 @@ voisin (en gardant son ancrage) ; barre des tâches sur tous les écrans ou seul
 principal, chacune avec les fenêtres de son écran si on le souhaite.
 
 **Mode édition** (clic droit sur le bureau ou la barre) : les éléments de la barre se
-déplacent d'une zone à l'autre par glisser-déposer, la barre passe en haut ou en bas (les
-panneaux suivent), et des widgets se posent librement sur le bureau : horloge, ressources,
-note (son texte est gardé), calendrier.
+déplacent d'une zone à l'autre par glisser-déposer, se retirent d'un clic sur leur « × » et
+reviennent par « Ajouter à la barre ». Le dock se place **en bas, en haut, à gauche ou à
+droite** (les panneaux suivent) ; une **barre fine** optionnelle, au bord opposé, montre les
+bureaux virtuels (clic ou molette pour changer, « + » pour en créer) et accueille les éléments
+qu'on y dépose. Le cadre « Les notifications apparaîtront ici » se glisse vers l'un des quatre
+coins. Des widgets se posent librement sur le bureau : horloge, ressources, note (son texte est
+gardé), calendrier. Les mêmes réglages sont dans Paramètres › Personnalisation › Barre des
+tâches.
 
 ## Mises à jour
 

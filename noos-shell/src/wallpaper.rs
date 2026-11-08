@@ -147,6 +147,7 @@ impl Wallpaper {
     pub fn build_widgets(&self, shell: &Rc<Shell>, editing: bool) {
         for w in self.widgets.borrow_mut().drain(..) {
             self.fixed.remove(&w.frame);
+            self.fixed.remove_controller(&w.drag);
         }
         let cfg = shell.config();
         let primary = shell.primary_output();

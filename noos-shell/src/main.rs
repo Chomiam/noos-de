@@ -94,6 +94,8 @@ pub struct Shell {
     pub editmode: RefCell<Option<Rc<editmode::EditMode>>>,
     /// Panneaux placés contre la barre des tâches (replacés si elle change de bord).
     pub flyouts: RefCell<Vec<glib::WeakRef<gtk::Window>>>,
+    /// Structure des barres construites (barre fine, bord du dock) : reconstruites si elle change.
+    bars_key: RefCell<String>,
     pub slideshow: wallpaper::Slideshow,
     css: gtk::CssProvider,
 }
@@ -119,24 +121,51 @@ impl Shell {
     fn rebuild_outputs(self: &Rc<Self>) {
         let display = gdk::Display::default().unwrap();
         let monitors = display.monitors();
-        for t in self.taskbars.borrow_mut().drain(..) {
-            t.window.destroy();
-        }
         for w in self.wallpapers.borrow_mut().drain(..) {
             w.window.destroy();
         }
-        let all = self.config().taskbar.all_outputs;
-        let primary = self.primary_output();
         for i in 0..monitors.n_items() {
             let Some(monitor) = monitors.item(i).and_downcast::<gdk::Monitor>() else { continue };
             self.wallpapers.borrow_mut().push(wallpaper::Wallpaper::new(self, &monitor));
+        }
+        self.rebuild_bars();
+        self.rebuild_desktop_widgets();
+    }
+
+    /// (Re)crée le dock et la barre fine de chaque écran (changement de bord, barre fine).
+    pub fn rebuild_bars(self: &Rc<Self>) {
+        for t in self.taskbars.borrow_mut().drain(..) {
+            t.window.destroy();
+        }
+        let display = gdk::Display::default().unwrap();
+        let monitors = display.monitors();
+        let cfg = self.config();
+        let primary = self.primary_output();
+        for i in 0..monitors.n_items() {
+            let Some(monitor) = monitors.item(i).and_downcast::<gdk::Monitor>() else { continue };
             let name = monitor.connector().map(|c| c.to_string()).unwrap_or_default();
-            if all || primary.as_ref().is_none_or(|p| *p == name) {
-                self.taskbars.borrow_mut().push(taskbar::Taskbar::new(self, &monitor));
+            if cfg.taskbar.all_outputs || primary.as_ref().is_none_or(|p| *p == name) {
+                // La barre fine d'abord : le dock se place ensuite dans l'espace restant.
+                if cfg.topbar.enabled {
+                    self.taskbars.borrow_mut().push(taskbar::Taskbar::new(self, &monitor, true));
+                }
+                self.taskbars.borrow_mut().push(taskbar::Taskbar::new(self, &monitor, false));
             }
         }
-        self.rebuild_desktop_widgets();
+        let (names, current) = self.desktops.borrow().clone();
+        let editing = self.editmode.borrow().as_ref().is_some_and(|e| e.active.get());
+        for t in self.taskbars.borrow().iter() {
+            t.update_desktops(&names, current);
+            t.set_editing(editing);
+        }
+        self.apply_status_icons();
+        self.refresh_indicators();
         self.refresh_tasks();
+        let cfg = self.config();
+        self.flyouts.borrow_mut().retain(|w| w.upgrade().is_some());
+        for w in self.flyouts.borrow().iter().filter_map(|w| w.upgrade()) {
+            editmode::anchor_to_bar(&w, &cfg);
+        }
     }
 
     /// Relit l'état réseau / volume (dans un thread) et met à jour les icônes.
@@ -219,6 +248,16 @@ impl Shell {
     }
 
     fn apply_style(self: &Rc<Self>, cfg: &NoosConfig) {
+        // Barre fine activée / bord du dock changé (Paramètres ou mode édition) : nouvelles barres.
+        let key = format!("{}|{}|{}", cfg.topbar.enabled, cfg.taskbar.position, cfg.topbar.height);
+        let old = self.bars_key.replace(key.clone());
+        if !old.is_empty() && old != key && !self.taskbars.borrow().is_empty() {
+            let s = self.clone();
+            glib::idle_add_local_once(move || s.rebuild_bars());
+        }
+        if let Some(n) = self.notify.borrow().as_ref() {
+            n.apply_position(&cfg.notifications.position);
+        }
         let dark = adap::StyleManager::default().is_dark();
         self.css.load_from_string(&format!("{}{}", style::css(cfg, dark), polkit::CSS));
         for t in self.taskbars.borrow().iter() {
@@ -261,6 +300,9 @@ impl Shell {
                 }
                 if let Some(tv) = self.taskview.borrow().as_ref() {
                     tv.refresh_if_open();
+                }
+                for t in self.taskbars.borrow().iter() {
+                    t.update_desktops(&names, current);
                 }
                 self.refresh_tasks();
             }
@@ -441,6 +483,7 @@ fn main() -> glib::ExitCode {
             taskview: RefCell::new(None),
             editmode: RefCell::new(None),
             flyouts: RefCell::new(vec![]),
+            bars_key: RefCell::new(String::new()),
             slideshow: wallpaper::Slideshow::default(),
             css,
         });
@@ -459,7 +502,8 @@ fn main() -> glib::ExitCode {
             let provider = gtk::CssProvider::new();
             provider.load_from_string(editmode::CSS);
             if let Some(d) = gdk::Display::default() {
-                gtk::style_context_add_provider_for_display(&d, &provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION + 3);
+                // Au-dessus du style de la barre (USER + 10), sinon « .noos-taskbar button » l'emporte.
+                gtk::style_context_add_provider_for_display(&d, &provider, gtk::STYLE_PROVIDER_PRIORITY_USER + 20);
             }
         }
         {

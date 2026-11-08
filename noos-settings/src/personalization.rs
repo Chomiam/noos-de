@@ -1372,15 +1372,52 @@ pub fn taskbar(app: &Rc<App>) -> adap::NavigationPage {
     content.append(&g);
 
     let layout = group("Disposition");
-    let pos = combo("view-dual-symbolic", "Position de la barre", "", &["En bas".to_string(), "En haut".to_string()], if t.position == "top" { 1 } else { 0 });
+    const EDGES: [(&str, &str); 4] = [("bottom", "En bas"), ("top", "En haut"), ("left", "À gauche"), ("right", "À droite")];
+    let pos = combo(
+        "view-dual-symbolic",
+        "Position du dock",
+        "Bord de l'écran où se place la barre des tâches",
+        &EDGES.iter().map(|e| e.1.to_string()).collect::<Vec<_>>(),
+        EDGES.iter().position(|e| e.0 == t.position).unwrap_or(0),
+    );
     {
         let app = app.clone();
         pos.connect_selected_notify(move |r| {
-            let v = if r.selected() == 1 { "top" } else { "bottom" };
+            let v = EDGES.get(r.selected() as usize).map(|e| e.0).unwrap_or("bottom");
             app.update(|c| c.taskbar.position = v.into());
         });
     }
     layout.add(&pos);
+    let topbar = switch(
+        "view-continuous-symbolic",
+        "Barre fine",
+        "Seconde barre, au bord opposé au dock : bureaux virtuels et éléments déplacés en mode édition",
+        cfg.topbar.enabled,
+    );
+    {
+        let app = app.clone();
+        topbar.connect_active_notify(move |r| {
+            let v = r.is_active();
+            app.update(|c| c.topbar.enabled = v);
+        });
+    }
+    layout.add(&topbar);
+    const CORNERS: [(&str, &str); 4] = [("bottom-right", "En bas à droite"), ("bottom-left", "En bas à gauche"), ("top-right", "En haut à droite"), ("top-left", "En haut à gauche")];
+    let notif_pos = combo(
+        "preferences-system-notifications-symbolic",
+        "Emplacement des notifications",
+        "Coin où apparaissent les bannières (se déplace aussi en mode édition)",
+        &CORNERS.iter().map(|e| e.1.to_string()).collect::<Vec<_>>(),
+        CORNERS.iter().position(|e| e.0 == cfg.notifications.position).unwrap_or(0),
+    );
+    {
+        let app = app.clone();
+        notif_pos.connect_selected_notify(move |r| {
+            let v = CORNERS.get(r.selected() as usize).map(|e| e.0).unwrap_or("bottom-right");
+            app.update(|c| c.notifications.position = v.into());
+        });
+    }
+    layout.add(&notif_pos);
     let edit = card("document-edit-symbolic", "Modifier la disposition", "Mode édition : déplacez les éléments de la barre et ajoutez des widgets au bureau (aussi : clic droit sur le bureau)");
     edit.set_activatable(true);
     edit.add_suffix(&gtk::Image::from_icon_name("go-next-symbolic"));

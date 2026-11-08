@@ -26,6 +26,10 @@ pub fn css(cfg: &NoosConfig, dark: bool) -> String {
     let pad_v = if height < 40 { 1 } else { 4 };
     // Sous 40 px, l'horloge n'affiche que l'heure (comme la petite barre de Windows).
     let date_display = if height < 40 { "font-size: 0; min-height: 0; margin: 0;" } else { "" };
+    // Barre fine (bord opposé au dock) et dock vertical (gauche / droite).
+    let top_h = cfg.topbar.height.clamp(24, 48);
+    let top_btn = top_h.saturating_sub(8).max(16);
+    let side = if cfg.taskbar.position == "right" { "left" } else { "right" };
 
     format!(
         r#"
@@ -68,6 +72,13 @@ picture.no-wallpaper {{ background: linear-gradient(155deg, shade(@accent_bg_col
   min-width: 180px;
 }}
 .noos-taskbar .clock-date {{ {date_display} }}
+.noos-taskbar.noos-topbar {{ min-height: {top_h}px; border-top: none; border-bottom: 1px solid alpha(@window_fg_color, 0.08); }}
+.noos-taskbar.noos-topbar button {{ min-height: {top_btn}px; padding-top: 0; padding-bottom: 0; }}
+.noos-taskbar.noos-topbar .clock-date {{ font-size: 0; min-height: 0; margin: 0; }}
+.noos-taskbar.vertical {{ min-height: 0; min-width: {height}px; padding: 8px 0; border-top: none; border-{side}: 1px solid alpha(@window_fg_color, 0.08); }}
+.noos-taskbar.vertical button {{ min-width: {btn}px; padding-left: 0; padding-right: 0; }}
+.noos-taskbar.vertical .search-pill {{ min-width: 0; padding: 4px; }}
+.noos-taskbar.vertical .show-desktop {{ min-height: 6px; border-left: none; border-top: 1px solid alpha(@window_fg_color, 0.15); }}
 .noos-taskbar .show-desktop {{ min-width: 6px; padding: 0; border-radius: 0; border-left: 1px solid alpha(@window_fg_color, 0.15); }}
 
 /* ── Menu Démarrer / panneau rapide ── */

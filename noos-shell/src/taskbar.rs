@@ -27,10 +27,15 @@ pub struct Taskbar {
     left: gtk::Box,
     end: gtk::Box,
     frames: Vec<(String, gtk::Overlay, gtk::Box)>,
-    tv_btn: gtk::Button,
+    /// Barre fine supplémentaire (sinon : le dock).
+    top: bool,
+    desk_box: gtk::Box,
+    status_group: gtk::Box,
+    tray_box2: gtk::Box,
+    search_label: gtk::Label,
+    clock_date: gtk::Label,
     vitals: Rc<noos_widget_vitals::Vitals>,
     main: gtk::Box,
-    search: gtk::Button,
     tasks: gtk::Box,
     /// Un bouton de souris est enfoncé sur la barre : la reconstruction des icônes attend
     /// le relâchement (sinon le bouton cliqué est détruit et le clic est perdu).
@@ -61,6 +66,29 @@ pub struct Taskbar {
     vol_icon: gtk::Image,
 }
 
+/// Épaisseur d'une barre (dock ou barre fine).
+pub fn bar_height(cfg: &NoosConfig, top: bool) -> i32 {
+    if top { cfg.topbar.height.clamp(24, 48) as i32 } else { cfg.taskbar.height.clamp(28, 96) as i32 }
+}
+
+/// Bord d'une barre : le dock selon la configuration, la barre fine au bord opposé (en haut
+/// si le dock est sur un côté).
+pub fn bar_edge(cfg: &NoosConfig, top: bool) -> &'static str {
+    let dock = match cfg.taskbar.position.as_str() {
+        "top" => "top",
+        "left" => "left",
+        "right" => "right",
+        _ => "bottom",
+    };
+    if !top {
+        dock
+    } else if dock == "top" {
+        "bottom"
+    } else {
+        "top"
+    }
+}
+
 /// Taille des icônes selon la hauteur de la barre (24 px pour 48 px, comme Windows 11).
 fn icon_size(height: i32) -> i32 {
     (height / 2).clamp(16, 40)
@@ -74,8 +102,10 @@ struct Item {
 }
 
 impl Taskbar {
-    pub fn new(shell: &Rc<Shell>, monitor: &gdk::Monitor) -> Self {
+    /// `top` : barre fine supplémentaire (bord opposé au dock).
+    pub fn new(shell: &Rc<Shell>, monitor: &gdk::Monitor, top: bool) -> Self {
         let cfg = shell.config();
+        let bar_h = bar_height(&cfg, top);
         let window = gtk::Window::builder().application(&shell.app).decorated(false).build();
         window.add_css_class("noos-layer");
         window.init_layer_shell();
@@ -83,24 +113,20 @@ impl Taskbar {
         window.set_layer(Layer::Top);
         window.set_monitor(Some(monitor));
         window.set_keyboard_mode(KeyboardMode::None);
-        for edge in [Edge::Left, Edge::Right] {
-            window.set_anchor(edge, true);
-        }
-        let top = cfg.taskbar.position == "top";
-        window.set_anchor(Edge::Bottom, !top);
-        window.set_anchor(Edge::Top, top);
-        window.set_exclusive_zone(cfg.taskbar.height as i32);
-        window.set_default_size(-1, cfg.taskbar.height as i32);
+        window.set_exclusive_zone(bar_h);
 
         let root = gtk::CenterBox::new();
         root.add_css_class("noos-taskbar");
+        if top {
+            root.add_css_class("noos-topbar");
+        }
 
         // ── Bouton Démarrer ──
         let start_btn = gtk::Button::new();
         start_btn.set_tooltip_text(Some("Démarrer"));
         let logo = gtk::Image::from_file(paths::data_dir().join("noos-start.svg"));
         // Logo un peu plus grand que les icônes d'applis (repère du bouton Démarrer).
-        logo.set_pixel_size(icon_size(cfg.taskbar.height as i32) + 6);
+        logo.set_pixel_size(icon_size(bar_h) + 6);
         start_btn.set_child(Some(&logo));
         {
             let shell = shell.clone();
@@ -138,7 +164,7 @@ impl Taskbar {
         // ── Vue des tâches (bureaux virtuels) : clic = vue, molette = bureau voisin ──
         let tv_btn = gtk::Button::new();
         let tv_icon = gtk::Image::from_icon_name("window-restore-symbolic");
-        tv_icon.set_pixel_size(icon_size(cfg.taskbar.height as i32));
+        tv_icon.set_pixel_size(icon_size(bar_h));
         tv_btn.set_child(Some(&tv_icon));
         tv_btn.add_css_class("task");
         tv_btn.add_css_class("taskview-button");
@@ -413,6 +439,18 @@ impl Taskbar {
         left.set_valign(gtk::Align::Center);
         left.set_margin_start(6);
         let vitals = noos_widget_vitals::Vitals::new();
+        // Bureaux virtuels (barre fine par défaut) : une pastille par bureau.
+        let desk_box = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+        desk_box.add_css_class("bar-desktops");
+        desk_box.set_valign(gtk::Align::Center);
+        {
+            let scroll = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL | gtk::EventControllerScrollFlags::DISCRETE);
+            scroll.connect_scroll(|_, _, dy| {
+                apps::request(Request::SwitchDesktopRelative { delta: if dy > 0.0 { 1 } else { -1 } });
+                glib::Propagation::Stop
+            });
+            desk_box.add_controller(scroll);
+        }
         // Éléments de la barre, rangés dans les zones selon la configuration (mode édition).
         let frames: Vec<(String, gtk::Overlay, gtk::Box)> = [
             ("vitals", vitals.widget().clone().upcast::<gtk::Widget>()),
@@ -420,21 +458,22 @@ impl Taskbar {
             ("search", search.clone().upcast()),
             ("taskview", tv_btn.clone().upcast()),
             ("tasks", tasks.clone().upcast()),
-            ("tray", tray_box.upcast()),
+            ("tray", tray_box.clone().upcast()),
             ("status", status_group.clone().upcast()),
             ("clock", clock_btn.clone().upcast()),
             ("notifications", bell_btn.clone().upcast()),
             ("showdesktop", show_desktop.clone().upcast()),
+            ("desktops", desk_box.clone().upcast()),
         ]
         .into_iter()
         .map(|(id, w)| {
-            let (o, shield) = crate::editmode::frame(id, &w);
+            let (o, shield) = crate::editmode::frame(id, &w, Rc::downgrade(shell));
             o.set_widget_name(&format!("bar-{id}"));
             (id.to_string(), o, shield)
         })
         .collect();
         for (k, z) in [&left, &main, &end].into_iter().enumerate() {
-            crate::editmode::zone_drop(k, z, Rc::downgrade(shell));
+            crate::editmode::zone_drop(k + if top { 3 } else { 0 }, z, Rc::downgrade(shell));
         }
         {
             // Clic droit dans une zone vide de la barre : « Modifier la barre des tâches ».
@@ -487,9 +526,13 @@ impl Taskbar {
             vitals,
             end,
             frames,
-            tv_btn,
+            top,
+            desk_box,
+            status_group: status_group.clone(),
+            tray_box2: tray_box.clone(),
+            search_label: search_label.clone(),
+            clock_date: date.clone(),
             main,
-            search,
             tasks,
             output: monitor.connector().map(|c| c.to_string()).unwrap_or_default(),
             pressed: std::rc::Rc::new(Cell::new(false)),
@@ -497,7 +540,7 @@ impl Taskbar {
             menu_open: std::rc::Rc::new(Cell::new(false)),
             shown: std::cell::RefCell::new(String::new()),
             logo,
-            height: Cell::new(cfg.taskbar.height as i32),
+            height: Cell::new(bar_h),
             tray_inline,
             tray_overflow,
             tray_grid,
@@ -544,24 +587,79 @@ impl Taskbar {
     }
 
     pub fn apply_config(&self, cfg: &NoosConfig) {
-        let h = cfg.taskbar.height.clamp(28, 96) as i32;
+        let h = bar_height(cfg, self.top);
         let changed = self.height.replace(h) != h;
+        let edge = bar_edge(cfg, self.top);
+        let vertical = matches!(edge, "left" | "right");
         // La surface layer-shell prend la taille par défaut de la fenêtre : il faut la changer
-        // explicitement, sinon elle garde sa hauteur de création.
-        self.window.set_default_size(-1, h);
-        self.window.set_size_request(-1, h);
-        self.window.set_exclusive_zone(h);
-        self.logo.set_pixel_size(icon_size(h) + 6);
-        if changed {
-            self.window.queue_resize();
+        // explicitement, sinon elle garde sa taille de création.
+        if vertical {
+            self.window.set_default_size(h, -1);
+            self.window.set_size_request(h, -1);
+        } else {
+            self.window.set_default_size(-1, h);
+            self.window.set_size_request(-1, h);
         }
-        self.search.set_visible(cfg.taskbar.show_search);
-        self.vitals.widget().set_visible(cfg.taskbar.show_vitals);
-        self.tv_btn.set_visible(cfg.desktops.taskbar_button);
-        let top = cfg.taskbar.position == "top";
-        self.window.set_anchor(Edge::Bottom, !top);
-        self.window.set_anchor(Edge::Top, top);
+        self.window.set_exclusive_zone(h);
+        for (e, name) in [(Edge::Top, "top"), (Edge::Bottom, "bottom"), (Edge::Left, "left"), (Edge::Right, "right")] {
+            // Le bord de la barre, et les deux bords perpendiculaires (pleine largeur / hauteur).
+            let perpendicular = if vertical { matches!(name, "top" | "bottom") } else { matches!(name, "left" | "right") };
+            self.window.set_anchor(e, name == edge || perpendicular);
+        }
+        self.logo.set_pixel_size(icon_size(h) + 6);
+        self.orient(vertical, edge);
+        self.window.queue_resize();
+        let _ = changed;
         self.layout(cfg);
+    }
+
+    /// Barre horizontale ou verticale (dock sur un côté).
+    fn orient(&self, vertical: bool, edge: &str) {
+        let o = if vertical { gtk::Orientation::Vertical } else { gtk::Orientation::Horizontal };
+        self.root.set_orientation(o);
+        for b in [&self.left, &self.main, &self.end, &self.tasks, &self.status_group, &self.tray_box2, &self.tray_inline, &self.desk_box] {
+            b.set_orientation(o);
+        }
+        self.search_label.set_visible(!vertical);
+        self.clock_date.set_visible(!vertical);
+        self.vitals.set_vertical(vertical);
+        if vertical {
+            self.root.add_css_class("vertical");
+        } else {
+            self.root.remove_css_class("vertical");
+        }
+        let dir = match edge {
+            "top" => gtk::ArrowType::Down,
+            "left" => gtk::ArrowType::Right,
+            "right" => gtk::ArrowType::Left,
+            _ => gtk::ArrowType::Up,
+        };
+        self.vpn_btn.set_direction(dir);
+        self.tray_overflow.set_direction(dir);
+    }
+
+    /// Pastilles des bureaux virtuels (élément « desktops »).
+    pub fn update_desktops(&self, names: &[String], current: usize) {
+        while let Some(c) = self.desk_box.first_child() {
+            self.desk_box.remove(&c);
+        }
+        let vertical = self.desk_box.orientation() == gtk::Orientation::Vertical;
+        for (i, n) in names.iter().enumerate() {
+            let b = gtk::Button::with_label(&if vertical { (i + 1).to_string() } else { n.clone() });
+            b.add_css_class("desk-pill");
+            if i == current {
+                b.add_css_class("current");
+            }
+            b.set_tooltip_text(Some(&format!("{n} (Super+Ctrl+← / →)")));
+            b.connect_clicked(move |_| apps::request(Request::SwitchDesktop { index: i }));
+            self.desk_box.append(&b);
+        }
+        let add = gtk::Button::from_icon_name("list-add-symbolic");
+        add.add_css_class("desk-pill");
+        add.add_css_class("add");
+        add.set_tooltip_text(Some("Nouveau bureau (Super+Ctrl+D)"));
+        add.connect_clicked(|_| apps::request(Request::AddDesktop { name: None, switch: true }));
+        self.desk_box.append(&add);
     }
 
     /// Range les éléments dans les zones (configuration du mode édition).
@@ -571,10 +669,22 @@ impl Taskbar {
                 p.remove(o);
             }
         }
-        let [mut l, mut c, r] = cfg.taskbar.zones();
-        // Alignement à gauche : les éléments du centre suivent ceux de gauche.
-        if cfg.taskbar.alignment == TaskbarAlignment::Left {
+        let z = cfg.bar_zones();
+        let k = if self.top { 3 } else { 0 };
+        let (mut l, mut c, r) = (z[k].clone(), z[k + 1].clone(), z[k + 2].clone());
+        // Alignement à gauche (dock horizontal) : les éléments du centre suivent ceux de gauche.
+        if !self.top && cfg.taskbar.alignment == TaskbarAlignment::Left && !cfg.taskbar.vertical() {
             l.append(&mut c);
+        }
+        // Éléments masqués par leurs réglages (Paramètres › Barre des tâches).
+        let off = |id: &str| match id {
+            "search" => !cfg.taskbar.show_search,
+            "vitals" => !cfg.taskbar.show_vitals,
+            "taskview" => !cfg.desktops.taskbar_button,
+            _ => false,
+        };
+        for (id, o, _) in &self.frames {
+            o.set_visible(!off(id));
         }
         for (zone, ids) in [(&self.left, l), (&self.main, c), (&self.end, r)] {
             for id in ids {

@@ -64,7 +64,14 @@ impl NoosState {
         self.config.desktops.names = names;
         // Seul le compositeur écrit cette liste : relire le fichier pour ne rien écraser
         // d'autre (réglages modifiés entre-temps par Paramètres).
-        let mut cfg = noos_core::NoosConfig::load();
+        // Fichier illisible (modifié à la main) : ne pas le remplacer par les valeurs par défaut.
+        let mut cfg = match noos_core::NoosConfig::load_from(&noos_core::paths::config_file()) {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!("bureaux : configuration illisible, noms non enregistrés : {e:#}");
+                return;
+            }
+        };
         cfg.desktops.names = self.config.desktops.names.clone();
         if let Err(e) = cfg.save() {
             tracing::warn!("bureaux : sauvegarde impossible : {e:#}");

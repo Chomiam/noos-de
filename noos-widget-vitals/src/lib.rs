@@ -40,6 +40,8 @@ button.vitals { padding: 2px 8px; border-radius: 8px; }
 .vitals .vital { min-width: 46px; }
 .vitals .vital label { font-size: 0.82em; font-feature-settings: "tnum"; }
 .vitals .vital.net { min-width: 64px; }
+.vitals.vertical .vital, .vitals.vertical .vital.net { min-width: 0; }
+.vitals.vertical .vital label { font-size: 0.72em; }
 .vital-cpu { color: #4c9aff; }
 .vital-gpu { color: #3ec27f; }
 .vital-ram { color: #a970ff; }
@@ -139,6 +141,7 @@ struct Item {
 
 pub struct Vitals {
     button: gtk::MenuButton,
+    row: gtk::Box,
     items: Vec<Rc<Item>>,
     subtitle: gtk::Label,
 }
@@ -337,7 +340,7 @@ impl Vitals {
         button.set_popover(Some(&popover));
         button.set_tooltip_text(Some("Ressources de l'ordinateur"));
 
-        let v = Rc::new(Self { button, items, subtitle });
+        let v = Rc::new(Self { button, row, items, subtitle });
         v.start();
         // Captures : NOOS_VITALS_OPEN=1 ouvre le détail après quelques mesures.
         if std::env::var_os("NOOS_VITALS_OPEN").is_some() {
@@ -345,6 +348,21 @@ impl Vitals {
             glib::timeout_add_local_once(Duration::from_secs(7), move || b.popup());
         }
         v
+    }
+
+    /// Barre verticale (dock sur un côté) : éléments empilés, débit réseau sans texte.
+    pub fn set_vertical(&self, vertical: bool) {
+        self.row.set_orientation(if vertical { gtk::Orientation::Vertical } else { gtk::Orientation::Horizontal });
+        if vertical {
+            self.button.add_css_class("vertical");
+        } else {
+            self.button.remove_css_class("vertical");
+        }
+        for it in &self.items {
+            if it.kind == Kind::Net {
+                it.small_label.set_visible(!vertical);
+            }
+        }
     }
 
     pub fn widget(&self) -> &gtk::MenuButton {

@@ -142,6 +142,9 @@ impl Notifications {
         // ── Bannières ──
         let banner_window = layer_window(shell, "noos-notifications", KeyboardMode::None);
         banner_window.set_layer(Layer::Overlay);
+        // Les bannières suivent [notifications] position (coin choisi en mode édition).
+        shell.flyouts.borrow_mut().retain(|w| w.upgrade().is_some_and(|w| w != banner_window));
+        crate::editmode::place_notif(&banner_window, &cfg.notifications.position);
         let banner_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
         banner_box.set_valign(gtk::Align::End);
         banner_window.set_child(Some(&banner_box));
@@ -596,14 +599,22 @@ impl Notifications {
             self.banner_window.set_visible(false);
         } else {
             if let Some(shell) = self.shell.upgrade() {
-                let h = shell.config().taskbar.height.clamp(28, 96) as i32;
-                // Au-dessus de la barre (zone exclusive) + petite marge.
-                self.banner_window.set_margin(Edge::Bottom, 12.max(h / 4));
+                let cfg = shell.config();
+                crate::editmode::place_notif(&self.banner_window, &cfg.notifications.position);
+                let h = cfg.taskbar.height.clamp(28, 96) as i32;
+                // Contre la barre (zone exclusive) + petite marge.
+                let e = if cfg.notifications.position.starts_with("top") { Edge::Top } else { Edge::Bottom };
+                self.banner_window.set_margin(e, 12.max(h / 4));
             }
             // Taille minimale : la surface reprend sa taille naturelle à chaque changement.
             self.banner_window.set_default_size(1, 1);
             self.banner_window.present();
         }
+    }
+
+    /// Nouveau coin des bannières (mode édition).
+    pub fn apply_position(&self, corner: &str) {
+        crate::editmode::place_notif(&self.banner_window, corner);
     }
 
     fn rebuild_center(self: &Rc<Self>) {

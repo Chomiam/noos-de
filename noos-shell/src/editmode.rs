@@ -20,6 +20,16 @@ pub const CSS: &str = r#"
 .edit-shield { border-radius: 8px; }
 .editing .edit-shield { border: 1.5px dashed alpha(@accent_bg_color, 0.85); background-color: alpha(@accent_bg_color, 0.10); }
 .editing .edit-shield:hover { background-color: alpha(@accent_bg_color, 0.28); }
+.edit-shield .edit-remove { min-width: 18px; min-height: 18px; padding: 0; margin: 1px 1px 0 0; border-radius: 99px;
+  background-color: #e5484d; color: white; -gtk-icon-size: 10px; }
+.edit-toolbar .edge-btn { min-width: 30px; padding: 4px; }
+.edit-toolbar .edge-btn:checked, .edit-toolbar .accent-toggle:checked { background-color: @accent_bg_color; color: @accent_fg_color; }
+.notif-placeholder .corner-btn { min-width: 34px; font-size: 1.2em; }
+.notif-placeholder { padding: 18px 22px; border-radius: 14px; border: 2px dashed @accent_bg_color; background-color: alpha(@window_bg_color, 0.9); color: @window_fg_color; }
+.noos-taskbar .bar-desktops button.desk-pill { border-radius: 99px; padding: 0 12px; min-height: 22px; min-width: 22px; font-size: 0.9em; font-weight: 600; }
+.noos-taskbar.vertical .bar-desktops button.desk-pill { padding: 0; }
+.noos-taskbar .bar-desktops button.desk-pill.current { background-color: @accent_bg_color; color: @accent_fg_color; }
+.noos-taskbar.noos-topbar button { min-height: 0; padding-top: 1px; padding-bottom: 1px; }
 .editing .edit-zone { border-radius: 10px; min-width: 56px; min-height: 30px; background-color: alpha(@window_fg_color, 0.04);
   box-shadow: inset 0 0 0 1.5px alpha(@window_fg_color, 0.18); }
 .editing .edit-zone.drop-hover { box-shadow: inset 0 0 0 2px @accent_bg_color; background-color: alpha(@accent_bg_color, 0.12); }
@@ -50,13 +60,14 @@ pub fn item_label(id: &str) -> &'static str {
         "clock" => "Horloge",
         "notifications" => "Notifications",
         "showdesktop" => "Afficher le bureau",
+        "desktops" => "Bureaux virtuels",
         _ => "Élément",
     }
 }
 
 /// Élément de la barre enveloppé d'un « bouclier » : en mode édition, le bouclier (visible,
 /// en pointillé) intercepte les clics et se glisse vers une autre zone.
-pub fn frame(id: &str, child: &impl IsA<gtk::Widget>) -> (gtk::Overlay, gtk::Box) {
+pub fn frame(id: &str, child: &impl IsA<gtk::Widget>, shell: Weak<Shell>) -> (gtk::Overlay, gtk::Box) {
     let o = gtk::Overlay::new();
     o.set_child(Some(child));
     o.set_valign(gtk::Align::Center);
@@ -73,6 +84,32 @@ pub fn frame(id: &str, child: &impl IsA<gtk::Widget>) -> (gtk::Overlay, gtk::Box
         drag.connect_drag_begin(move |src, _| src.set_icon(Some(&gtk::WidgetPaintable::new(Some(&o2))), 20, 20));
     }
     shield.add_controller(drag);
+    // × : retirer l'élément de la barre (il revient par « Ajouter à la barre »).
+    let x = gtk::Button::from_icon_name("window-close-symbolic");
+    x.add_css_class("edit-remove");
+    x.set_halign(gtk::Align::End);
+    x.set_valign(gtk::Align::Start);
+    x.set_hexpand(true);
+    x.set_tooltip_text(Some(&format!("Retirer « {} » de la barre", item_label(id))));
+    let id3 = id.to_string();
+    x.connect_clicked(move |_| {
+        let Some(s) = shell.upgrade() else { return };
+        let id = id3.clone();
+        s.update_config(move |c| {
+            if !c.taskbar.hidden.contains(&id) {
+                c.taskbar.hidden.push(id.clone());
+            }
+            match id.as_str() {
+                "search" => c.taskbar.show_search = false,
+                "vitals" => c.taskbar.show_vitals = false,
+                "taskview" => c.desktops.taskbar_button = false,
+                _ => {}
+            }
+        });
+        let s2 = s.clone();
+        glib::idle_add_local_once(move || s2.relayout_taskbars());
+    });
+    shield.append(&x);
     o.add_overlay(&shield);
     (o, shield)
 }
@@ -113,13 +150,13 @@ pub fn zone_drop(zone: usize, b: &gtk::Box, shell: Weak<Shell>) {
         }
         let Some(shell) = shell.upgrade() else { return false };
         shell.update_config(|c| {
-            let mut z = c.taskbar.zones();
+            let mut z = c.bar_zones();
             for list in z.iter_mut() {
                 list.retain(|x| *x != id);
             }
             let list = &mut z[zone];
             list.insert(index.min(list.len()), id.clone());
-            [c.taskbar.zone_left, c.taskbar.zone_center, c.taskbar.zone_right] = z;
+            c.set_bar_zones(z);
         });
         let s2 = shell.clone();
         glib::idle_add_local_once(move || s2.relayout_taskbars());
@@ -134,6 +171,8 @@ pub fn zone_drop(zone: usize, b: &gtk::Box, shell: Weak<Shell>) {
 pub struct DeskWidget {
     pub frame: gtk::Box,
     handle: gtk::Box,
+    /// Geste de déplacement, posé sur le `gtk::Fixed` (à retirer avec le widget).
+    pub drag: gtk::GestureDrag,
 }
 
 impl DeskWidget {
@@ -276,19 +315,33 @@ pub fn build_widget(shell: &Rc<Shell>, index: usize, w: &DesktopWidget, fixed: &
     let y = (w.y * size.1 as f64) as f64;
     fixed.put(&frame, x, y);
 
-    // Déplacement par la poignée.
+    // Déplacement par la poignée. Le geste est posé sur le `gtk::Fixed`, qui ne bouge pas :
+    // posé sur la poignée, ses coordonnées suivraient le widget déplacé, d'où des allers-retours
+    // à chaque image (clignotement).
     let drag = gtk::GestureDrag::new();
     let start: Rc<RefCell<(f64, f64)>> = Rc::new(RefCell::new((x, y)));
+    let mine = Rc::new(Cell::new(false));
     {
-        let (start, fixed, frame) = (start.clone(), fixed.clone(), frame.clone());
-        drag.connect_drag_begin(move |_, _, _| {
-            let p = fixed.child_position(&frame);
-            *start.borrow_mut() = p;
+        let (start, fixed, frame, handle, mine) = (start.clone(), fixed.clone(), frame.clone(), handle.clone(), mine.clone());
+        drag.connect_drag_begin(move |g, px, py| {
+            mine.set(false);
+            let on_handle = handle.is_visible()
+                && fixed.pick(px, py, gtk::PickFlags::DEFAULT).is_some_and(|w| w == handle || w.is_ancestor(&handle));
+            if !on_handle {
+                g.set_state(gtk::EventSequenceState::Denied);
+                return;
+            }
+            g.set_state(gtk::EventSequenceState::Claimed);
+            mine.set(true);
+            *start.borrow_mut() = fixed.child_position(&frame);
         });
     }
     {
-        let (start, fixed, frame) = (start.clone(), fixed.clone(), frame.clone());
+        let (start, fixed, frame, mine) = (start.clone(), fixed.clone(), frame.clone(), mine.clone());
         drag.connect_drag_update(move |_, dx, dy| {
+            if !mine.get() {
+                return;
+            }
             let (sx, sy) = *start.borrow();
             let nx = (sx + dx).clamp(0.0, (size.0 - 40) as f64);
             let ny = (sy + dy).clamp(0.0, (size.1 - 40) as f64);
@@ -298,6 +351,9 @@ pub fn build_widget(shell: &Rc<Shell>, index: usize, w: &DesktopWidget, fixed: &
     {
         let (fixed, frame, shell) = (fixed.clone(), frame.clone(), Rc::downgrade(shell));
         drag.connect_drag_end(move |_, _, _| {
+            if !mine.replace(false) {
+                return;
+            }
             let (px, py) = fixed.child_position(&frame);
             if let Some(s) = shell.upgrade() {
                 let mut cfg = s.config();
@@ -309,8 +365,8 @@ pub fn build_widget(shell: &Rc<Shell>, index: usize, w: &DesktopWidget, fixed: &
             }
         });
     }
-    handle.add_controller(drag);
-    DeskWidget { frame, handle }
+    fixed.add_controller(drag.clone());
+    DeskWidget { frame, handle, drag }
 }
 
 // ───────────────────────────── Barre d'outils ─────────────────────────────
@@ -319,7 +375,10 @@ pub struct EditMode {
     shell: Weak<Shell>,
     toolbar: gtk::Window,
     pub active: Cell<bool>,
-    pos_btn: gtk::Button,
+    edge_btns: Vec<(&'static str, gtk::ToggleButton)>,
+    topbar_btn: gtk::ToggleButton,
+    /// Emplacement des notifications (cadre glissable vers un coin).
+    notif: gtk::Window,
 }
 
 impl EditMode {
@@ -338,12 +397,8 @@ impl EditMode {
         let t = gtk::Label::new(Some("Mode édition"));
         t.add_css_class("edit-title");
         t.set_xalign(0.0);
-        let s = gtk::Label::new(Some("Glissez les éléments de la barre d'une zone à l'autre ; déplacez les widgets par leur poignée."));
-        s.add_css_class("dim-label");
-        s.add_css_class("caption");
-        s.set_xalign(0.0);
         v.append(&t);
-        v.append(&s);
+        v.set_tooltip_text(Some("Glissez les éléments de la barre d'une zone à l'autre (× pour en retirer un) ; déplacez les widgets par leur poignée ; le cadre des notifications se glisse vers un coin."));
         row.append(&v);
         // Ajouter un widget.
         let add = gtk::MenuButton::new();
@@ -385,23 +440,119 @@ impl EditMode {
             menu.append(&b);
         }
         row.append(&add);
-        let pos_btn = gtk::Button::new();
-        {
+        // Bord du dock : bas, haut, gauche, droite.
+        let edges = gtk::Box::new(gtk::Orientation::Horizontal, 2);
+        edges.add_css_class("linked");
+        let edge_label = gtk::Label::new(Some("Dock :"));
+        edge_label.add_css_class("dim-label");
+        row.append(&edge_label);
+        let mut first: Option<gtk::ToggleButton> = None;
+        let mut edge_btns = vec![];
+        for (edge, icon, tip) in [
+            ("bottom", "go-bottom-symbolic", "Dock en bas"),
+            ("top", "go-top-symbolic", "Dock en haut"),
+            ("left", "go-first-symbolic", "Dock à gauche"),
+            ("right", "go-last-symbolic", "Dock à droite"),
+        ] {
+            let b = gtk::ToggleButton::new();
+            b.set_icon_name(icon);
+            b.add_css_class("edge-btn");
+            b.set_tooltip_text(Some(tip));
+            if let Some(f) = &first {
+                b.set_group(Some(f));
+            } else {
+                first = Some(b.clone());
+            }
             let shell = Rc::downgrade(shell);
-            pos_btn.connect_clicked(move |_| {
+            b.connect_toggled(move |b| {
+                if !b.is_active() {
+                    return;
+                }
                 let Some(s) = shell.upgrade() else { return };
-                s.update_config(|c| c.taskbar.position = if c.taskbar.position == "top" { "bottom".into() } else { "top".into() });
+                if s.config().taskbar.position == edge {
+                    return;
+                }
+                // Le shell reconstruit les barres de lui-même (apply_style).
+                s.update_config(|c| c.taskbar.position = edge.into());
                 let s2 = s.clone();
                 glib::idle_add_local_once(move || {
-                    s2.relayout_taskbars();
                     if let Some(e) = s2.editmode.borrow().as_ref() {
                         e.sync_labels();
                     }
                 });
             });
+            edges.append(&b);
+            edge_btns.push((edge, b));
         }
-        row.append(&pos_btn);
-        let reset = gtk::Button::with_label("Réinitialiser la barre");
+        row.append(&edges);
+        // Barre fine.
+        let topbar = gtk::ToggleButton::with_label("Barre fine");
+        topbar.add_css_class("accent-toggle");
+        topbar.set_tooltip_text(Some("Barre supplémentaire au bord opposé : bureaux virtuels, éléments déplacés…"));
+        {
+            let shell = Rc::downgrade(shell);
+            topbar.connect_toggled(move |b| {
+                let Some(s) = shell.upgrade() else { return };
+                let on = b.is_active();
+                if s.config().topbar.enabled == on {
+                    return;
+                }
+                s.update_config(|c| c.topbar.enabled = on);
+            });
+        }
+        row.append(&topbar);
+        // Éléments retirés : les remettre.
+        let restore = gtk::MenuButton::new();
+        let rc = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        rc.append(&gtk::Image::from_icon_name("view-list-bullet-symbolic"));
+        rc.append(&gtk::Label::new(Some("Ajouter à la barre")));
+        restore.set_child(Some(&rc));
+        let rmenu = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        let rpop = gtk::Popover::new();
+        rpop.set_child(Some(&rmenu));
+        restore.set_popover(Some(&rpop));
+        {
+            let (shell, rmenu, rpop2) = (Rc::downgrade(shell), rmenu.clone(), rpop.clone());
+            rpop.connect_show(move |_| {
+                while let Some(c) = rmenu.first_child() {
+                    rmenu.remove(&c);
+                }
+                let Some(s) = shell.upgrade() else { return };
+                let hidden = s.config().taskbar.hidden;
+                if hidden.is_empty() {
+                    let l = gtk::Label::new(Some("Aucun élément retiré"));
+                    l.add_css_class("dim-label");
+                    l.set_margin_top(6);
+                    l.set_margin_bottom(6);
+                    rmenu.append(&l);
+                }
+                for id in hidden {
+                    let b = gtk::Button::with_label(item_label(&id));
+                    b.add_css_class("flat");
+                    let (shell, pop) = (Rc::downgrade(&s), rpop2.clone());
+                    b.connect_clicked(move |_| {
+                        pop.popdown();
+                        let Some(s) = shell.upgrade() else { return };
+                        let id = id.clone();
+                        s.update_config(move |c| {
+                            c.taskbar.hidden.retain(|x| *x != id);
+                            match id.as_str() {
+                                "search" => c.taskbar.show_search = true,
+                                "vitals" => c.taskbar.show_vitals = true,
+                                "taskview" => c.desktops.taskbar_button = true,
+                                _ => {}
+                            }
+                        });
+                        let s2 = s.clone();
+                        glib::idle_add_local_once(move || s2.relayout_taskbars());
+                    });
+                    rmenu.append(&b);
+                }
+            });
+        }
+        row.append(&restore);
+        let reset = gtk::Button::from_icon_name("edit-undo-symbolic");
+        reset.set_tooltip_text(Some("Réinitialiser la barre"));
         {
             let shell = Rc::downgrade(shell);
             reset.connect_clicked(move |_| {
@@ -409,6 +560,9 @@ impl EditMode {
                 s.update_config(|c| {
                     let d = noos_core::config::Taskbar::default();
                     (c.taskbar.zone_left, c.taskbar.zone_center, c.taskbar.zone_right) = (d.zone_left, d.zone_center, d.zone_right);
+                    c.taskbar.hidden.clear();
+                    let t = noos_core::config::TopBar::default();
+                    (c.topbar.zone_left, c.topbar.zone_center, c.topbar.zone_right) = (t.zone_left, t.zone_center, t.zone_right);
                 });
                 let s2 = s.clone();
                 glib::idle_add_local_once(move || s2.relayout_taskbars());
@@ -419,7 +573,8 @@ impl EditMode {
         done.add_css_class("suggested-action");
         row.append(&done);
         toolbar.set_child(Some(&row));
-        let e = Rc::new(Self { shell: Rc::downgrade(shell), toolbar, active: Cell::new(false), pos_btn });
+        let notif = notif_placeholder(shell);
+        let e = Rc::new(Self { shell: Rc::downgrade(shell), toolbar, active: Cell::new(false), edge_btns, topbar_btn: topbar, notif });
         {
             let w = Rc::downgrade(&e);
             done.connect_clicked(move |_| {
@@ -454,12 +609,20 @@ impl EditMode {
     }
 
     fn sync_labels(&self) {
-        let top = self.shell.upgrade().is_some_and(|s| s.config().taskbar.position == "top");
-        self.pos_btn.set_label(if top { "Barre en bas" } else { "Barre en haut" });
-        // La barre d'outils se place du côté opposé à la barre des tâches.
+        let Some(s) = self.shell.upgrade() else { return };
+        let cfg = s.config();
+        for (edge, b) in &self.edge_btns {
+            if *edge == cfg.taskbar.position.as_str() && !b.is_active() {
+                b.set_active(true);
+            }
+        }
+        self.topbar_btn.set_active(cfg.topbar.enabled);
+        // Barre d'outils : en haut, sauf si le dock ou les notifications y sont.
+        let top = cfg.taskbar.position == "top" || cfg.notifications.position.starts_with("top");
         self.toolbar.set_anchor(Edge::Top, !top);
         self.toolbar.set_anchor(Edge::Bottom, top);
-        self.toolbar.set_margin(if top { Edge::Bottom } else { Edge::Top }, 18);
+        self.toolbar.set_margin(if top { Edge::Bottom } else { Edge::Top }, 56);
+        place_notif(&self.notif, &cfg.notifications.position);
     }
 
     pub fn toggle(&self) {
@@ -475,18 +638,130 @@ impl EditMode {
         if on {
             self.sync_labels();
             self.toolbar.present();
+            self.notif.present();
         } else {
             self.toolbar.set_visible(false);
+            self.notif.set_visible(false);
         }
     }
 }
 
-/// Place un panneau (menu Démarrer, réglages rapides…) contre la barre des tâches, en bas ou
-/// en haut selon la configuration.
+/// Place un panneau (menu Démarrer, réglages rapides…) contre le dock : en bas, en haut ou
+/// sur un côté selon la configuration. Les panneaux ancrés à droite le restent (sauf dock à
+/// gauche) ; le menu Démarrer suit le côté du dock.
 pub fn anchor_to_bar(window: &gtk::Window, cfg: &NoosConfig) {
-    let top = cfg.taskbar.position == "top";
-    window.set_anchor(Edge::Bottom, !top);
+    let edge = cfg.taskbar.position.as_str();
+    // Menu Démarrer : centré (ou du côté du dock) ; les autres panneaux : côté droit.
+    let right = window.namespace().as_deref() != Some("noos-startmenu");
+    let (top, bottom, left, rgt) = match edge {
+        "top" => (true, false, false, right),
+        "left" => (false, true, true, false),
+        "right" => (false, true, false, true),
+        _ => (false, true, false, right),
+    };
     window.set_anchor(Edge::Top, top);
-    window.set_margin(Edge::Bottom, if top { 0 } else { 12 });
-    window.set_margin(Edge::Top, if top { 12 } else { 0 });
+    window.set_anchor(Edge::Bottom, bottom);
+    window.set_anchor(Edge::Left, left);
+    window.set_anchor(Edge::Right, rgt);
+    for e in [Edge::Top, Edge::Bottom, Edge::Left, Edge::Right] {
+        let anchored = window.is_anchor(e);
+        window.set_margin(e, if anchored { 12 } else { 0 });
+    }
+}
+
+/// Coin des bannières de notification.
+pub fn place_notif(window: &gtk::Window, corner: &str) {
+    let top = corner.starts_with("top");
+    let left = corner.ends_with("left");
+    window.set_anchor(Edge::Top, top);
+    window.set_anchor(Edge::Bottom, !top);
+    window.set_anchor(Edge::Left, left);
+    window.set_anchor(Edge::Right, !left);
+    for e in [Edge::Top, Edge::Bottom, Edge::Left, Edge::Right] {
+        window.set_margin(e, 12);
+    }
+}
+
+/// Cadre « Les notifications apparaîtront ici » (mode édition) : le glisser vers un coin
+/// (ou cliquer une flèche) choisit l'emplacement des bannières.
+fn notif_placeholder(shell: &Rc<Shell>) -> gtk::Window {
+    let w = gtk::Window::builder().application(&shell.app).decorated(false).build();
+    w.add_css_class("noos-layer");
+    w.init_layer_shell();
+    w.set_namespace(Some("noos-edit-notifications"));
+    w.set_layer(Layer::Overlay);
+    w.set_keyboard_mode(KeyboardMode::None);
+    let b = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    b.add_css_class("notif-placeholder");
+    let t = gtk::Label::new(Some("Les notifications apparaîtront ici"));
+    t.add_css_class("heading");
+    b.append(&t);
+    let sub = gtk::Label::new(Some("Glissez ce cadre vers un coin, ou :"));
+    sub.add_css_class("dim-label");
+    b.append(&sub);
+    let corners = gtk::Grid::new();
+    corners.set_halign(gtk::Align::Center);
+    corners.set_column_spacing(4);
+    corners.set_row_spacing(4);
+    let set_corner = {
+        let (shell, w) = (Rc::downgrade(shell), w.clone());
+        Rc::new(move |corner: &'static str| {
+            let Some(s) = shell.upgrade() else { return };
+            s.update_config(|c| c.notifications.position = corner.into());
+            place_notif(&w, corner);
+            if let Some(n) = s.notify.borrow().as_ref() {
+                n.apply_position(corner);
+            }
+            let s2 = s.clone();
+            glib::idle_add_local_once(move || {
+                if let Some(e) = s2.editmode.borrow().as_ref() {
+                    e.sync_labels();
+                }
+            });
+        })
+    };
+    for (corner, arrow, col, row) in [("top-left", "↖", 0, 0), ("top-right", "↗", 1, 0), ("bottom-left", "↙", 0, 1), ("bottom-right", "↘", 1, 1)] {
+        let btn = gtk::Button::with_label(arrow);
+        btn.add_css_class("corner-btn");
+        btn.set_tooltip_text(Some(match corner {
+            "top-left" => "En haut à gauche",
+            "top-right" => "En haut à droite",
+            "bottom-left" => "En bas à gauche",
+            _ => "En bas à droite",
+        }));
+        let f = set_corner.clone();
+        btn.connect_clicked(move |_| f(corner));
+        corners.attach(&btn, col, row, 1, 1);
+    }
+    b.append(&corners);
+    // Glisser : le coin le plus proche du point d'arrivée (le cadre ne bouge pas pendant le
+    // geste, les décalages restent donc stables).
+    let drag = gtk::GestureDrag::new();
+    {
+        let (w2, f, shell) = (w.clone(), set_corner.clone(), Rc::downgrade(shell));
+        drag.connect_drag_end(move |_, dx, dy| {
+            if dx.abs() < 20.0 && dy.abs() < 20.0 {
+                return;
+            }
+            let Some(s) = shell.upgrade() else { return };
+            let cur = s.config().notifications.position;
+            let mon = w2.surface().and_then(|sf| gdk::Display::default()?.monitor_at_surface(&sf));
+            let (mw, mh) = mon.map(|m| (m.geometry().width() as f64, m.geometry().height() as f64)).unwrap_or((1920.0, 1080.0));
+            let (ww, wh) = (w2.width() as f64, w2.height() as f64);
+            // Centre actuel du cadre, puis point d'arrivée.
+            let cx = if cur.ends_with("left") { 12.0 + ww / 2.0 } else { mw - 12.0 - ww / 2.0 } + dx;
+            let cy = if cur.starts_with("top") { 12.0 + wh / 2.0 } else { mh - 12.0 - wh / 2.0 } + dy;
+            let corner = match (cy < mh / 2.0, cx < mw / 2.0) {
+                (true, true) => "top-left",
+                (true, false) => "top-right",
+                (false, true) => "bottom-left",
+                (false, false) => "bottom-right",
+            };
+            f(corner);
+        });
+    }
+    b.add_controller(drag);
+    w.set_child(Some(&b));
+    place_notif(&w, &shell.config().notifications.position);
+    w
 }
