@@ -1,0 +1,13 @@
+[Unit]
+Description=Recherche régulière des mises à jour de NOOS
+
+[Timer]
+# Peu après l'ouverture de session, puis selon l'intervalle choisi dans Paramètres
+# (surcharge ~/.config/systemd/user/noos-update-check.timer.d/noos-interval.conf).
+OnStartupSec=3min
+OnUnitActiveSec=6h
+RandomizedDelaySec=3min
+AccuracySec=5min
+
+[Install]
+WantedBy=timers.target

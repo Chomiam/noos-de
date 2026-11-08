@@ -12,6 +12,7 @@ pub mod disk_image;
 pub mod ipc;
 pub mod login;
 pub mod paths;
+pub mod updates;
 pub mod wallhaven;
 
 pub use config::NoosConfig;

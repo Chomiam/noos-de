@@ -592,6 +592,8 @@ fn install(ctx: &Ctx, c: &Choices) -> anyhow::Result<()> {
         ctx.try_run("systemctl", &["--root", TARGET, "enable", unit]);
     }
     ctx.try_run("systemctl", &["--root", TARGET, "disable", "gdm.service"]);
+    // Recherche régulière des mises à jour (timer de session de chaque utilisateur).
+    ctx.try_run("systemctl", &["--root", TARGET, "--global", "enable", "noos-update-check.timer"]);
     // kmscon exclu : consoles texte classiques (Ctrl+Alt+F2…) via agetty.
     ctx.try_run("ln", &["-sf", "/usr/lib/systemd/system/getty@.service", &format!("{TARGET}/etc/systemd/system/autovt@.service")]);
     ctx.run("systemctl", &["--root", TARGET, "set-default", "graphical.target"])?;

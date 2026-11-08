@@ -499,13 +499,24 @@ impl App {
     // ───────────────────────── Mises à jour ─────────────────────────
 
     fn load_updates(self: &Rc<Self>) {
+        self.search_updates(false);
+    }
+
+    /// Recherche des mises à jour (sans mot de passe) ; `force` : les métadonnées des dépôts
+    /// sont retéléchargées. Le résultat est enregistré pour l'icône de la barre des tâches.
+    fn search_updates(self: &Rc<Self>, force: bool) {
         clear(&self.updates_box);
-        self.updates_box.append(&loading("Recherche des mises à jour…"));
+        self.updates_box.append(&loading(if force { "Recherche des mises à jour auprès des dépôts…" } else { "Recherche des mises à jour…" }));
         let backends = self.backends.clone();
         let task = background(move || {
-            (0..backends.len())
-                .map(|i| (i, backends[i].updates().map_err(|e| format!("{e:#}"))))
-                .collect::<Vec<_>>()
+            let res: Vec<(usize, Result<Vec<Update>, String>)> = if force {
+                noos_pkg::check_updates(&backends, true).into_iter().enumerate().map(|(i, (_, r))| (i, r.map_err(|e| format!("{e:#}")))).collect()
+            } else {
+                (0..backends.len()).map(|i| (i, backends[i].updates().map_err(|e| format!("{e:#}")))).collect()
+            };
+            let rec: Vec<_> = res.iter().map(|(i, r)| (backends[*i].kind(), r.clone())).collect();
+            noos_pkg::record_updates(&rec);
+            res
         });
         let app = self.clone();
         glib::spawn_future_local(async move {
@@ -527,19 +538,31 @@ impl App {
             n => format!("{n} mises à jour disponibles"),
         }));
         title.add_css_class("title-2");
-        title.set_hexpand(true);
         title.set_xalign(0.0);
-        header.append(&title);
-        let refresh = gtk::Button::with_label("Actualiser les sources");
-        refresh.set_tooltip_text(Some("Télécharge les métadonnées des dépôts (peut demander le mot de passe)"));
+        let titles = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        titles.set_hexpand(true);
+        titles.append(&title);
+        let checked = gtk::Label::new(Some(&format!("Dernière vérification : {}", noos_core::updates::ago(noos_core::updates::load().checked_at))));
+        checked.add_css_class("dim-label");
+        checked.set_xalign(0.0);
+        titles.append(&checked);
+        header.append(&titles);
+        let check = gtk::Button::new();
+        let ch = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        ch.append(&gtk::Image::from_icon_name("view-refresh-symbolic"));
+        ch.append(&gtk::Label::new(Some("Rechercher des mises à jour")));
+        check.set_child(Some(&ch));
+        check.set_tooltip_text(Some("Interroge les dépôts (Fedora, Flatpak) maintenant, sans mot de passe"));
+        check.set_valign(gtk::Align::Center);
         {
             let app = self.clone();
-            refresh.connect_clicked(move |_| app.refresh_sources());
+            check.connect_clicked(move |_| app.search_updates(true));
         }
-        header.append(&refresh);
+        header.append(&check);
         if total > 0 {
             let all = gtk::Button::with_label("Tout mettre à jour");
             all.add_css_class("suggested-action");
+            all.set_valign(gtk::Align::Center);
             let (app, idxs) = (self.clone(), results.iter().filter(|(_, r)| r.as_ref().is_ok_and(|u| !u.is_empty())).map(|(i, _)| *i).collect::<Vec<_>>());
             all.connect_clicked(move |_| {
                 for i in &idxs {
@@ -595,25 +618,6 @@ impl App {
         self.ops.enqueue(format!("Mise à jour : {}", kind.label()), idx, |b| Ok(b.upgrade_all()), move |_| app.load_updates());
     }
 
-    fn refresh_sources(self: &Rc<Self>) {
-        let n = self.backends.len();
-        for idx in 0..n {
-            let app = self.clone();
-            let last = idx + 1 == n;
-            self.ops.enqueue(
-                format!("Actualisation : {}", self.kind(idx).label()),
-                idx,
-                |b| Ok(b.refresh()),
-                move |_| {
-                    if last {
-                        app.load_updates();
-                    }
-                },
-            );
-        }
-    }
-
-    // ───────────────────────── Sources ─────────────────────────
 
     fn load_repos(self: &Rc<Self>) {
         clear(&self.repos_box);
@@ -959,6 +963,7 @@ fn build(gapp: &adap::Application) {
     let (repos_scroll, repos_box) = page_container();
 
     let stack = adap::ViewStack::new();
+    STACK.with(|s| *s.borrow_mut() = Some(stack.clone()));
     stack.add_titled_with_icon(&explore_scroll, Some("explore"), "Explorer", "system-search-symbolic");
     stack.add_titled_with_icon(&installed_scroll, Some("installed"), "Installées", "view-list-bullet-symbolic");
     let updates_page = stack.add_titled_with_icon(&updates_view, Some("updates"), "Mises à jour", "software-update-available-symbolic");
@@ -1098,6 +1103,10 @@ fn build(gapp: &adap::Application) {
     }
 }
 
+thread_local! {
+    static STACK: std::cell::RefCell<Option<adap::ViewStack>> = const { std::cell::RefCell::new(None) };
+}
+
 fn main() -> glib::ExitCode {
     let app = adap::Application::builder()
         .application_id("org.noos.Software")
@@ -1113,8 +1122,16 @@ fn main() -> glib::ExitCode {
             build(app);
         }
     });
-    app.connect_command_line(|app, _| {
+    app.connect_command_line(|app, cmd| {
         app.activate();
+        // `noos-software --updates` : page Mises à jour (icône de la barre des tâches).
+        if cmd.arguments().iter().any(|a| a.to_str() == Some("--updates")) {
+            STACK.with(|s| {
+                if let Some(s) = s.borrow().as_ref() {
+                    s.set_visible_child_name("updates");
+                }
+            });
+        }
         glib::ExitCode::SUCCESS
     });
     app.run()

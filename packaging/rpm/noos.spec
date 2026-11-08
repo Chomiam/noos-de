@@ -241,6 +241,12 @@ if [ ! -e /var/lib/noos/useradd-fish ] && [ -x /usr/bin/fish ] && [ -f /etc/defa
     fi
     mkdir -p /var/lib/noos && touch /var/lib/noos/useradd-fish
 fi
+# Recherche régulière des mises à jour (timer utilisateur, une seule fois : l'utilisateur
+# règle ensuite la fréquence ou la coupe dans Paramètres › Mises à jour).
+if [ ! -e /var/lib/noos/update-timer ]; then
+    systemctl --global enable noos-update-check.timer >/dev/null 2>&1 || :
+    mkdir -p /var/lib/noos && touch /var/lib/noos/update-timer
+fi
 # Démarrage fluide : entrées « NOOS », pilote graphique chargé tôt, Plymouth sans simpledrm
 # (initramfs régénéré seulement si ces réglages changent).
 /usr/libexec/noos-boot-setup >/dev/null 2>&1 || :
@@ -279,6 +285,8 @@ fi
 %config(noreplace) %{_sysconfdir}/xdg/noos-mimeapps.list
 %attr(0440,root,root) %config(noreplace) %{_sysconfdir}/sudoers.d/90-noos-pwfeedback
 %config(noreplace) %{_sysconfdir}/firefox/policies/policies.json
+%{_prefix}/lib/systemd/user/noos-update-check.service
+%{_prefix}/lib/systemd/user/noos-update-check.timer
 %{_libexecdir}/noos-boot-setup
 %{_prefix}/lib/kernel/install.d/94-noos-title.install
 %{_prefix}/lib/systemd/system/plymouth-quit.service.d/90-noos-retain-splash.conf

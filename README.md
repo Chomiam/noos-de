@@ -201,6 +201,15 @@ volants, Courbes) et des créations (Horizon rétro, Lampe à lave, Vitrail, Tun
 Lumières de la ville) ; **bibliothèque** locale ; **import** d'un fichier ou de code collé
 (format Shadertoy `mainImage`, ou GLSL Sandbox converti automatiquement).
 
+## Mises à jour
+
+Un service de la session (`noos-update-check.timer`) recherche les mises à jour en
+arrière-plan, **sans mot de passe** et à basse priorité, toutes les 2 heures à une fois par
+semaine (Paramètres › Mises à jour : fréquence, interrupteur, « Vérifier maintenant », liste
+de ce qui est disponible). Quand il y en a, une icône à deux flèches avec une **pastille
+orange** apparaît dans la barre des tâches et ouvre directement la page Mises à jour de
+Logiciels, qui a son bouton « Rechercher des mises à jour ». Rien n'est installé sans accord.
+
 ## Disques (`noos-disk`)
 
 Gestionnaire de disques façon Windows, sur udisks2 : disques internes, clés USB, cartes mémoire

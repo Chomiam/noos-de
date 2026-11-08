@@ -1,0 +1,12 @@
+[Unit]
+Description=Recherche des mises à jour de NOOS (sans droits administrateur)
+Documentation=https://github.com/Chomiam/noos-de
+After=network-online.target
+
+[Service]
+Type=oneshot
+# --auto : sans effet si la vérification automatique est coupée (Paramètres › Mises à jour).
+ExecStart=/opt/noos/bin/noos-pkg check --auto
+Nice=15
+IOSchedulingClass=idle
+CPUSchedulingPolicy=batch

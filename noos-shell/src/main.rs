@@ -16,6 +16,7 @@ mod startmenu;
 mod style;
 mod taskbar;
 mod tray;
+mod updates;
 mod wallpaper;
 
 use std::{cell::RefCell, rc::Rc, time::Duration};
@@ -79,6 +80,8 @@ pub struct Shell {
     pub audio: RefCell<Option<Rc<audio::AudioFlyout>>>,
     /// Périphériques amovibles : éjection, lecture automatique.
     pub drives: RefCell<Option<Rc<drives::Drives>>>,
+    /// Icône « mises à jour disponibles ».
+    pub updates: RefCell<Option<Rc<updates::UpdateIcon>>>,
     status: RefCell<StatusIcons>,
     pub slideshow: wallpaper::Slideshow,
     css: gtk::CssProvider,
@@ -196,6 +199,9 @@ impl Shell {
                 }
             }
             Event::Outputs { .. } | Event::ConfigReloaded => {
+                if let Some(u) = self.updates.borrow().as_ref() {
+                    u.refresh();
+                }
                 if let Some(q) = self.quick.borrow().as_ref() {
                     q.refresh();
                 }
@@ -333,6 +339,7 @@ fn main() -> glib::ExitCode {
             net: RefCell::new(None),
             audio: RefCell::new(None),
             drives: RefCell::new(None),
+            updates: RefCell::new(None),
             status: RefCell::new(StatusIcons::default()),
             slideshow: wallpaper::Slideshow::default(),
             css,
@@ -345,6 +352,7 @@ fn main() -> glib::ExitCode {
         *shell.net.borrow_mut() = Some(net::NetFlyout::new(&shell));
         *shell.audio.borrow_mut() = Some(audio::AudioFlyout::new(&shell));
         *shell.drives.borrow_mut() = Some(drives::Drives::new(&shell));
+        *shell.updates.borrow_mut() = Some(updates::UpdateIcon::new(&shell));
         {
             // Icônes réseau / volume : toutes les 5 s (et juste après une action).
             shell.refresh_status_soon();

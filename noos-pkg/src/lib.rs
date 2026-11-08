@@ -171,6 +171,51 @@ pub fn detect() -> Vec<Box<dyn Backend>> {
     list
 }
 
+/// Recherche des mises à jour **sans droits root** : dnf rafraîchit ses métadonnées dans le
+/// cache de l'utilisateur (`force` : même si elles ne sont pas expirées), Flatpak interroge ses
+/// dépôts directement. Utilisé par le service `noos-update-check` et par Logiciels.
+pub fn check_updates(backends: &[Box<dyn Backend>], force: bool) -> Vec<(BackendKind, anyhow::Result<Vec<Update>>)> {
+    backends
+        .iter()
+        .map(|b| {
+            if b.kind() == BackendKind::Dnf {
+                let bin = if exec::have("dnf5") { "dnf5" } else { "dnf" };
+                let mut argv = vec![bin, "makecache", "--quiet"];
+                if force {
+                    argv.push("--refresh");
+                }
+                let _ = exec::capture_codes(&argv, &[0, 1]);
+            }
+            (b.kind(), b.updates())
+        })
+        .collect()
+}
+
+/// Enregistre le résultat d'une recherche (`~/.local/state/noos/updates.json`) : l'icône de
+/// la barre des tâches et Paramètres › Mises à jour le lisent.
+pub fn record_updates(results: &[(BackendKind, Result<Vec<Update>, String>)]) -> noos_core::updates::State {
+    let mut st = noos_core::updates::State { checked_at: noos_core::updates::now(), ..Default::default() };
+    for (kind, r) in results {
+        match r {
+            Ok(list) => {
+                st.total += list.len();
+                if !list.is_empty() {
+                    st.by_backend.push((kind.label().to_string(), list.len()));
+                }
+                st.items.extend(list.iter().take(500).map(|u| noos_core::updates::Item {
+                    name: u.package.name.clone(),
+                    backend: kind.id().to_string(),
+                    old: u.old_version.clone(),
+                    new: u.new_version.clone(),
+                }));
+            }
+            Err(e) => st.errors.push(format!("{} : {e}", kind.label())),
+        }
+    }
+    let _ = noos_core::updates::save(&st);
+    st
+}
+
 /// Classe les résultats : correspondance exacte, puis préfixe, puis le reste.
 pub fn rank(query: &str, packages: &mut [Package]) {
     let q = query.to_lowercase();

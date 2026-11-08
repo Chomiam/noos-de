@@ -125,6 +125,27 @@ fn run() -> anyhow::Result<()> {
                 println!("{} mise(s) à jour", all_updates.len());
             }
         }
+        "check" => {
+            // Service noos-update-check : recherche sans droits root, état enregistré pour
+            // l'icône de la barre des tâches. `--force` : métadonnées retéléchargées.
+            let force = std::env::args().any(|a| a == "--force");
+            if std::env::args().any(|a| a == "--auto") && !noos_core::NoosConfig::load().updates.auto_check {
+                return Ok(());
+            }
+            let res: Vec<_> = noos_pkg::check_updates(&all, force).into_iter().map(|(k, r)| (k, r.map_err(|e| format!("{e:#}")))).collect();
+            let st = noos_pkg::record_updates(&res);
+            if args.json {
+                println!("{}", serde_json::to_string_pretty(&st)?);
+            } else {
+                for (name, n) in &st.by_backend {
+                    println!("{name} : {n} mise(s) à jour");
+                }
+                for e in &st.errors {
+                    eprintln!("{e}");
+                }
+                println!("{} mise(s) à jour au total", st.total);
+            }
+        }
         "refresh" => {
             for b in &selected {
                 execute(b.refresh())?;

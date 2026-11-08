@@ -21,6 +21,7 @@ pub struct NoosConfig {
     pub power: Power,
     pub lock: Lock,
     pub autoplay: AutoPlay,
+    pub updates: Updates,
     pub notifications: Notifications,
     pub tiling: Tiling,
     /// Réglages par écran (nom du connecteur DRM, ex. `DP-1`, `HDMI-A-1`).
@@ -270,6 +271,23 @@ impl Default for Power {
 }
 
 // ───────────────────────────── Verrouillage ─────────────────────────────
+
+/// Vérification automatique des mises à jour (timer utilisateur `noos-update-check.timer`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct Updates {
+    pub auto_check: bool,
+    /// Intervalle entre deux vérifications (heures).
+    pub interval_hours: u32,
+    /// Icône dans la barre des tâches quand des mises à jour sont disponibles.
+    pub tray_icon: bool,
+}
+
+impl Default for Updates {
+    fn default() -> Self {
+        Self { auto_check: true, interval_hours: 6, tray_icon: true }
+    }
+}
 
 /// Branchement d'une clé USB ou d'un disque externe (« Lecture automatique »).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

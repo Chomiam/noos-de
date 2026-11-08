@@ -44,6 +44,7 @@ Le `README.md` décrit les fonctionnalités ; ce fichier donne le contexte de tr
 | `noos-archive/` | « Archives » : parcourir, extraire, créer, tester, convertir (7-Zip, bsdtar, unar, xorriso) ; modes `--extract-here`, `--extract-to`, `--compress`, `--quick zip\|7z` pour le menu de l'Explorateur |
 | `noos-widget-vitals/` | Widget « Ressources » de la barre (coin gauche) : processeur, carte graphique (AMD `gpu_busy_percent`, Intel fréquence réelle / max, NVIDIA `nvidia-smi`), mémoire, disque (temps occupé), réseau ; détail avec historique 2 min. Bibliothèque utilisée par `noos-shell` ; `[taskbar] show_vitals` ; `NOOS_VITALS_OPEN=1` ouvre le détail (captures) |
 | `noos-disk/` | « Disques » (udisks2 par gio, bus système) : carte des partitions, formatage (exFAT, NTFS, FAT32, ext4, Btrfs, XFS, F2FS), créer / supprimer des partitions, initialiser (GPT / MBR), renommer, vérifier / réparer, LUKS, SMART (ATA / NVMe) + autotest, test de vitesse, images disque, éjection. Bibliothèque `noos_disk` (`udisks.rs` modèle, `ops.rs` opérations, `rawio.rs` accès brut) partagée avec le shell (`drives.rs` : icône d'éjection, « Lecture automatique ») et l'Explorateur (volumes dans la barre latérale et l'accueil). `noos-disk-helper` (pkexec, `org.noos.disk.helper`) : montage permanent dans `/mnt/<nom>` (fstab par UUID, `nofail`, uid/gid pour NTFS/exFAT/FAT) et « M'en donner la propriété » (chown). `noos-disk --selftest /dev/loopN` teste les opérations destructives sur une image |
+| `noos-core/src/updates.rs` | Mises à jour en arrière-plan : timer utilisateur `noos-update-check.timer` → `noos-pkg check --auto` (sans root : `dnf makecache` dans le cache utilisateur, `flatpak remote-ls --updates`) → `~/.local/state/noos/updates.json`, lu par l'icône de la barre (`noos-shell/src/updates.rs`, deux flèches + pastille orange → `noos-software --updates`), Logiciels et Paramètres › Mises à jour (`[updates]` : `auto_check`, `interval_hours` écrit dans `~/.config/systemd/user/noos-update-check.timer.d/`, `tray_icon`) |
 | `noos-save/` | « Sauvegarder et Restaurer » : instantanés Btrfs (snapper), restauration au redémarrage ; `noos-save-helper` (root, pkexec + actions dnf5) |
 | `noos-grub/` | Thème GRUB (`generate.py` produit images et polices .pf2, déjà générées) ; `install.sh` le copie dans /boot |
 | `noos-system/` | Réglages système livrés par le paquet : Wi-Fi/Ethernet sans économie d'énergie, WirePlumber sans mise en veille, sudo `pwfeedback`, profil fastfetch (`/etc/xdg/fastfetch`), fish (`vendor_conf.d` : pas de message d'accueil, fastfetch à l'ouverture) |
@@ -79,6 +80,9 @@ toolbox run -c noos-dev bash -c 'WAYLAND_DISPLAY=wayland-1 NOOS_PROFILE=release 
 toolbox run -c noos-dev bash -c 'WAYLAND_DISPLAY=wayland-2 grim capture.png'   # capture de l'aperçu
 ```
 On ne peut pas cliquer dans l'aperçu : utiliser les variables de test ci-dessous.
+Scripts prêts à l'emploi (capture puis arrêt) : `tools/preview/run_app.sh capture.png 5 "commande"`
+(une appli en kiosque) et `tools/preview/shell_shot.sh capture.png 5 [VAR=valeur…]` (shell
+complet). À lancer sur l'hôte quand l'appli a besoin du bus système (udisks, NetworkManager).
 
 | Variable | Effet |
 |---|---|
