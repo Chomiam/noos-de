@@ -99,7 +99,9 @@ Requires:       udisks2
 Requires:       vulkan-tools
 # Assistant IA local (noos-ai) : moteur de modèles de langage, accélération Vulkan
 # (AMD / Intel / NVIDIA, repli processeur). Les modèles se téléchargent depuis Paramètres › IA.
-Requires:       ollama
+# Pas le paquet « ollama » : il impose ollama-rocm (ROCm, plus de 2 Go, AMD seulement) alors
+# que Vulkan couvre déjà les cartes AMD.
+Requires:       ollama-base
 Requires:       ollama-vulkan
 # Éditeur de texte (coloration syntaxique, plus de 150 langages).
 Requires:       gtksourceview5

@@ -85,5 +85,5 @@ lzip
 udisks2
 # Assistant IA (détection Vulkan)
 vulkan-tools
-ollama
+ollama-base
 ollama-vulkan
