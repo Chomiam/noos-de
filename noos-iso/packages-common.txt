@@ -83,3 +83,9 @@ zstd
 lz4
 lzip
 udisks2
+# Disques : NTFS, exFAT, XFS, F2FS (formatage, réparation)
+ntfs-3g
+ntfsprogs
+exfatprogs
+xfsprogs
+f2fs-tools

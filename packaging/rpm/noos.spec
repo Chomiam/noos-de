@@ -8,7 +8,7 @@
 %global __provides_exclude_from ^/opt/noos/lib/.*$
 %global __requires_exclude ^libadapta-1\\.so.*$
 
-%global noos_bins noos-comp noos-shell noos-file noos-settings noos-software noos-pkg noos-snip noos-term noos-keys noos-save noos-photoview noos-texteditor noos-lock noos-archive noos-login noos-installer
+%global noos_bins noos-comp noos-shell noos-file noos-settings noos-software noos-pkg noos-snip noos-term noos-keys noos-save noos-photoview noos-texteditor noos-lock noos-archive noos-disk noos-login noos-installer
 
 Name:           noos
 Version:        0.1.0
@@ -95,6 +95,15 @@ Requires:       zstd
 Requires:       lz4
 Requires:       lzip
 Requires:       udisks2
+# Disques : formatage et réparation de tous les systèmes de fichiers proposés (NTFS par
+# ntfs-3g / ntfsprogs, exFAT, FAT32, Btrfs, XFS, F2FS) ; images ISO.
+Requires:       ntfs-3g
+Requires:       ntfsprogs
+Requires:       exfatprogs
+Requires:       dosfstools
+Requires:       btrfs-progs
+Requires:       xfsprogs
+Requires:       f2fs-tools
 # Éditeur de texte (coloration syntaxique, plus de 150 langages).
 Requires:       gtksourceview5
 # Polices : courantes, équivalentes métriques des polices Microsoft (Liberation = Arial / Times /
@@ -193,6 +202,9 @@ install -m644 noos-plymouth/noos/*.png noos-plymouth/noos/noos.plymouth noos-ply
 # Sauvegarder et Restaurer : script privilégié, actions dnf5, règle polkit.
 ./noos-save/install-system.sh %{buildroot} /opt/noos
 
+# Disques : script privilégié (montage dans /mnt, propriété des volumes) et règle polkit.
+./noos-disk/install-system.sh %{buildroot} /opt/noos
+
 # Thème GRUB : sources ici, copiées dans /boot/grub2/themes/noos par %post.
 install -d %{buildroot}%{_datadir}/noos-grub
 install -m644 noos-grub/noos/* %{buildroot}%{_datadir}/noos-grub/
@@ -266,6 +278,7 @@ fi
 %{_libexecdir}/noos-msfonts
 %config(noreplace) %{_sysconfdir}/pam.d/noos-lock
 %{_datadir}/polkit-1/actions/org.noos.save.policy
+%{_datadir}/polkit-1/actions/org.noos.disk.policy
 %config(noreplace) %{_sysconfdir}/dnf/libdnf5-plugins/actions.d/noos-save.actions
 %attr(0755,root,root) %{_sysconfdir}/grub.d/42_noos_snapshots
 %{_prefix}/lib/systemd/system/noos-snapshots-grub.path

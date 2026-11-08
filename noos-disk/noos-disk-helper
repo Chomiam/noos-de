@@ -1,0 +1,72 @@
+#!/bin/bash
+# noos-disk-helper — actions root de l'application Disques (pkexec, action polkit
+# org.noos.disk.helper). Arguments validés strictement : rien d'autre n'est possible.
+#
+#   setup  <uuid> <type> </mnt/nom> <uid> <gid> <own:0|1>
+#          crée /mnt/nom, ajoute la ligne /etc/fstab (par UUID, nofail), monte, et donne au
+#          besoin le dossier racine à l'utilisateur (systèmes de fichiers Linux)
+#   remove <uuid>      démonte, retire la ligne fstab (gérée par NOOS), supprime le dossier vide
+#   own    <point de montage> <uid> <gid> <recursive:0|1>
+#          donne la propriété d'un volume monté (sous /mnt, /run/media ou /media)
+set -euo pipefail
+export LC_ALL=C.UTF-8
+die() { echo "$*" >&2; exit 1; }
+num() { [[ "$1" =~ ^[0-9]+$ ]] || die "nombre invalide : $1"; }
+uuid_ok() { [[ "$1" =~ ^[A-Za-z0-9-]{4,64}$ ]] || die "UUID invalide"; }
+TAG="# noos-disk"
+
+case "${1:-}" in
+setup)
+    [ $# -eq 7 ] || die "usage : setup <uuid> <type> </mnt/nom> <uid> <gid> <own>"
+    uuid=$2 type=$3 dir=$4 uid=$5 gid=$6 own=$7
+    uuid_ok "$uuid"; num "$uid"; num "$gid"
+    [[ "$dir" =~ ^/mnt/[A-Za-z0-9._\ -]{1,64}$ ]] || die "emplacement refusé : $dir (uniquement /mnt/<nom>)"
+    [[ "$dir" == */.* || "$dir" == */..* ]] && die "emplacement refusé"
+    dev=$(blkid -U "$uuid") || die "volume introuvable"
+    [ "$(blkid -s TYPE -o value "$dev")" = "$type" ] || die "type de système de fichiers inattendu"
+    case "$type" in
+        ntfs)  opts="uid=$uid,gid=$gid,umask=022,windows_names" ;;
+        exfat) opts="uid=$uid,gid=$gid,umask=022" ;;
+        vfat)  opts="uid=$uid,gid=$gid,umask=022,utf8" ;;
+        ext4|ext3|ext2|xfs|f2fs) opts="defaults,noatime" ;;
+        btrfs) opts="defaults,noatime,compress=zstd:1" ;;
+        *) die "type non pris en charge : $type" ;;
+    esac
+    # nofail : le démarrage ne bloque pas si le disque est absent ; x-gvfs-show : visible
+    # dans l'Explorateur ; users,exec : l'utilisateur peut démonter, les jeux peuvent s'exécuter.
+    opts="$opts,nofail,users,exec,x-systemd.device-timeout=5s,x-gvfs-show"
+    if findmnt -n -S "UUID=$uuid" >/dev/null 2>&1; then umount "$dev" || die "le volume est en cours d'utilisation"; fi
+    mkdir -p "$dir"
+    chmod 755 "$dir"
+    esc=${dir// /\\040}
+    # Une seule ligne par volume : on remplace l'éventuelle ancienne.
+    sed -i "/^UUID=$uuid[[:space:]]/d" /etc/fstab
+    printf 'UUID=%s %s %s %s 0 0 %s\n' "$uuid" "$esc" "$type" "$opts" "$TAG" >> /etc/fstab
+    systemctl daemon-reload || true
+    mount "$dir"
+    if [ "$own" = 1 ] && [[ "$type" =~ ^(ext[234]|xfs|f2fs|btrfs)$ ]]; then
+        chown "$uid:$gid" "$dir"
+    fi
+    echo "$dir"
+    ;;
+remove)
+    [ $# -eq 2 ] || die "usage : remove <uuid>"
+    uuid=$2; uuid_ok "$uuid"
+    line=$(grep -E "^UUID=$uuid[[:space:]].*$TAG\$" /etc/fstab || true)
+    [ -n "$line" ] || die "aucun montage automatique NOOS pour ce volume"
+    dir=$(echo "$line" | awk '{print $2}' | sed 's/\\040/ /g')
+    if mountpoint -q "$dir"; then umount "$dir" || die "le volume est en cours d'utilisation"; fi
+    sed -i "/^UUID=$uuid[[:space:]].*$TAG\$/d" /etc/fstab
+    systemctl daemon-reload || true
+    [[ "$dir" == /mnt/* ]] && rmdir "$dir" 2>/dev/null || true
+    ;;
+own)
+    [ $# -eq 5 ] || die "usage : own <point de montage> <uid> <gid> <recursive>"
+    mp=$2 uid=$3 gid=$4 rec=$5
+    num "$uid"; num "$gid"
+    mountpoint -q "$mp" || die "pas un point de montage : $mp"
+    case "$mp" in /mnt/*|/run/media/*|/media/*) ;; *) die "emplacement protégé : $mp" ;; esac
+    if [ "$rec" = 1 ]; then chown -R "$uid:$gid" "$mp"; else chown "$uid:$gid" "$mp"; fi
+    ;;
+*) die "commande inconnue" ;;
+esac

@@ -43,6 +43,55 @@ thread_local! {
     static SORT: RefCell<(String, bool)> = RefCell::new(("name".into(), false));
 }
 
+/// Volume d'un disque (udisks2), pour la barre latérale et l'accueil.
+#[derive(Clone, Debug)]
+pub struct DriveVolume {
+    pub name: String,
+    pub icon: String,
+    pub block: String,
+    pub drive: String,
+    pub drive_name: String,
+    pub mount: Option<String>,
+    pub external: bool,
+    pub size: u64,
+    pub fs: String,
+}
+
+/// Volumes utiles : tous les systèmes de fichiers, sauf ceux du système (/, /boot, /home,
+/// déjà couverts par « Ce PC »), l'échange et les volumes cachés.
+pub fn drive_volumes() -> Vec<DriveVolume> {
+    let Ok(conn) = noos_disk::udisks::system_bus() else { return vec![] };
+    let Ok(m) = noos_disk::udisks::load(&conn) else { return vec![] };
+    let mut out = vec![];
+    for d in &m.drives {
+        for v in m.volumes(&d.path) {
+            let sys = v.filesystem.iter().flatten().any(|mp| mp == "/" || mp.starts_with("/boot") || mp == "/home" || mp == "/var" || mp == "/sysroot");
+            if sys || v.hint_ignore || v.id_type == "swap" || (v.hint_system && !d.is_external() && v.mounted_at().is_none() && v.fstab.is_none()) {
+                continue;
+            }
+            let name = if !v.id_label.is_empty() {
+                v.id_label.clone()
+            } else if d.is_external() {
+                d.name()
+            } else {
+                format!("Volume {}", noos_disk::human(v.size))
+            };
+            out.push(DriveVolume {
+                name,
+                icon: d.icon().to_string(),
+                block: v.path.clone(),
+                drive: d.path.clone(),
+                drive_name: d.name(),
+                mount: v.mounted_at().map(String::from),
+                external: d.is_external(),
+                size: v.size,
+                fs: noos_disk::fs_name(&v.id_type),
+            });
+        }
+    }
+    out
+}
+
 fn explorer() -> Option<Rc<Explorer>> {
     EXPLORER.with(|e| e.borrow().clone())
 }
@@ -407,6 +456,20 @@ impl Explorer {
 
         ex.setup_filter();
         ex.fill_sidebar();
+        // Disques branchés / retirés / montés : la barre latérale suit (udisks2).
+        if let Ok(conn) = noos_disk::udisks::system_bus() {
+            let w = Rc::downgrade(&ex);
+            let ids = noos_disk::udisks::watch(&conn, move || {
+                if let Some(ex) = w.upgrade() {
+                    ex.fill_sidebar();
+                    let cur = ex.current.borrow().clone();
+                    if is_home(&cur) {
+                        ex.navigate(cur, false);
+                    }
+                }
+            });
+            std::mem::forget(ids);
+        }
         ex.connect_signals(&grid, &details, &search);
         ex.navigate(start, true);
         ex
@@ -467,24 +530,70 @@ impl Explorer {
             }
         }
         places.push(("Ce PC".into(), themed("drive-harddisk-symbolic"), gio::File::for_path("/")));
-        for mount in gio::VolumeMonitor::get().mounts() {
-            places.push((mount.name().to_string(), mount.symbolic_icon(), mount.root()));
-        }
+        let n_places = places.len();
         places.push(("Corbeille".into(), themed("user-trash-symbolic"), gio::File::for_uri(TRASH_URI)));
+        // Disques et clés USB (udisks2) : montés ou non ; éjection des périphériques externes.
+        let volumes = drive_volumes();
 
-        for (i, (label, icon, file)) in places.into_iter().enumerate() {
+        let mut places: Vec<(String, gio::Icon, Option<gio::File>, Option<DriveVolume>)> = places.into_iter().map(|(l, i, f)| (l, i, Some(f), None)).collect();
+        let trash = places.pop().unwrap();
+        for v in volumes {
+            places.push((v.name.clone(), themed(&v.icon), v.mount.as_ref().map(gio::File::for_path), Some(v)));
+        }
+        places.push(trash);
+        let _ = n_places;
+        for (i, (label, icon, file, vol)) in places.into_iter().enumerate() {
             let row = gtk::ListBoxRow::new();
             let h = gtk::Box::new(gtk::Orientation::Horizontal, 12);
             h.append(&gtk::Image::from_gicon(&icon));
             let l = gtk::Label::new(Some(&label));
             l.set_xalign(0.0);
             l.set_ellipsize(gtk::pango::EllipsizeMode::End);
+            l.set_hexpand(true);
             h.append(&l);
+            if let Some(v) = &vol {
+                if v.mount.is_none() {
+                    l.add_css_class("dim-label");
+                }
+                if v.external {
+                    let ej = gtk::Button::from_icon_name("media-eject-symbolic");
+                    ej.add_css_class("flat");
+                    ej.add_css_class("sidebar-eject");
+                    ej.set_tooltip_text(Some("Retirer en toute sécurité"));
+                    let (drive, name) = (v.drive.clone(), v.drive_name.clone());
+                    let ex = Rc::downgrade(self);
+                    ej.connect_clicked(move |b| {
+                        b.set_sensitive(false);
+                        let Ok(conn) = noos_disk::udisks::system_bus() else { return };
+                        let Ok(m) = noos_disk::udisks::load(&conn) else { return };
+                        let (name, ex) = (name.clone(), ex.clone());
+                        // Hors du volume avant de le démonter.
+                        if let Some(e) = ex.upgrade() {
+                            e.navigate(gio::File::for_uri(HOME_URI), true);
+                        }
+                        noos_disk::ops::safely_remove(&conn, &m, &drive, move |r| {
+                            let Some(e) = ex.upgrade() else { return };
+                            match r {
+                                Ok(()) => e.toast(&format!("« {name} » peut être retiré en toute sécurité")),
+                                Err(err) => e.toast(&format!("Impossible de retirer « {name} » : {err}")),
+                            }
+                        });
+                    });
+                    h.append(&ej);
+                }
+            }
             row.set_child(Some(&h));
             // Séparateurs : après « Dossier personnel » et avant « Ce PC ».
             if i == 2 || label == "Ce PC" {
                 row.add_css_class("section-start");
             }
+            if let Some(v) = vol {
+                unsafe { row.set_data("noos-volume", v) };
+            }
+            let Some(file) = file else {
+                self.sidebar.append(&row);
+                continue;
+            };
             // Déposer des fichiers sur un emplacement : les y déplacer (Corbeille : les jeter).
             if !is_home(&file) {
                 let target = file.clone();
@@ -509,6 +618,10 @@ impl Explorer {
             if let Some(f) = unsafe { row.data::<gio::File>("noos-file") } {
                 let f = unsafe { f.as_ref() }.clone();
                 ex.navigate(f, true);
+            } else if let Some(v) = unsafe { row.data::<DriveVolume>("noos-volume") } {
+                // Volume non monté : le monter (avec vos droits) puis l'ouvrir.
+                let v = unsafe { v.as_ref() }.clone();
+                ex.mount_and_open(&v.block, &v.name);
             }
         });
         let ex = self.clone();
@@ -946,6 +1059,20 @@ impl Explorer {
         if let Err(e) = cmd.spawn() {
             self.toast(&format!("Archives introuvable : {e}"));
         }
+    }
+
+    /// Monte un volume (udisks : avec les droits de l'utilisateur) puis l'ouvre.
+    pub fn mount_and_open(self: &Rc<Self>, block: &str, name: &str) {
+        let Ok(conn) = noos_disk::udisks::system_bus() else { return };
+        let (ex, name) = (Rc::downgrade(self), name.to_string());
+        self.toast(&format!("Ouverture de « {name} »…"));
+        noos_disk::ops::mount(&conn, block, move |r| {
+            let Some(ex) = ex.upgrade() else { return };
+            match r {
+                Ok(mp) => ex.navigate(gio::File::for_path(mp), true),
+                Err(e) => ex.toast(&format!("Impossible d'ouvrir « {name} » : {e}")),
+            }
+        });
     }
 
     fn mount_selected(&self) {
@@ -2002,6 +2129,7 @@ const CSS: &str = r#"
 
 /* Barre latérale */
 .navigation-sidebar row.section-start { margin-top: 10px; }
+.navigation-sidebar button.sidebar-eject { min-height: 22px; min-width: 22px; padding: 2px; margin: -4px -6px -4px 0; }
 .navigation-sidebar row:drop(active) { background-color: alpha(@accent_bg_color, 0.30); box-shadow: inset 0 0 0 1px @accent_bg_color; }
 
 /* Vue en icônes : surlignage ajusté à l'icône et au nom, pas à toute la case. */

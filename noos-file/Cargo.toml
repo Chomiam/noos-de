@@ -7,6 +7,7 @@ license.workspace = true
 
 [dependencies]
 noos-core.workspace = true
+noos-disk.workspace = true
 noos-theme.workspace = true
 gtk.workspace = true
 adap.workspace = true

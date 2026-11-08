@@ -201,6 +201,30 @@ volants, Courbes) et des créations (Horizon rétro, Lampe à lave, Vitrail, Tun
 Lumières de la ville) ; **bibliothèque** locale ; **import** d'un fichier ou de code collé
 (format Shadertoy `mainImage`, ou GLSL Sandbox converti automatiquement).
 
+## Disques (`noos-disk`)
+
+Gestionnaire de disques façon Windows, sur udisks2 : disques internes, clés USB, cartes mémoire
+et images disque, avec une **carte des partitions** (taille réelle, espace occupé), la **santé**
+(SMART / NVMe : température, heures, secteurs défectueux, autotest) et le **test de vitesse**
+(débit le long du disque, temps d'accès, comparaison). **Formater** en exFAT (conseillé pour
+les clés), **NTFS** (ntfs-3g / ntfsprogs fournis), FAT32, ext4, Btrfs, XFS ou F2FS ; créer et
+supprimer des partitions (type Windows ou Linux selon le système de fichiers), initialiser un
+disque (GPT / MBR), renommer, vérifier, réparer, déverrouiller un volume chiffré, créer et
+restaurer une image disque, éjecter en toute sécurité.
+
+**Montage sans se battre avec les permissions** : un disque interne se monte « pour de bon »
+dans `/mnt/<nom>` (ligne fstab par UUID, `nofail` : le démarrage ne bloque pas si le disque
+manque) ; NTFS / exFAT / FAT sont montés avec vos droits, et pour ext4 / Btrfs / XFS le
+bouton **« M'en donner la propriété »** règle la propriété du volume (tout le contenu ou le
+seul dossier racine). Les clés USB restent montées automatiquement avec vos droits.
+
+Dans la barre des tâches, l'icône **« Retirer le périphérique en toute sécurité »** liste les
+périphériques externes (ouvrir, éjecter). Au branchement, la fenêtre **Lecture automatique**
+propose d'ouvrir les fichiers, d'importer photos et vidéos (Images › Importées), de lire les
+médias, de gérer ou de formater le périphérique ; « Toujours faire ceci » mémorise le choix
+(`[autoplay]`). L'Explorateur affiche tous les volumes, montés ou non, avec un bouton
+d'éjection.
+
 ## Réseau et Internet (Paramètres)
 
 - **État** de la connexion avec débit en direct (graphique), adresses IP, DNS et VPN en cours ;

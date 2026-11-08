@@ -43,6 +43,7 @@ Le `README.md` décrit les fonctionnalités ; ce fichier donne le contexte de tr
 | `noos-shader/` | Animations GLSL format Shadertoy `mainImage` (GLArea, libepoxy chargée à l'exécution) : intégrées, bibliothèque `~/.local/share/noos/shaders` (`library:<id>`), catalogue NOOS = `data/shaders/catalog/*.frag` → `build-index.py` → `index.json` téléchargé depuis GitHub (repli : copie du paquet), import de fichiers / code collé (GLSL Sandbox converti par `adapt`). Plus d'API Shadertoy (abandonnée : clé personnelle, licences NC) |
 | `noos-archive/` | « Archives » : parcourir, extraire, créer, tester, convertir (7-Zip, bsdtar, unar, xorriso) ; modes `--extract-here`, `--extract-to`, `--compress`, `--quick zip\|7z` pour le menu de l'Explorateur |
 | `noos-widget-vitals/` | Widget « Ressources » de la barre (coin gauche) : processeur, carte graphique (AMD `gpu_busy_percent`, Intel fréquence réelle / max, NVIDIA `nvidia-smi`), mémoire, disque (temps occupé), réseau ; détail avec historique 2 min. Bibliothèque utilisée par `noos-shell` ; `[taskbar] show_vitals` ; `NOOS_VITALS_OPEN=1` ouvre le détail (captures) |
+| `noos-disk/` | « Disques » (udisks2 par gio, bus système) : carte des partitions, formatage (exFAT, NTFS, FAT32, ext4, Btrfs, XFS, F2FS), créer / supprimer des partitions, initialiser (GPT / MBR), renommer, vérifier / réparer, LUKS, SMART (ATA / NVMe) + autotest, test de vitesse, images disque, éjection. Bibliothèque `noos_disk` (`udisks.rs` modèle, `ops.rs` opérations, `rawio.rs` accès brut) partagée avec le shell (`drives.rs` : icône d'éjection, « Lecture automatique ») et l'Explorateur (volumes dans la barre latérale et l'accueil). `noos-disk-helper` (pkexec, `org.noos.disk.helper`) : montage permanent dans `/mnt/<nom>` (fstab par UUID, `nofail`, uid/gid pour NTFS/exFAT/FAT) et « M'en donner la propriété » (chown). `noos-disk --selftest /dev/loopN` teste les opérations destructives sur une image |
 | `noos-save/` | « Sauvegarder et Restaurer » : instantanés Btrfs (snapper), restauration au redémarrage ; `noos-save-helper` (root, pkexec + actions dnf5) |
 | `noos-grub/` | Thème GRUB (`generate.py` produit images et polices .pf2, déjà générées) ; `install.sh` le copie dans /boot |
 | `noos-system/` | Réglages système livrés par le paquet : Wi-Fi/Ethernet sans économie d'énergie, WirePlumber sans mise en veille, sudo `pwfeedback`, profil fastfetch (`/etc/xdg/fastfetch`), fish (`vendor_conf.d` : pas de message d'accueil, fastfetch à l'ouverture) |
@@ -98,6 +99,8 @@ On ne peut pas cliquer dans l'aperçu : utiliser les variables de test ci-dessou
 | `NOOS_VPN_DEMO=1` | noos-shell : profils VPN fictifs, bouclier VPN dans la barre et son menu ouvert |
 | `NOOS_EDITOR_DEMO=1` (+ `NOOS_EDITOR_SEARCH=mot`) | noos-texteditor : dossier et fichiers d'exemple (Rust, Python, CSS, Markdown), recherche lancée ; lancer depuis le conteneur (gtksourceview5) |
 | `NOOS_LOCK_DEMO_CARD=1` | noos-lock : carte de connexion affichée d'emblée (avec `--preview`) ; `noos-lock --preview --screensaver` : écran de veille |
+| `NOOS_DISK_DIALOG=format\|free-format\|init\|bench\|bench-run\|smart` | noos-disk : ouvre ce dialogue (avec `noos-disk /dev/sdX`) ; lancer l'aperçu sur l'**hôte** (bus système / udisks absents du conteneur) |
+| `NOOS_DRIVES_OPEN=1` / `NOOS_AUTOPLAY_DEMO=1` | noos-shell : menu « Retirer en toute sécurité » ouvert / fenêtre « Lecture automatique » du premier disque externe |
 | `NOOS_SHADER_CATALOG=<fichier ou URL>` | catalogue d'animations à utiliser (ex. `data/shaders/catalog/index.json` avant de pousser) |
 | `NOOS_SETTINGS_SCROLL=px` | noos-settings : défile la page ouverte (captures) |
 | `NOOS_FILE_MENU_DEMO=x,y` | noos-file ouvre le menu contextuel de la vue en icônes en (x, y) ; y < 0 = depuis le bas |
@@ -166,6 +169,12 @@ On ne peut pas cliquer dans l'aperçu : utiliser les variables de test ci-dessou
   (mode `lock`) ou `noos-lock --screensaver` (mode `screensaver` : même protocole, se retire à
   la première entrée). Super+L / mise en veille pendant l'écran de veille : on le tue et
   `check_lock_client` relance le vrai verrouillage (`lock.command`).
+- **udisks2 depuis Rust (gio)** : construire les arguments avec `Variant::tuple_from_iter`
+  (`noos_disk::ops::tup`) — `(opts,).to_variant()` emballe un `a{sv}` dans un `v` et udisks
+  répond « Type of message (v) does not match (a{sv}) ». Ne jamais tester formatage /
+  partitionnement sur un vrai disque : image + `udisksctl loop-setup` puis
+  `noos-disk --selftest /dev/loopN`. `OpenForBenchmark` / `OpenForBackup` demandent un
+  mot de passe administrateur (polkit) : une fenêtre s'ouvre dans la vraie session.
 - Tester l'inactivité dans l'aperçu : `XDG_CONFIG_HOME=<dossier>` avec un `noos/noos.toml` de
   test (`idle_minutes = 1`) pour ne pas toucher la configuration réelle.
 - **Restauration Btrfs** : la racine est montée par son nom (`subvol=@`, fstab + rootflags), donc

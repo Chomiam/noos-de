@@ -274,6 +274,9 @@ impl Taskbar {
         let status_group = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         status_group.add_css_class("status-group");
         status_group.set_valign(gtk::Align::Center);
+        if let Some(d) = shell.drives.borrow().as_ref() {
+            status_group.append(&d.button());
+        }
         status_group.append(&vpn_btn);
         status_group.append(&net_btn);
         status_group.append(&vol_btn);

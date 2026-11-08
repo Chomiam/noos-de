@@ -6,6 +6,7 @@
 
 mod apps;
 mod audio;
+mod drives;
 mod net;
 mod notify;
 mod polkit;
@@ -76,6 +77,8 @@ pub struct Shell {
     pub tray: RefCell<Option<Rc<tray::Tray>>>,
     pub net: RefCell<Option<Rc<net::NetFlyout>>>,
     pub audio: RefCell<Option<Rc<audio::AudioFlyout>>>,
+    /// Périphériques amovibles : éjection, lecture automatique.
+    pub drives: RefCell<Option<Rc<drives::Drives>>>,
     status: RefCell<StatusIcons>,
     pub slideshow: wallpaper::Slideshow,
     css: gtk::CssProvider,
@@ -329,6 +332,7 @@ fn main() -> glib::ExitCode {
             tray: RefCell::new(None),
             net: RefCell::new(None),
             audio: RefCell::new(None),
+            drives: RefCell::new(None),
             status: RefCell::new(StatusIcons::default()),
             slideshow: wallpaper::Slideshow::default(),
             css,
@@ -340,6 +344,7 @@ fn main() -> glib::ExitCode {
         *shell.tray.borrow_mut() = Some(tray::Tray::new(&shell));
         *shell.net.borrow_mut() = Some(net::NetFlyout::new(&shell));
         *shell.audio.borrow_mut() = Some(audio::AudioFlyout::new(&shell));
+        *shell.drives.borrow_mut() = Some(drives::Drives::new(&shell));
         {
             // Icônes réseau / volume : toutes les 5 s (et juste après une action).
             shell.refresh_status_soon();

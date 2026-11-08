@@ -1,0 +1,22 @@
+[package]
+name = "noos-disk"
+description = "« Disques » de NOOS : gestion des disques (udisks2) — partitions, formatage (NTFS, exFAT, ext4, Btrfs…), santé, images disque, test de vitesse ; bibliothèque partagée avec le shell (éjection, lecture automatique) et l'Explorateur"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "noos_disk"
+path = "src/lib.rs"
+
+[[bin]]
+name = "noos-disk"
+path = "src/main.rs"
+
+[dependencies]
+noos-core.workspace = true
+noos-theme.workspace = true
+gtk.workspace = true
+adap.workspace = true
+async-channel.workspace = true
+libc = "0.2"

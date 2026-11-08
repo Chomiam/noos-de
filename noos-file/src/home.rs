@@ -66,30 +66,17 @@ fn folder_card(name: &str, icon: &str, path: &std::path::Path, nav: &Nav) -> gtk
     b
 }
 
-/// Disques : la racine, puis les volumes montés (un par système de fichiers).
-fn disks() -> Vec<(String, gio::Icon, gio::File)> {
-    let mut v = vec![("Système (NOOS)".to_string(), gio::ThemedIcon::new("drive-harddisk").upcast(), gio::File::for_path("/"))];
-    for m in gio::VolumeMonitor::get().mounts() {
-        v.push((m.name().to_string(), m.icon(), m.root()));
+/// Disques : le système, puis chaque volume (udisks2), monté ou non.
+fn disks() -> Vec<(String, gio::Icon, Option<gio::File>, Option<crate::DriveVolume>)> {
+    let mut v = vec![("Système (NOOS)".to_string(), gio::ThemedIcon::new("drive-harddisk").upcast(), Some(gio::File::for_path("/")), None)];
+    for d in crate::drive_volumes() {
+        let icon: gio::Icon = gio::ThemedIcon::new(if d.external { "drive-removable-media" } else { "drive-harddisk" }).upcast();
+        v.push((d.name.clone(), icon, d.mount.as_ref().map(gio::File::for_path), Some(d)));
     }
-    let mut seen = Vec::new();
-    v.retain(|(_, _, f)| {
-        let id = f
-            .query_info("id::filesystem", gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE)
-            .ok()
-            .and_then(|i| i.attribute_string("id::filesystem").map(|s| s.to_string()))
-            .unwrap_or_else(|| f.uri().to_string());
-        if seen.contains(&id) {
-            false
-        } else {
-            seen.push(id);
-            true
-        }
-    });
     v
 }
 
-fn disk_card(name: &str, icon: &gio::Icon, root: &gio::File, nav: &Nav) -> gtk::Button {
+fn disk_card(name: &str, icon: &gio::Icon, root: Option<&gio::File>, vol: Option<crate::DriveVolume>, nav: &Nav) -> gtk::Button {
     let b = gtk::Button::new();
     b.add_css_class("home-card");
     b.add_css_class("disk");
@@ -118,16 +105,31 @@ fn disk_card(name: &str, icon: &gio::Icon, root: &gio::File, nav: &Nav) -> gtk::
     v.append(&s);
     h.append(&v);
     b.set_child(Some(&h));
-    if let Ok(fs) = root.query_filesystem_info("filesystem::size,filesystem::free,filesystem::type", gio::Cancellable::NONE) {
-        let (size, free) = (fs.attribute_uint64("filesystem::size"), fs.attribute_uint64("filesystem::free"));
-        if size > 0 {
-            bar.set_value(1.0 - free as f64 / size as f64);
-            let kind = fs.attribute_string("filesystem::type").map(|t| format!(" · {t}")).unwrap_or_default();
-            s.set_text(&format!("{} libres sur {}{kind}", human_size(free as i64), human_size(size as i64)));
+    match root {
+        Some(root) => {
+            if let Ok(fs) = root.query_filesystem_info("filesystem::size,filesystem::free,filesystem::type", gio::Cancellable::NONE) {
+                let (size, free) = (fs.attribute_uint64("filesystem::size"), fs.attribute_uint64("filesystem::free"));
+                if size > 0 {
+                    bar.set_value(1.0 - free as f64 / size as f64);
+                    let kind = vol.as_ref().map(|v| format!(" · {}", v.fs)).or_else(|| fs.attribute_string("filesystem::type").map(|t| format!(" · {t}"))).unwrap_or_default();
+                    s.set_text(&format!("{} libres sur {}{kind}", human_size(free as i64), human_size(size as i64)));
+                }
+            }
+            let (nav, root) = (nav.clone(), root.clone());
+            b.connect_clicked(move |_| nav(root.clone()));
+        }
+        None => {
+            bar.set_visible(false);
+            if let Some(v) = &vol {
+                s.set_text(&format!("{} · {} · non monté, cliquez pour l'ouvrir", noos_disk::human(v.size), v.fs));
+            }
+            b.connect_clicked(move |_| {
+                if let (Some(ex), Some(v)) = (crate::explorer(), vol.as_ref()) {
+                    ex.mount_and_open(&v.block, &v.name);
+                }
+            });
         }
     }
-    let (nav, root) = (nav.clone(), root.clone());
-    b.connect_clicked(move |_| nav(root.clone()));
     b
 }
 
@@ -241,8 +243,8 @@ pub fn fill(holder: &gtk::Box, nav: &Nav, open: &Rc<dyn Fn(gio::File)>) {
     drives.set_column_spacing(10);
     drives.set_row_spacing(10);
     drives.set_homogeneous(true);
-    for (name, icon, root) in disks() {
-        drives.append(&disk_card(&name, &icon, &root, nav));
+    for (name, icon, root, vol) in disks() {
+        drives.append(&disk_card(&name, &icon, root.as_ref(), vol, nav));
     }
     holder.append(&drives);
 

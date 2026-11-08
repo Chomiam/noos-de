@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Disques
+GenericName=Gestionnaire de disques
+Comment=Formater, partitionner, monter et surveiller les disques, clés USB et cartes mémoire
+Keywords=disque;partition;formater;format;usb;clé;ntfs;exfat;ext4;smart;santé;monter;image;
+Icon=drive-harddisk
+Exec=noos-disk %U
+Terminal=false
+StartupNotify=true
+Categories=System;Utility;GTK;Filesystem;

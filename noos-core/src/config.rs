@@ -20,6 +20,7 @@ pub struct NoosConfig {
     pub input: Input,
     pub power: Power,
     pub lock: Lock,
+    pub autoplay: AutoPlay,
     pub notifications: Notifications,
     pub tiling: Tiling,
     /// Réglages par écran (nom du connecteur DRM, ex. `DP-1`, `HDMI-A-1`).
@@ -269,6 +270,23 @@ impl Default for Power {
 }
 
 // ───────────────────────────── Verrouillage ─────────────────────────────
+
+/// Branchement d'une clé USB ou d'un disque externe (« Lecture automatique »).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct AutoPlay {
+    /// Monter automatiquement les volumes des périphériques branchés.
+    pub mount: bool,
+    /// Que faire : `ask` (fenêtre de choix), `open` (Explorateur), `import` (photos),
+    /// `nothing` (simple notification).
+    pub action: String,
+}
+
+impl Default for AutoPlay {
+    fn default() -> Self {
+        Self { mount: true, action: "ask".into() }
+    }
+}
 
 /// Écran de verrouillage (`noos-lock`) et verrouillage automatique.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

@@ -1388,6 +1388,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "noos-disk"
+version = "0.1.0"
+dependencies = [
+ "async-channel",
+ "gtk4",
+ "libadapta",
+ "libc",
+ "noos-core",
+ "noos-theme",
+]
+
+[[package]]
 name = "noos-file"
 version = "0.1.0"
 dependencies = [
@@ -1395,6 +1407,7 @@ dependencies = [
  "gtk4",
  "libadapta",
  "noos-core",
+ "noos-disk",
  "noos-theme",
 ]
 
@@ -1525,6 +1538,7 @@ dependencies = [
  "gtk4-layer-shell",
  "libadapta",
  "noos-core",
+ "noos-disk",
  "noos-theme",
  "noos-widget-vitals",
  "serde_json",

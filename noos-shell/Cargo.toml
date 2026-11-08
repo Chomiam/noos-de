@@ -9,6 +9,7 @@ license.workspace = true
 noos-core.workspace = true
 noos-theme.workspace = true
 noos-widget-vitals.workspace = true
+noos-disk.workspace = true
 gtk.workspace = true
 adap.workspace = true
 gtk4-layer-shell.workspace = true
