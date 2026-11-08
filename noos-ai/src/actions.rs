@@ -151,9 +151,9 @@ pub fn system() -> Rc<Registry> {
 
     // ── Son ──
     r.add(
-        ActionInfo::new("system.volume.set", "Régler le volume", "Règle le volume de la sortie audio (0 à 150 %)", Risk::Change).param("pourcentage", Kind::Integer, "volume en %", true),
+        ActionInfo::new("system.volume.set", "Régler le volume", "Règle le volume de la sortie audio, de 0 à 100 % (« maximum » = 100)", Risk::Change).param("pourcentage", Kind::Integer, "volume en %", true),
         |p| {
-            let v = int(p, "pourcentage").clamp(0, 150);
+            let v = int(p, "pourcentage").clamp(0, 100);
             run("wpctl", &["set-mute", "@DEFAULT_AUDIO_SINK@", "0"])?;
             run("wpctl", &["set-volume", "@DEFAULT_AUDIO_SINK@", &format!("{:.2}", v as f64 / 100.0)])?;
             Ok(format!("Volume réglé à {v} %."))

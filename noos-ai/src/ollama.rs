@@ -112,8 +112,12 @@ impl Ollama {
         Ok(v["models"].as_array().into_iter().flatten().map(|m| (m["name"].as_str().unwrap_or("").to_string(), m["size"].as_u64().unwrap_or(0))).collect())
     }
 
-    pub fn has_model(&self, model: &str, use_gpu: bool) -> bool {
-        self.models(use_gpu).is_ok_and(|m| m.iter().any(|(n, _)| n == model || n == &format!("{model}:latest")))
+    /// Modèles actuellement chargés en mémoire.
+    pub fn loaded(&self) -> Vec<String> {
+        let Some(u) = self.url.lock().unwrap().clone() else { return vec![] };
+        curl(&format!("{u}/api/ps"), None, 3)
+            .map(|v| v["models"].as_array().into_iter().flatten().filter_map(|m| m["name"].as_str().map(String::from)).collect())
+            .unwrap_or_default()
     }
 
     pub fn delete(&self, model: &str, use_gpu: bool) -> Result<(), String> {
@@ -179,6 +183,12 @@ impl Ollama {
 
     /// Une requête de conversation avec outils (non diffusée en continu).
     pub fn chat(&self, model: &str, messages: &[Value], tools: &[Value], use_gpu: bool, keep_alive_min: u32) -> Result<Value, String> {
+        self.chat_opts(model, messages, tools, use_gpu, keep_alive_min, None)
+    }
+
+    /// `max_tokens = Some(1)` : préchauffage (charge le modèle et met en cache le début du
+    /// prompt — consignes + outils — pour que la vraie question réponde vite).
+    pub fn chat_opts(&self, model: &str, messages: &[Value], tools: &[Value], use_gpu: bool, keep_alive_min: u32, max_tokens: Option<u32>) -> Result<Value, String> {
         let url = self.ensure(use_gpu)?;
         let mut body = json!({
             "model": model,
@@ -192,6 +202,9 @@ impl Ollama {
         }
         if !use_gpu {
             body["options"]["num_gpu"] = json!(0);
+        }
+        if let Some(n) = max_tokens {
+            body["options"]["num_predict"] = json!(n);
         }
         let v = curl(&format!("{url}/api/chat"), Some(&body), 180)?;
         Ok(v["message"].clone())

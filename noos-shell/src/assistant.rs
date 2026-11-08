@@ -350,7 +350,17 @@ impl Assistant {
         let sp = gtk::Spinner::new();
         sp.start();
         thinking.append(&sp);
-        thinking.append(&gtk::Label::new(Some("Je réfléchis…")));
+        let think_label = gtk::Label::new(Some("Je réfléchis…"));
+        thinking.append(&think_label);
+        {
+            // Première question : le modèle se charge (jusqu'à une minute sur processeur).
+            let l = think_label.downgrade();
+            glib::timeout_add_local_once(Duration::from_secs(6), move || {
+                if let Some(l) = l.upgrade() {
+                    l.set_text("Chargement du modèle… la première réponse est plus lente.");
+                }
+            });
+        }
         self.chat.append(&thinking);
         self.scroll_down();
         self.busy.set(true);
@@ -465,6 +475,10 @@ impl Assistant {
             }
             self.window.present();
             self.entry.grab_focus();
+            // Le démon charge le modèle pendant que l'on tape la question.
+            if let Some(c) = self.conn() {
+                call(&c, "Warm", ().to_variant(), |_| {});
+            }
         }
     }
 

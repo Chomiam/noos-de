@@ -58,6 +58,7 @@ const XML: &str = r#"<node>
       <arg type="s" direction="in" name="tier"/>
       <arg type="s" direction="out" name="json"/>
     </method>
+    <method name="Warm"><arg type="s" direction="out" name="json"/></method>
     <method name="Reset"><arg type="s" direction="out" name="json"/></method>
   </interface>
 </node>"#;
@@ -89,28 +90,44 @@ struct Daemon {
     pending: RefCell<HashMap<u32, Pending>>,
     next_id: Cell<u32>,
     history: RefCell<Vec<Value>>,
+    warming: Cell<bool>,
 }
 
 fn reply(kind: &str, message: impl Into<String>) -> Value {
     json!({"ok": kind != "error", "kind": kind, "message": message.into()})
 }
 
-/// Modèle à utiliser maintenant (palier choisi ou conseillé, allégé sur batterie / RAM juste).
-fn pick_model(cfg: &noos_core::config::Ai) -> Result<&'static noos_core::ai::Tier, String> {
-    let hw = noos_core::ai::detect();
-    let mut tier = noos_core::ai::tier(&cfg.tier).or_else(|| noos_core::ai::recommended(&hw)).ok_or("Ce PC a trop peu de mémoire pour un modèle de langage : seules les commandes rapides fonctionnent.")?;
+/// Modèles candidats, du préféré au plus léger (palier choisi ou conseillé ; léger sur batterie).
+fn candidates(cfg: &noos_core::config::Ai, hw: &noos_core::ai::Hardware) -> Vec<&'static noos_core::ai::Tier> {
+    let Some(mut tier) = noos_core::ai::tier(&cfg.tier).or_else(|| noos_core::ai::recommended(hw)) else { return vec![] };
     if cfg.light_on_battery && hw.on_battery {
         tier = noos_core::ai::tier("light").unwrap_or(tier);
     }
-    // Pas assez de mémoire libre : palier inférieur plutôt que de faire ramer le PC.
-    while hw.ram_available_mb < tier.memory_mb && hw.best_gpu().and_then(|g| g.vram_mb).unwrap_or(0) < tier.memory_mb {
-        let idx = noos_core::ai::TIERS.iter().position(|t| t.id == tier.id).unwrap_or(0);
-        if idx == 0 {
-            return Err(format!("Mémoire libre insuffisante ({} Mo) pour le modèle : fermez quelques applications.", hw.ram_available_mb));
-        }
-        tier = &noos_core::ai::TIERS[idx - 1];
-    }
-    Ok(tier)
+    let idx = noos_core::ai::TIERS.iter().position(|t| t.id == tier.id).unwrap_or(0);
+    noos_core::ai::TIERS[..=idx].iter().rev().collect()
+}
+
+/// Choisit parmi les modèles **téléchargés** : le préféré s'il est déjà en mémoire ou s'il
+/// y tient, sinon un plus léger déjà téléchargé, sinon le préféré quand même.
+fn choose_model(ollama: &ollama::Ollama, cands: &[&'static noos_core::ai::Tier], ram_free: u64, vram: u64, use_gpu: bool) -> Result<&'static str, String> {
+    let installed = ollama.models(use_gpu)?;
+    let have: Vec<_> = cands.iter().filter(|t| installed.iter().any(|(n, _)| n == t.model)).collect();
+    let Some(first) = have.first() else {
+        let want = cands.first().map(|t| t.model).unwrap_or("qwen2.5:1.5b");
+        return Err(format!("Aucun modèle n'est téléchargé (conseillé : « {want} ») : Paramètres › IA › Modèle."));
+    };
+    let loaded = ollama.loaded();
+    Ok(have
+        .iter()
+        .find(|t| loaded.iter().any(|m| m == t.model) || ram_free.max(vram) >= t.memory_mb)
+        .unwrap_or(first)
+        .model)
+}
+
+/// Vulkan seulement sur une carte graphique dédiée : sur un iGPU (mémoire partagée), le
+/// processeur est aussi rapide, voire plus (mesuré sur Intel UHD 630 : 2× plus rapide).
+fn gpu_allowed(cfg: &noos_core::config::Ai, hw: &noos_core::ai::Hardware) -> bool {
+    cfg.use_gpu && hw.best_gpu().is_some_and(|g| g.discrete)
 }
 
 impl Daemon {
@@ -330,31 +347,67 @@ fn ask(d: Rc<Daemon>, text: String, invocation: gio::DBusMethodInvocation) {
         return send(invocation, v);
     }
     let cfg = noos_core::NoosConfig::load().ai;
-    let tier = match pick_model(&cfg) {
-        Ok(t) => t,
-        Err(e) => return send(invocation, reply("error", e)),
-    };
+    let hw = noos_core::ai::detect();
+    let cands = candidates(&cfg, &hw);
+    if cands.is_empty() {
+        return send(invocation, reply("error", "Ce PC a trop peu de mémoire pour un modèle de langage : seules les commandes rapides fonctionnent."));
+    }
     let tools = d.tools();
     let tool_defs: Vec<Value> = tools.iter().map(|(_, _, a)| noos_actions::as_tool(a)).collect();
     let mut messages = vec![json!({"role": "system", "content": SYSTEM_PROMPT})];
     messages.extend(d.history.borrow().iter().cloned());
     messages.push(json!({"role": "user", "content": text}));
     let ollama = d.ollama.clone();
-    let (model, use_gpu, keep) = (tier.model, cfg.use_gpu, cfg.unload_minutes);
+    let (use_gpu, keep) = (gpu_allowed(&cfg, &hw), cfg.unload_minutes);
+    let (ram_free, vram) = (hw.ram_available_mb, if use_gpu { hw.best_gpu().and_then(|g| g.vram_mb).unwrap_or(0) } else { 0 });
     glib::spawn_future_local(async move {
         let res = gio::spawn_blocking(move || {
-            if !ollama.has_model(model, use_gpu) {
-                return Err(format!("Le modèle « {model} » n'est pas encore téléchargé : Paramètres › IA › Modèle."));
-            }
-            ollama.chat(model, &messages, &tool_defs, use_gpu, keep)
+            let model = choose_model(&ollama, &cands, ram_free, vram, use_gpu)?;
+            ollama.chat(model, &messages, &tool_defs, use_gpu, keep).map(|m| (model, m))
         })
         .await
         .unwrap_or_else(|_| Err("le moteur d'IA s'est arrêté".into()));
+        let (model, res) = match res {
+            Ok((m, r)) => (Some(m), Ok(r)),
+            Err(e) => (None, Err(e)),
+        };
         d.last_call.set(Instant::now());
         let mut v = d.handle_model(&text, res, &tools);
-        v["model"] = json!(model);
+        if let Some(m) = model {
+            v["model"] = json!(m);
+        }
         send(invocation, v);
     });
+}
+
+/// `Warm` : à l'ouverture du panneau, charge le modèle et calcule d'avance les consignes et la
+/// liste des outils (sur processeur, la première question passe de ≈ 2 min à quelques secondes).
+fn warm(d: &Rc<Daemon>) -> Value {
+    let cfg = noos_core::NoosConfig::load().ai;
+    if !cfg.enabled || !cfg.assistant || d.warming.get() {
+        return reply("done", "");
+    }
+    let hw = noos_core::ai::detect();
+    let cands = candidates(&cfg, &hw);
+    if cands.is_empty() || !hw.ollama {
+        return reply("done", "");
+    }
+    let tool_defs: Vec<Value> = d.tools().iter().map(|(_, _, a)| noos_actions::as_tool(a)).collect();
+    let messages = vec![json!({"role": "system", "content": SYSTEM_PROMPT}), json!({"role": "user", "content": "Bonjour"})];
+    let ollama = d.ollama.clone();
+    let (use_gpu, keep) = (gpu_allowed(&cfg, &hw), cfg.unload_minutes);
+    let (ram_free, vram) = (hw.ram_available_mb, if use_gpu { hw.best_gpu().and_then(|g| g.vram_mb).unwrap_or(0) } else { 0 });
+    d.warming.set(true);
+    let d = d.clone();
+    glib::spawn_future_local(async move {
+        let _ = gio::spawn_blocking(move || {
+            let model = choose_model(&ollama, &cands, ram_free, vram, use_gpu)?;
+            ollama.chat_opts(model, &messages, &tool_defs, use_gpu, keep, Some(1))
+        })
+        .await;
+        d.warming.set(false);
+    });
+    reply("done", "Préchauffage lancé.")
 }
 
 fn new_daemon() -> Rc<Daemon> {
@@ -366,6 +419,7 @@ fn new_daemon() -> Rc<Daemon> {
         pending: RefCell::new(HashMap::new()),
         next_id: Cell::new(0),
         history: RefCell::new(vec![]),
+        warming: Cell::new(false),
     })
 }
 
@@ -401,6 +455,10 @@ fn main() {
                     .register_object(PATH, &iface)
                     .method_call(move |_, _, _, _, method, params, invocation| {
                         d2.last_call.set(Instant::now());
+                        if method == "Warm" {
+                            let r = warm(&d2).to_string();
+                            return invocation.return_value(Some(&(r,).to_variant()));
+                        }
                         if method == "Ask" {
                             let (text,): (String,) = params.get().unwrap_or_default();
                             return ask(d2.clone(), text, invocation);

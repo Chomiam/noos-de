@@ -86,8 +86,11 @@ pub fn parse(input: &str) -> Option<Intent> {
         if has(t, &["remets", "remet", "reactive", "reactiver", "retablis", "remettre"]) {
             return intent("system.mute", json!({"etat": "off"}));
         }
+        if has(t, &["maximum", "max", "fond"]) {
+            return intent("system.volume.set", json!({"pourcentage": 100}));
+        }
         if let Some(n) = number(t) {
-            return intent("system.volume.set", json!({"pourcentage": n.clamp(0, 150)}));
+            return intent("system.volume.set", json!({"pourcentage": n.clamp(0, 100)}));
         }
         if has(t, &["monte", "monter", "augmente", "augmenter", "plus fort", "hausse"]) {
             return intent("system.volume.change", json!({"delta": 10}));
@@ -202,7 +205,8 @@ mod tests {
         assert_eq!(a("baisse un peu le son"), Some(("system.volume.change", json!({"delta": -10}))));
         assert_eq!(a("Coupe le son"), Some(("system.mute", json!({"etat": "on"}))));
         assert_eq!(a("remets le son"), Some(("system.mute", json!({"etat": "off"}))));
-        assert_eq!(a("volume 300"), Some(("system.volume.set", json!({"pourcentage": 150}))));
+        assert_eq!(a("mets le volume au maximum stp"), Some(("system.volume.set", json!({"pourcentage": 100}))));
+        assert_eq!(a("volume 300"), Some(("system.volume.set", json!({"pourcentage": 100}))));
     }
 
     #[test]
