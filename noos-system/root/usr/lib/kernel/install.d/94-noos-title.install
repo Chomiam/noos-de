@@ -1,0 +1,16 @@
+#!/bin/bash
+# kernel-install : entrées de démarrage nommées « NOOS (noyau x.y.z) » au lieu du nom de la
+# distribution de base (PRETTY_NAME de Fedora). Lancé après 20-grub / 90-loaderentry.
+COMMAND="${1:-}"
+KERNEL_VERSION="${2:-}"
+[ "$COMMAND" = add ] && [ -n "$KERNEL_VERSION" ] || exit 0
+for f in /boot/loader/entries/*.conf; do
+    [ -f "$f" ] || continue
+    grep -q "^version[[:space:]]\+$KERNEL_VERSION\$" "$f" || continue
+    case "$KERNEL_VERSION" in
+        0-rescue*) title="NOOS (secours)" ;;
+        *) title="NOOS (noyau ${KERNEL_VERSION%%-*})" ;;
+    esac
+    grep -qx "title $title" "$f" || sed -i "s|^title .*|title $title|" "$f"
+done
+exit 0

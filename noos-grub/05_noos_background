@@ -1,0 +1,9 @@
+#!/bin/sh
+# GRUB (grub2-mkconfig) : fond de la console = fond du thème NOOS, au lieu du noir. La console
+# s'affiche au lancement d'une entrée : sans cela, un rectangle noir recouvre le menu.
+cat <<'CFG'
+if [ -f "${prefix}/themes/noos/background.png" ]; then
+    insmod png
+    background_image -m stretch "${prefix}/themes/noos/background.png"
+fi
+CFG

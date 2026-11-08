@@ -209,6 +209,7 @@ install -m644 noos-plymouth/noos/*.png noos-plymouth/noos/noos.plymouth noos-ply
 install -d %{buildroot}%{_datadir}/noos-grub
 install -m644 noos-grub/noos/* %{buildroot}%{_datadir}/noos-grub/
 install -m755 noos-grub/install.sh %{buildroot}%{_datadir}/noos-grub/install.sh
+install -m755 noos-grub/05_noos_background %{buildroot}%{_datadir}/noos-grub/05_noos_background
 
 %post
 /sbin/ldconfig
@@ -240,6 +241,9 @@ if [ ! -e /var/lib/noos/useradd-fish ] && [ -x /usr/bin/fish ] && [ -f /etc/defa
     fi
     mkdir -p /var/lib/noos && touch /var/lib/noos/useradd-fish
 fi
+# Démarrage fluide : entrées « NOOS », pilote graphique chargé tôt, Plymouth sans simpledrm
+# (initramfs régénéré seulement si ces réglages changent).
+/usr/libexec/noos-boot-setup >/dev/null 2>&1 || :
 # Thème GRUB : fichiers mis à jour à chaque fois ; grub.cfg régénéré à la première installation.
 if [ -d /boot/grub2 ]; then
     if grep -q '^GRUB_THEME=' /etc/default/grub 2>/dev/null; then
@@ -275,6 +279,9 @@ fi
 %config(noreplace) %{_sysconfdir}/xdg/noos-mimeapps.list
 %attr(0440,root,root) %config(noreplace) %{_sysconfdir}/sudoers.d/90-noos-pwfeedback
 %config(noreplace) %{_sysconfdir}/firefox/policies/policies.json
+%{_libexecdir}/noos-boot-setup
+%{_prefix}/lib/kernel/install.d/94-noos-title.install
+%{_prefix}/lib/systemd/system/plymouth-quit.service.d/90-noos-retain-splash.conf
 %{_libexecdir}/noos-msfonts
 %config(noreplace) %{_sysconfdir}/pam.d/noos-lock
 %{_datadir}/polkit-1/actions/org.noos.save.policy

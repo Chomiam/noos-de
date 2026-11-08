@@ -624,6 +624,9 @@ fn install(ctx: &Ctx, c: &Choices) -> anyhow::Result<()> {
 
     // ── 8. GRUB ──
     ctx.step(8);
+    // Démarrage fluide : pilote graphique de ce PC chargé tôt, Plymouth sans simpledrm
+    // (l'initramfs est régénéré juste après), entrées GRUB « NOOS ».
+    ctx.try_run("chroot", &[TARGET, "/usr/libexec/noos-boot-setup", "--no-initramfs"]);
     ctx.line("Régénération de l'initramfs (thème Plymouth NOOS inclus)…");
     ctx.chroot(&["dracut", "-f", "--regenerate-all", "--no-hostonly"])?;
     ctx.progress(0.5);

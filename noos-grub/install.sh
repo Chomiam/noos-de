@@ -39,6 +39,14 @@ set_key GRUB_THEME "/boot/grub2/themes/noos/theme.txt"
 set_key GRUB_TERMINAL_OUTPUT "gfxterm"
 grep -q '^GRUB_GFXMODE=' "$DEFAULT" || set_key GRUB_GFXMODE "auto"
 
+# Fond de la console (pas de rectangle noir au lancement d'une entrée) : grub.cfg est
+# régénéré si ce morceau est nouveau ou a changé.
+SNIP="$ROOT/etc/grub.d/05_noos_background"
+if ! cmp -s "$HERE/05_noos_background" "$SNIP" 2>/dev/null; then
+    install -Dm755 "$HERE/05_noos_background" "$SNIP"
+    MKCONFIG=1
+fi
+
 if [ "$MKCONFIG" = 1 ]; then
     if [ "$ROOT" = "/" ]; then
         grub2-mkconfig -o /boot/grub2/grub.cfg >/dev/null 2>&1

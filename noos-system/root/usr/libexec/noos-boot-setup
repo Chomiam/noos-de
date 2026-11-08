@@ -1,0 +1,55 @@
+#!/bin/bash
+# noos-boot-setup — démarrage fluide de NOOS, de GRUB à l'écran de connexion (root).
+# Lancé par le paquet (%post) et par l'installateur ; sans effet s'il n'y a rien à changer.
+#
+#   1. entrées GRUB nommées « NOOS (noyau x.y.z) » au lieu de « Fedora Linux … » ;
+#   2. pilote graphique (i915, xe, amdgpu, radeon, nouveau) chargé dès le début de
+#      l'initramfs et Plymouth sans « simpledrm » : l'animation démarre directement sur le
+#      vrai pilote, sans s'interrompre au changement de pilote ;
+#   3. initramfs régénéré si l'un de ces réglages a changé (--no-initramfs : ne pas le faire).
+set -uo pipefail
+REGEN=1
+[ "${1:-}" = --no-initramfs ] && REGEN=0
+changed=0
+
+# ── 1. Noms des entrées ──
+for f in /boot/loader/entries/*.conf; do
+    [ -f "$f" ] || continue
+    /usr/lib/kernel/install.d/94-noos-title.install add "$(sed -n 's/^version[[:space:]]*//p' "$f" | head -1)" >/dev/null 2>&1 || true
+done
+
+# ── 2a. Pilote graphique chargé tôt ──
+drivers=""
+for d in /sys/class/drm/card[0-9]*/device/driver; do
+    [ -e "$d" ] || continue
+    m=$(basename "$(readlink -f "$d")")
+    case "$m" in i915|xe|amdgpu|radeon|nouveau) ;; *) continue ;; esac
+    case " $drivers " in *" $m "*) ;; *) drivers="$drivers $m" ;; esac
+done
+conf=/etc/dracut.conf.d/90-noos-early-kms.conf
+if [ -n "$drivers" ]; then
+    want="# NOOS : pilote graphique chargé dès le début (Plymouth sans saut d'écran)
+force_drivers+=\"$drivers \""
+    if [ "$(cat "$conf" 2>/dev/null)" != "$want" ]; then
+        mkdir -p /etc/dracut.conf.d
+        printf '%s\n' "$want" >"$conf"
+        changed=1
+    fi
+fi
+
+# ── 2b. Plymouth : pas d'affichage provisoire du micrologiciel (simpledrm) ──
+pc=/etc/plymouth/plymouthd.conf
+if [ -f "$pc" ] && ! grep -q '^UseSimpledrmNoLuks=0' "$pc"; then
+    if grep -q '^\[Daemon\]' "$pc"; then
+        sed -i '/^UseSimpledrm/d; /^\[Daemon\]/a UseSimpledrmNoLuks=0\nUseSimpledrm=0' "$pc"
+    else
+        printf '[Daemon]\nTheme=noos\nUseSimpledrmNoLuks=0\nUseSimpledrm=0\n' >>"$pc"
+    fi
+    changed=1
+fi
+
+# ── 3. initramfs ──
+if [ "$changed" = 1 ] && [ "$REGEN" = 1 ] && command -v dracut >/dev/null; then
+    dracut -f --regenerate-all >/dev/null 2>&1 || true
+fi
+exit 0

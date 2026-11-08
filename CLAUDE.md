@@ -188,12 +188,22 @@ On ne peut pas cliquer dans l'aperçu : utiliser les variables de test ci-dessou
   systemd.volatile=overlay enforcing=0 noos.snapshot=N`. `/.snapshots` y est vide (sous-volume
   imbriqué) : `noos-snapshot-boot.service` monte `@/.snapshots` ; la racine est un overlay, donc
   le périphérique Btrfs se lit via `/home`.
+- **Démarrage fluide** (`noos-system/root/usr/libexec/noos-boot-setup`, paquet %post +
+  installateur) : Fedora règle Plymouth sur `UseSimpledrmNoLuks=1` → animation sur
+  l'affichage du micrologiciel puis saut au chargement d'i915 (≈ 3 s) ; on met
+  `UseSimpledrmNoLuks=0` dans /etc/plymouth/plymouthd.conf et on force le pilote de la carte
+  (`force_drivers` dracut). `plymouth-quit` garde la dernière image (`--retain-splash`)
+  jusqu'au greeter. Entrées BLS renommées « NOOS (noyau x.y.z) » par
+  `/usr/lib/kernel/install.d/94-noos-title.install` (titre issu de PRETTY_NAME sinon).
+- **GRUB : rectangle noir au lancement d'une entrée** = la console gfxterm (taille minimale
+  imposée, fond noir) ; corrigé par une console plein écran sans cadre (theme.txt) et
+  `background_image` du fond du thème (`/etc/grub.d/05_noos_background`). GRUB affiche
+  toujours la ligne « Booting `…' ».
 - **Thème GRUB** : tester avec `grub2-mkrescue` + `qemu-system-x86_64 -display none` et
   `screendump` sur le moniteur ; les .pf2 doivent être chargés (`loadfont`) avant `set theme`.
 
 ## Reste à faire / idées
 
 - Plymouth : thème NOOS non vérifié sur vrai matériel (en VM, mode texte faute de 3D).
-- Menu GRUB du système installé : « Fedora Linux » au lieu de NOOS.
 - Webhook GitHub → COPR pour reconstruire à chaque push (URL dans COPR → Settings → Integrations).
 - Sélecteur d'écran pour le partage d'écran, VRR/HDR sur matériel réel.

@@ -14,7 +14,7 @@ cd "$HERE/root"
 find . -type f | while read -r f; do
     case "$f" in
     ./etc/sudoers.d/*) install -Dm440 "$f" "$ROOT/${f#./}" ;;   # sudo refuse un autre mode
-    ./usr/libexec/*) install -Dm755 "$f" "$ROOT/${f#./}" ;;
+    ./usr/libexec/*|./usr/lib/kernel/install.d/*) install -Dm755 "$f" "$ROOT/${f#./}" ;;
     *) install -Dm644 "$f" "$ROOT/${f#./}" ;;
     esac
 done
