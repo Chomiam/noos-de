@@ -184,7 +184,6 @@ install -d %{buildroot}%{_datadir}/wayland-sessions
 sed 's|/usr/local/bin/noos-session|%{_bindir}/noos-session|g' noos-session/noos.desktop \
     > %{buildroot}%{_datadir}/wayland-sessions/noos.desktop
 install -Dm644 noos-session/noos-portals.conf %{buildroot}%{_datadir}/xdg-desktop-portal/noos-portals.conf
-%{_datadir}/dbus-1/services/org.noos.Assistant1.service
 # Assistant IA : démarré à la demande par D-Bus.
 install -Dm644 noos-session/org.noos.Assistant1.service %{buildroot}%{_datadir}/dbus-1/services/org.noos.Assistant1.service
 install -d %{buildroot}%{_sysconfdir}/ld.so.conf.d
@@ -262,6 +261,7 @@ fi
 %{_bindir}/noos-greeter
 %{_datadir}/wayland-sessions/noos.desktop
 %{_datadir}/xdg-desktop-portal/noos-portals.conf
+%{_datadir}/dbus-1/services/org.noos.Assistant1.service
 %{_datadir}/plymouth/themes/noos
 %{_datadir}/noos-grub
 %{_prefix}/lib/NetworkManager/conf.d/90-noos-powersave.conf
