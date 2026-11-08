@@ -231,10 +231,6 @@ impl NoosState {
                 self.ipc.broadcast(&Event::ToggleStartMenu);
                 Event::Ok
             }
-            Request::ToggleAssistant => {
-                self.ipc.broadcast(&Event::ToggleAssistant);
-                Event::Ok
-            }
             Request::Screenshot { path } => {
                 self.pending_screenshot = Some(path.into());
                 Event::Ok

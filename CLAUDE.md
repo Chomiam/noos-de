@@ -47,50 +47,6 @@ Le `README.md` décrit les fonctionnalités ; ce fichier donne le contexte de tr
 | `noos-grub/` | Thème GRUB (`generate.py` produit images et polices .pf2, déjà générées) ; `install.sh` le copie dans /boot |
 | `noos-system/` | Réglages système livrés par le paquet : Wi-Fi/Ethernet sans économie d'énergie, WirePlumber sans mise en veille, sudo `pwfeedback`, profil fastfetch (`/etc/xdg/fastfetch`), fish (`vendor_conf.d` : pas de message d'accueil, fastfetch à l'ouverture) |
 
-## Intégration de l'IA (assistant local) — architecture et règles
-
-Plan complet : `/home/chomiam/.claude/plans/quirky-mixing-kurzweil.md` (approuvé le 2026-11-08).
-Décisions d'Axel : **100 % local** (rien ne sort du PC, pas de fournisseur en ligne), moteur
-**Ollama + Vulkan** (paquets Fedora `ollama` + `ollama-vulkan` : AMD / Intel / NVIDIA, repli
-CPU), assistant en **panneau latéral** (style Copilot), dictée en **push-to-talk Super+H**
-(modifiable). Fonctions : recherche de fichiers, dictée, commandes du bureau.
-
-- **Ressources d'abord** : routeur à deux étages — règles françaises (« monte le son à 90 % »)
-  exécutées sans modèle, puis seulement le LLM ; Ollama démarré à la demande, modèle déchargé
-  après inactivité, modèle choisi selon RAM / VRAM / Vulkan, allégé sur batterie. Modèles
-  téléchargés à la demande, jamais dans l'ISO.
-- Fedora : `llama-cpp` / `whisper-cpp` n'ont **pas** Vulkan (CPU + ROCm) ; la dictée utilise
-  `whisper-cpp` CPU (modèles base / small). Smithay fournit `input_method` / `text_input` /
-  `virtual_keyboard` : le texte dicté est « tapé » dans le champ actif.
-- Composants : `noos-actions` (registre + D-Bus `org.noos.Actions1`), `noos-ai` (démon de
-  session, D-Bus `org.noos.Assistant1`), `noos-core/src/ai.rs` (config `[ai]`, détection du
-  matériel, paliers de modèles), Paramètres › IA, panneau Assistant de `noos-shell`.
-- **Règle pour toute application NOOS (existante ou future)** : exposer ses actions à l'IA
-  avec `noos_actions` (id `app.verbe`, titre et description en français, paramètres typés,
-  niveau de risque `Read` / `Change` / `System` — `System` demande confirmation), servies sur
-  le bus de session sous `org.noos.Actions.<App>`. L'utilisateur peut couper chaque appli dans
-  Paramètres › IA. Ne jamais exécuter de commande shell générée par le modèle : l'IA n'agit
-  qu'à travers ces actions déclarées.
-- Panneau latéral droit : assistant **et widget météo** (Open-Meteo, sans clé, désactivable :
-  seule partie qui va sur Internet). Barre de recherche du dock : **micro cliquable** avec
-  animation de barres au rythme de la voix (style Gemini), aussi déclenchée par Super+H.
-- **Avancement** : phase 1 (socle) faite — `[ai]` dans `NoosConfig`, `noos-core/src/ai.rs`
-  (détection, paliers Qwen 2.5 1,5 / 3 / 7 B), `noos-actions`, démon `noos-ai` (D-Bus activé à la
-  demande, arrêt après 10 min), Paramètres › IA. Phase 2 (commandes) faite : `noos-ai/src/rules.rs`
-  (phrases françaises → action, tests), `actions.rs` (actions du bureau : son, luminosité via logind,
-  mode sombre, Paramètres, applis, capture, Wi-Fi, mises à jour, session, heure), `ollama.rs`
-  (curl ; réutilise un `ollama serve` sur 11434, sinon lance le sien sur 11535 avec
-  `OLLAMA_MODELS=~/.local/share/noos/ai/models` et `OLLAMA_VULKAN=1`), méthodes D-Bus `Ask`,
-  `Confirm`, `Models`, `PullModel`, `PullStatus`, `DeleteModel`, `Reset` ; panneau
-  `noos-shell/src/assistant.rs` (Super+A, bouton étoile de la barre, cartes de confirmation) ;
-  téléchargement des modèles dans Paramètres › IA. Suivantes : dictée + micro du dock, météo,
-  recherche de fichiers, actions dans chaque application.
-- Le démon est activé par D-Bus et n'a pas forcément l'environnement graphique : il lance les
-  applications par l'IPC du compositeur (`Request::Spawn`). `noos-ai --rules "phrase"` teste le
-  routeur sans rien exécuter.
-- Le D-Bus du projet passe par **gio** (`gio::bus_own_name`, `register_object`), pas zbus
-  (même schéma que `noos-shell/src/notify.rs`).
-
 ## Environnement de développement
 
 - Hôte : Fedora 45 Silverblue (GNOME/GDM), Intel UHD 630, **8 Go de RAM** (attention aux VM).
@@ -143,8 +99,6 @@ On ne peut pas cliquer dans l'aperçu : utiliser les variables de test ci-dessou
 | `NOOS_EDITOR_DEMO=1` (+ `NOOS_EDITOR_SEARCH=mot`) | noos-texteditor : dossier et fichiers d'exemple (Rust, Python, CSS, Markdown), recherche lancée ; lancer depuis le conteneur (gtksourceview5) |
 | `NOOS_LOCK_DEMO_CARD=1` | noos-lock : carte de connexion affichée d'emblée (avec `--preview`) |
 | `NOOS_SETTINGS_SCROLL=px` | noos-settings : défile la page ouverte (captures) |
-| `NOOS_SHELL_OPEN=assistant` (+ `NOOS_AI_ASK="question 1\|question 2"`) | noos-shell : panneau Assistant ouvert, questions posées à la suite (lancer `noos-ai` sur le même bus avant) |
-| `NOOS_AI_DEMO=1` | Paramètres › IA : matériel fictif (Radeon 12 Go, 16 Go de RAM) ; `noos-ai --status` : diagnostic JSON |
 | `NOOS_FILE_MENU_DEMO=x,y` | noos-file ouvre le menu contextuel de la vue en icônes en (x, y) ; y < 0 = depuis le bas |
 | `NOOS_FILE_SELECT_DEMO=0,1,2` | noos-file sélectionne ces éléments puis rejoue un clic dans le vide (coin inférieur droit) |
 | `NOOS_PHOTOVIEW_DEMO=<image>;info;zoom=2.5;next;hide;slideshow` | noos-photoview : ouvre une image, panneau d'infos, zoom, suivante, commandes masquées, diaporama |

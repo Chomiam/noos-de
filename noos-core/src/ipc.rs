@@ -49,8 +49,6 @@ pub enum Request {
     SetTransform { output: String, transform: String },
     /// Ouvre / ferme le menu Démarrer (équivalent de la touche Super).
     ToggleStartMenu,
-    /// Ouvre / ferme le panneau Assistant (Super+A).
-    ToggleAssistant,
     /// Capture de l'écran (premier écran) au format PNG.
     Screenshot { path: String },
     /// Verrouiller la session (lance `noos-lock`).
@@ -68,8 +66,6 @@ pub enum Event {
     Outputs { outputs: Vec<OutputInfo> },
     /// La touche Super a été pressée seule : ouvrir/fermer le menu Démarrer.
     ToggleStartMenu,
-    /// Super+A : ouvrir / fermer le panneau Assistant.
-    ToggleAssistant,
     ConfigReloaded,
     Error { message: String },
     Ok,

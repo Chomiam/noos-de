@@ -5,7 +5,6 @@
 //! - [`paths`]  : emplacements standards (XDG)
 //! - [`bing`]   : images du jour de Bing comme fonds d'écran
 
-pub mod ai;
 pub mod archive;
 pub mod bing;
 pub mod config;

@@ -16,8 +16,6 @@ members = [
     "noos-shader",
     "noos-lock",
     "noos-archive",
-    "noos-actions",
-    "noos-ai",
     "noos-widget-vitals",
     "noos-software",
     "noos-snip",
@@ -38,7 +36,6 @@ noos-core = { path = "noos-core" }
 noos-theme = { path = "noos-theme" }
 noos-pkg = { path = "noos-pkg" }
 noos-shader = { path = "noos-shader" }
-noos-actions = { path = "noos-actions" }
 noos-widget-vitals = { path = "noos-widget-vitals" }
 
 serde = { version = "1", features = ["derive"] }

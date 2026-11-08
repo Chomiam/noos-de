@@ -47,7 +47,6 @@ pub struct Taskbar {
     bell_icon: gtk::Image,
     bell_badge: gtk::Label,
     net_btn: gtk::Button,
-    ai_btn: gtk::Button,
     net_icon: gtk::Image,
     /// VPN actif : bouclier dans la zone d'état, menu pour changer de profil.
     vpn_btn: gtk::MenuButton,
@@ -175,15 +174,6 @@ impl Taskbar {
         let (net_btn, net_icon) = status_button("network-wired-symbolic", "Réseau");
         let (vol_btn, vol_icon) = status_button("audio-volume-high-symbolic", "Volume");
         let (quick_btn, _) = status_button("emblem-system-symbolic", "Réglages rapides");
-        let (ai_btn, _) = status_button("starred-symbolic", "Assistant (Super+A)");
-        {
-            let shell = shell.clone();
-            ai_btn.connect_clicked(move |_| {
-                if let Some(a) = shell.assistant.borrow().as_ref() {
-                    a.toggle();
-                }
-            });
-        }
         {
             let (shell, hide) = (shell.clone(), hide_others.clone());
             net_btn.connect_clicked(move |_| {
@@ -284,7 +274,6 @@ impl Taskbar {
         let status_group = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         status_group.add_css_class("status-group");
         status_group.set_valign(gtk::Align::Center);
-        status_group.append(&ai_btn);
         status_group.append(&vpn_btn);
         status_group.append(&net_btn);
         status_group.append(&vol_btn);
@@ -412,7 +401,6 @@ impl Taskbar {
             bell_icon,
             bell_badge,
             net_btn,
-            ai_btn,
             net_icon,
             vpn_btn,
             vpn_list,
@@ -465,7 +453,6 @@ impl Taskbar {
             self.window.queue_resize();
         }
         self.search.set_visible(cfg.taskbar.show_search);
-        self.ai_btn.set_visible(cfg.ai.enabled && cfg.ai.assistant);
         self.vitals.widget().set_visible(cfg.taskbar.show_vitals);
         self.root.set_start_widget(gtk::Widget::NONE);
         self.root.set_center_widget(gtk::Widget::NONE);
