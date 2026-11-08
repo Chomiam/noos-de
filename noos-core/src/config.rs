@@ -274,12 +274,19 @@ impl Default for Power {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct Lock {
-    /// Verrouiller après N minutes d'inactivité (0 = jamais).
+    /// Écran de verrouillage (ou de veille) après N minutes d'inactivité (0 = jamais).
     pub idle_minutes: u32,
+    /// À l'inactivité : verrouiller (mot de passe) ou seulement l'écran de veille.
+    pub mode: IdleMode,
+    /// Assombrissement progressif de l'écran pendant N secondes avant (0 = aucun) ; un
+    /// mouvement de la souris ou une touche l'annule.
+    pub dim_seconds: u32,
+    /// Assombrissement de l'animation affichée (0 = aucun, 0,8 = très sombre).
+    pub animation_dim: f32,
     /// Verrouiller avant la mise en veille.
     pub before_suspend: bool,
-    /// Animation : `builtin:<nom>` (animations NOOS), `shadertoy:<id>` (bibliothèque locale),
-    /// vide = fond d'écran.
+    /// Animation : `builtin:<nom>` (animations NOOS), `library:<id>` (bibliothèque locale :
+    /// catalogue NOOS ou import), vide = fond d'écran.
     pub animation: String,
     /// Images par seconde maximales de l'animation.
     pub fps: u32,
@@ -288,9 +295,29 @@ pub struct Lock {
     pub show_clock: bool,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum IdleMode {
+    /// Écran de verrouillage : le mot de passe est demandé.
+    #[default]
+    Lock,
+    /// Écran de veille seulement : une touche ou la souris le fait disparaître.
+    Screensaver,
+}
+
 impl Default for Lock {
     fn default() -> Self {
-        Self { idle_minutes: 5, before_suspend: true, animation: "builtin:aurora".into(), fps: 30, render_scale: 0.75, show_clock: true }
+        Self {
+            idle_minutes: 5,
+            mode: IdleMode::Lock,
+            dim_seconds: 10,
+            animation_dim: 0.15,
+            before_suspend: true,
+            animation: "builtin:aurora".into(),
+            fps: 30,
+            render_scale: 0.75,
+            show_clock: true,
+        }
     }
 }
 

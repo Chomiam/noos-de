@@ -1,5 +1,4 @@
-//! Animations NOOS intégrées (créées pour NOOS, au format Shadertoy `mainImage`) : elles
-//! fonctionnent sans compte Shadertoy.
+//! Animations NOOS intégrées (créées pour NOOS, au format Shadertoy `mainImage`).
 
 pub struct Builtin {
     pub id: &'static str,

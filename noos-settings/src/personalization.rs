@@ -331,7 +331,7 @@ pub fn root(app: &Rc<App>) -> adap::NavigationPage {
     g.add(&link(app, "preferences-desktop-theme-symbolic", "Thèmes", "Palette, coins, boutons de fenêtre, CSS personnalisé", themes));
     g.add(&link(app, "view-app-grid-symbolic", "Barre des tâches", "Alignement, hauteur, applications épinglées", taskbar));
     g.add(&link(app, "view-dual-symbolic", "Fenêtres", "Ancrage aux bords de l'écran, dispositions, animations", windows));
-    g.add(&link(app, "changes-prevent-symbolic", "Écran de verrouillage", "Animations Shadertoy, verrouillage automatique", crate::lockscreen::root));
+    g.add(&link(app, "changes-prevent-symbolic", "Écran de verrouillage", "Animations, écran de veille, verrouillage automatique", crate::lockscreen::root));
     g.add(&link(app, "system-lock-screen-symbolic", "Écran de connexion", "Fond, horloge, comptes et sessions de l'écran de connexion", crate::login::login_screen));
     g.add(&link(app, "preferences-desktop-font-symbolic", "Polices", "Police de l'interface", fonts));
     content.append(&g);

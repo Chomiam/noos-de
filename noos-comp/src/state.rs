@@ -121,6 +121,9 @@ pub struct NoosState {
     pub alt_tab_index: Option<usize>,
     pub last_activity: std::time::Instant,
     pub screens_off: bool,
+    /// Début de l'assombrissement avant verrouillage / écran de veille.
+    pub dim_started: Option<std::time::Instant>,
+    pub dim_buffer: smithay::backend::renderer::element::solid::SolidColorBuffer,
     pub suspend_requested: bool,
     /// Surfaces qui empêchent l'extinction (lecture vidéo…).
     pub idle_inhibitors: Vec<WlSurface>,
@@ -284,6 +287,8 @@ impl NoosState {
             alt_tab_index: None,
             last_activity: std::time::Instant::now(),
             screens_off: false,
+            dim_started: None,
+            dim_buffer: Default::default(),
             suspend_requested: false,
             idle_inhibitors: Vec::new(),
             session_lock_state,

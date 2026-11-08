@@ -19,6 +19,10 @@ impl NoosState {
     pub fn on_activity(&mut self) {
         self.last_activity = Instant::now();
         self.suspend_requested = false;
+        if self.dim_started.take().is_some() {
+            // Assombrissement annulé : l'écran revient tout de suite.
+            self.loop_handle.insert_idle(|s| s.render_all());
+        }
         if self.screens_off {
             info!("activité : rallumage des écrans");
             self.screens_off = false;
@@ -42,9 +46,23 @@ impl NoosState {
         }
         let idle = self.last_activity.elapsed();
         let lock = self.config.lock.clone();
-        if lock.idle_minutes > 0 && !self.lock.locked && idle >= Duration::from_secs(lock.idle_minutes as u64 * 60) {
-            info!(minutes = lock.idle_minutes, "inactivité : verrouillage");
-            self.lock_session();
+        if lock.idle_minutes > 0 && !self.lock.locked {
+            let at = Duration::from_secs(lock.idle_minutes as u64 * 60);
+            let dim = Duration::from_secs(lock.dim_seconds as u64).min(at);
+            if idle >= at {
+                self.dim_started = None;
+                match lock.mode {
+                    noos_core::config::IdleMode::Lock => {
+                        info!(minutes = lock.idle_minutes, "inactivité : verrouillage");
+                        self.lock_session();
+                    }
+                    noos_core::config::IdleMode::Screensaver => self.start_screensaver(),
+                }
+            } else if !dim.is_zero() && idle >= at - dim && self.dim_started.is_none() && !self.screens_off {
+                info!(secondes = lock.dim_seconds, "inactivité : assombrissement");
+                self.dim_started = Some(Instant::now() - (idle - (at - dim)));
+                self.start_dim_animation();
+            }
         }
         if power.screen_off_minutes > 0
             && !self.screens_off
@@ -76,9 +94,29 @@ impl NoosState {
 
     pub fn start_idle_timer(&mut self) {
         self.start_reaper();
-        let _ = self.loop_handle.insert_source(Timer::from_duration(Duration::from_secs(5)), |_, _, state| {
+        let _ = self.loop_handle.insert_source(Timer::from_duration(Duration::from_secs(1)), |_, _, state| {
             state.check_idle();
-            TimeoutAction::ToDuration(Duration::from_secs(5))
+            TimeoutAction::ToDuration(Duration::from_secs(1))
+        });
+    }
+
+    /// Opacité du voile d'assombrissement (None : pas d'assombrissement en cours).
+    pub fn dim_alpha(&self) -> Option<f32> {
+        let start = self.dim_started?;
+        let total = self.config.lock.dim_seconds.max(1) as f32;
+        let k = (start.elapsed().as_secs_f32() / total).clamp(0.0, 1.0);
+        // Courbe douce : l'essentiel de l'assombrissement arrive vite, puis se stabilise.
+        Some(0.82 * (1.0 - (1.0 - k) * (1.0 - k)))
+    }
+
+    /// Redessine les écrans ~30 fois par seconde tant que l'assombrissement progresse.
+    fn start_dim_animation(&mut self) {
+        let _ = self.loop_handle.insert_source(Timer::from_duration(Duration::from_millis(33)), |_, _, state| {
+            if state.dim_started.is_none() {
+                return TimeoutAction::Drop;
+            }
+            state.render_all();
+            TimeoutAction::ToDuration(Duration::from_millis(33))
         });
     }
 }

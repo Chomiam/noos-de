@@ -65,7 +65,7 @@ const SEARCH: &[(&str, &str, usize, Option<Builder>)] = &[
     ("Fenêtres", "fenêtres ancrage ancrer tiling snap bords coins disposition animation aperçu", 3, Some(personalization::windows)),
     ("Écran de connexion", "écran de connexion login greeter verrouillage session fond", 3, Some(login::login_screen)),
     ("Polices", "police font texte", 3, Some(personalization::fonts)),
-    ("Écran de verrouillage", "verrouillage verrouiller écran de veille shadertoy animation shader super+l", 3, Some(lockscreen::root)),
+    ("Écran de verrouillage", "verrouillage verrouiller écran de veille animation shader catalogue importer assombrir éteindre super+l", 3, Some(lockscreen::root)),
     ("Applications par défaut", "applications par défaut ouvrir avec associations type de fichier navigateur", 4, Some(apps::default_apps)),
     ("VRR / FreeSync", "vrr freesync gsync variable jeux", 5, None),
     ("Mode Jeu", "mode jeu gaming", 5, None),

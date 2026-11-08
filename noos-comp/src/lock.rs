@@ -21,6 +21,9 @@ use tracing::{info, warn};
 use crate::state::NoosState;
 
 pub const LOCK_COMMAND: &str = "noos-lock";
+/// Écran de veille sans mot de passe (`[lock] mode = "screensaver"`) : même protocole de
+/// verrouillage, mais noos-lock se retire à la première touche ou au premier mouvement.
+pub const SCREENSAVER_COMMAND: &str = "noos-lock --screensaver";
 
 #[derive(Default)]
 pub struct LockState {
@@ -30,6 +33,9 @@ pub struct LockState {
     pub surfaces: Vec<(String, LockSurface)>,
     /// Dernier lancement de noos-lock (relances espacées).
     pub spawned_at: Option<Instant>,
+    /// Commande du verrouilleur en cours (verrouillage ou écran de veille) : c'est elle qui
+    /// est relancée s'il s'arrête sans déverrouiller.
+    pub command: Option<&'static str>,
 }
 
 impl SessionLockHandler for NoosState {
@@ -90,6 +96,19 @@ impl NoosState {
 
     /// Lance l'écran de verrouillage (s'il ne tourne pas déjà).
     pub fn lock_session(&mut self) {
+        if self.running_lock_command() == Some(SCREENSAVER_COMMAND) {
+            // Écran de veille affiché : on le remplace par le vrai verrouillage (la session
+            // reste verrouillée pendant l'échange, noos-lock est relancé par check_lock_client).
+            info!("écran de veille → verrouillage");
+            self.lock.command = Some(LOCK_COMMAND);
+            self.lock.spawned_at = None;
+            for (cmd, child) in self.children.borrow_mut().iter_mut() {
+                if cmd == SCREENSAVER_COMMAND {
+                    let _ = child.kill();
+                }
+            }
+            return;
+        }
         if self.lock_client_running() {
             return;
         }
@@ -98,14 +117,32 @@ impl NoosState {
         }
         info!("verrouillage demandé");
         self.lock.spawned_at = Some(Instant::now());
+        self.lock.command = Some(LOCK_COMMAND);
         self.spawn(LOCK_COMMAND);
     }
 
+    /// Écran de veille sans mot de passe (inactivité, `[lock] mode = "screensaver"`).
+    pub fn start_screensaver(&mut self) {
+        if self.lock_client_running() || self.lock.locked || crate::kiosk() {
+            return;
+        }
+        info!("inactivité : écran de veille");
+        self.lock.spawned_at = Some(Instant::now());
+        self.lock.command = Some(SCREENSAVER_COMMAND);
+        self.spawn(SCREENSAVER_COMMAND);
+    }
+
+    fn running_lock_command(&self) -> Option<&'static str> {
+        self.children.borrow_mut().iter_mut().find_map(|(cmd, child)| {
+            if !matches!(child.try_wait(), Ok(None)) {
+                return None;
+            }
+            [LOCK_COMMAND, SCREENSAVER_COMMAND].into_iter().find(|c| cmd == c)
+        })
+    }
+
     fn lock_client_running(&self) -> bool {
-        self.children
-            .borrow_mut()
-            .iter_mut()
-            .any(|(cmd, child)| cmd == LOCK_COMMAND && matches!(child.try_wait(), Ok(None)))
+        self.running_lock_command().is_some()
     }
 
     /// Appelé régulièrement : verrou actif mais plus aucune surface de verrouillage vivante (le
@@ -118,10 +155,11 @@ impl NoosState {
         if self.lock.spawned_at.is_some_and(|t| t.elapsed() < Duration::from_secs(3)) {
             return;
         }
-        warn!("session verrouillée sans noos-lock : relance");
+        let cmd = self.lock.command.unwrap_or(LOCK_COMMAND);
+        warn!(cmd, "session verrouillée sans verrouilleur : relance");
         self.lock.surfaces.clear();
         self.lock.spawned_at = Some(Instant::now());
-        self.spawn(LOCK_COMMAND);
+        self.spawn(cmd);
     }
 
     /// Surface de verrouillage de l'écran `output`.

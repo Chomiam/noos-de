@@ -1,0 +1,171 @@
+{
+ "version": 1,
+ "shaders": [
+  {
+   "id": "beziers",
+   "name": "Courbes",
+   "author": "NOOS",
+   "description": "Rubans de Bézier qui ondulent et laissent un sillage",
+   "tags": [
+    "lignes",
+    "rétro",
+    "néon"
+   ],
+   "license": "CC0-1.0",
+   "homage": "Écran de veille « Bézier » de Windows 95 / 98",
+   "code": "float tri(float x) { return abs(fract(x) - 0.5) * 2.0; }\nfloat h1(float n) { return fract(sin(n) * 43758.5453123); }\nfloat seg(vec2 p, vec2 a, vec2 b) {\n    vec2 pa = p - a, ba = b - a;\n    float k = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-6), 0.0, 1.0);\n    return length(pa - ba * k);\n}\nvec2 pt(int c, int k, float t, vec2 box) {\n    float s = float(c * 4 + k) + 1.0;\n    return (vec2(tri(t * (0.03 + 0.04 * h1(s * 3.1)) + h1(s * 7.7)), tri(t * (0.035 + 0.04 * h1(s * 4.3)) + h1(s * 2.3))) - 0.5) * 2.0 * box;\n}\nvec2 bez(vec2 a, vec2 b, vec2 c, vec2 d, float u) {\n    float v = 1.0 - u;\n    return v * v * v * a + 3.0 * v * v * u * b + 3.0 * v * u * u * c + u * u * u * d;\n}\nvoid mainImage(out vec4 fragColor, in vec2 fragCoord) {\n    vec2 box = vec2(0.5 * iResolution.x / iResolution.y, 0.5) * 0.92;\n    vec2 p = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;\n    float px = 1.0 / iResolution.y;\n    vec3 col = vec3(0.0);\n    for (int c = 0; c < 2; c++) {\n        vec3 tint = c == 0 ? vec3(0.3, 0.75, 1.0) : vec3(1.0, 0.45, 0.75);\n        for (int e = 0; e < 5; e++) {\n            float t = iTime - float(e) * 0.8;\n            vec2 A = pt(c, 0, t, box), B = pt(c, 1, t, box), C = pt(c, 2, t, box), D = pt(c, 3, t, box);\n            vec2 prev = A;\n            float dmin = 1e3;\n            for (int i = 1; i <= 18; i++) {\n                vec2 cur = bez(A, B, C, D, float(i) / 18.0);\n                dmin = min(dmin, seg(p, prev, cur));\n                prev = cur;\n            }\n            float fade = 1.0 - float(e) / 5.0;\n            col += tint * fade * (smoothstep(px * 1.8, 0.0, dmin) + 0.15 * smoothstep(px * 9.0, 0.0, dmin));\n        }\n    }\n    fragColor = vec4(min(col, vec3(1.0)), 1.0);\n}\n"
+  },
+  {
+   "id": "city-lights",
+   "name": "Lumières de la ville",
+   "author": "NOOS",
+   "description": "Bokeh de lumières nocturnes, flou et chaleureux",
+   "tags": [
+    "doux",
+    "nuit",
+    "couleurs"
+   ],
+   "license": "CC0-1.0",
+   "homage": "",
+   "code": "float h1(float n) { return fract(sin(n) * 43758.5453123); }\nvoid mainImage(out vec4 fragColor, in vec2 fragCoord) {\n    vec2 p = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;\n    float ar = iResolution.x / iResolution.y;\n    vec3 col = mix(vec3(0.01, 0.01, 0.04), vec3(0.05, 0.02, 0.08), fragCoord.y / iResolution.y);\n    for (int i = 0; i < 60; i++) {\n        float fi = float(i);\n        float layer = h1(fi * 4.7);\n        float x = fract(h1(fi * 1.3) + iTime * (0.004 + 0.012 * layer)) * (ar + 0.4) - 0.5 * (ar + 0.4);\n        float y = (h1(fi * 2.9) - 0.5) * 0.9 + 0.03 * sin(iTime * 0.2 + fi);\n        float r = 0.02 + 0.09 * layer * layer;\n        float d = length(p - vec2(x, y));\n        float disk = smoothstep(r, r * (0.85 - 0.3 * layer), d);\n        float ring = smoothstep(r * 0.1, 0.0, abs(d - r * 0.92)) * 0.4;\n        vec3 c = mix(vec3(1.0, 0.65, 0.25), vec3(1.0, 0.3, 0.45), h1(fi * 6.1));\n        c = mix(c, vec3(0.35, 0.6, 1.0), step(0.75, h1(fi * 8.3)));\n        float a = (0.18 + 0.25 * (1.0 - layer)) * (0.7 + 0.3 * sin(iTime * 0.7 + fi * 3.0));\n        col += c * (disk + ring) * a;\n    }\n    fragColor = vec4(col, 1.0);\n}\n"
+  },
+  {
+   "id": "fireflies",
+   "name": "Lucioles",
+   "author": "NOOS",
+   "description": "Des lucioles dansent au-dessus d'une prairie, au crépuscule",
+   "tags": [
+    "nature",
+    "doux",
+    "nuit"
+   ],
+   "license": "CC0-1.0",
+   "homage": "",
+   "code": "float h1(float n) { return fract(sin(n) * 43758.5453123); }\nfloat h2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }\nvoid mainImage(out vec4 fragColor, in vec2 fragCoord) {\n    vec2 uv = fragCoord / iResolution.xy;\n    vec2 p = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;\n    vec3 col = mix(vec3(0.02, 0.04, 0.08), vec3(0.08, 0.12, 0.22), uv.y);\n    col += vec3(0.35, 0.2, 0.3) * smoothstep(0.5, 0.0, abs(uv.y - 0.35)) * 0.25;\n    // Herbes : trois rangées de brins qui ondulent au vent.\n    float x = fragCoord.x / iResolution.y;\n    for (int k = 2; k >= 0; k--) {\n        float fk = float(k);\n        float sx = x * (55.0 + fk * 30.0) + fk * 13.0;\n        float id = floor(sx);\n        float fx = fract(sx) - 0.5;\n        float hgt = (0.10 + 0.16 * h2(vec2(id, fk))) * (1.0 - fk * 0.22);\n        float yy = uv.y / hgt;\n        float lean = 0.45 * sin(iTime * 0.7 + id * 0.9 + fk) * yy * yy;\n        float halfw = 0.5 * (1.0 - yy);\n        float inside = step(yy, 1.0) * smoothstep(halfw, halfw - 0.08, abs(fx - lean));\n        vec3 g = mix(vec3(0.015, 0.05, 0.035), vec3(0.03, 0.09, 0.06), fk / 2.0);\n        col = mix(col, g, inside);\n    }\n    // Lucioles.\n    for (int i = 0; i < 40; i++) {\n        float fi = float(i);\n        vec2 c = vec2((h1(fi * 1.1) - 0.5) * iResolution.x / iResolution.y, h1(fi * 2.3) * 0.6 - 0.35);\n        c += 0.08 * vec2(sin(iTime * (0.3 + 0.3 * h1(fi)) + fi), cos(iTime * (0.25 + 0.3 * h1(fi * 3.0)) + fi * 2.0));\n        float blink = smoothstep(0.3, 1.0, sin(iTime * (0.8 + h1(fi * 5.0)) + fi * 4.0));\n        float d = length(p - c);\n        col += vec3(0.85, 1.0, 0.4) * blink * (0.004 / (d * d + 0.0004)) * 0.06;\n    }\n    fragColor = vec4(col, 1.0);\n}\n"
+  },
+  {
+   "id": "flying-logos",
+   "name": "Logos volants",
+   "author": "NOOS",
+   "description": "Des symboles ∞ de NOOS ondulent vers vous à travers la nuit",
+   "tags": [
+    "rétro",
+    "espace",
+    "noos"
+   ],
+   "license": "CC0-1.0",
+   "homage": "Écran de veille « Flying Windows » de Windows 95 / 98",
+   "code": "float h1(float n) { return fract(sin(n) * 43758.5453123); }\nfloat logo(vec2 q, float th) {\n    // Deux boucles ovales qui se croisent au centre : ∞.\n    float r = 0.4;\n    vec2 s = vec2(1.0, 1.15);\n    float a = abs(length((q - vec2(-0.34, 0.0)) * s) - r);\n    float b = abs(length((q - vec2(0.34, 0.0)) * s) - r);\n    return min(a, b) - th;\n}\nvoid mainImage(out vec4 fragColor, in vec2 fragCoord) {\n    vec2 p = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;\n    vec3 col = vec3(0.0);\n    float alpha = 0.0;\n    for (int i = 0; i < 28; i++) {\n        float fi = float(i);\n        float z = fract(h1(fi * 3.7) - iTime * (0.06 + 0.03 * h1(fi * 1.3)));\n        vec2 dir = (vec2(h1(fi * 5.1), h1(fi * 8.3)) - 0.5) * 2.4;\n        vec2 c = dir * 0.16 / (z + 0.05);\n        float size = 0.035 / (z + 0.05);\n        vec2 q = (p - c) / size;\n        q.y += 0.12 * sin(q.x * 3.0 + iTime * 3.0 + fi);\n        float d = logo(q, 0.075) * size;\n        float px = 1.5 / iResolution.y;\n        float m = smoothstep(px, -px, d) * smoothstep(1.0, 0.7, z) * smoothstep(0.0, 0.03, z);\n        float g = clamp(q.x * 0.5 + 0.5, 0.0, 1.0);\n        vec3 lc = mix(vec3(0.49, 0.36, 1.0), vec3(0.89, 0.33, 0.61), g);\n        lc = mix(lc, vec3(1.0, 0.62, 0.26), smoothstep(0.75, 1.0, g));\n        lc *= 0.75 + 0.35 * cos(q.y * 6.0 + iTime);\n        col = mix(col, lc, m);\n        col += lc * 0.06 * smoothstep(size * 0.6, 0.0, abs(d)) * (1.0 - z);\n    }\n    fragColor = vec4(col, 1.0);\n}\n"
+  },
+  {
+   "id": "lava",
+   "name": "Lampe à lave",
+   "author": "NOOS",
+   "description": "De grosses gouttes de cire chaude montent, fusionnent et redescendent",
+   "tags": [
+    "rétro",
+    "doux",
+    "couleurs"
+   ],
+   "license": "CC0-1.0",
+   "homage": "",
+   "code": "float h1(float n) { return fract(sin(n) * 43758.5453123); }\nvoid mainImage(out vec4 fragColor, in vec2 fragCoord) {\n    vec2 p = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;\n    float field = 0.0;\n    for (int i = 0; i < 10; i++) {\n        float fi = float(i);\n        float sp = 0.05 + 0.05 * h1(fi * 3.1);\n        vec2 c = vec2((h1(fi * 1.7) - 0.5) * iResolution.x / iResolution.y * 0.8 + 0.08 * sin(iTime * 0.3 + fi),\n                      sin(iTime * sp * 2.0 + fi * 2.4) * 0.45);\n        float r = 0.06 + 0.07 * h1(fi * 5.9);\n        field += r * r / dot(p - c, p - c);\n    }\n    vec3 bg = mix(vec3(0.12, 0.02, 0.15), vec3(0.3, 0.05, 0.25), fragCoord.y / iResolution.y);\n    float m = smoothstep(0.95, 1.05, field);\n    vec3 wax = mix(vec3(1.0, 0.35, 0.1), vec3(1.0, 0.75, 0.2), clamp(field * 0.25, 0.0, 1.0));\n    wax = mix(wax, vec3(1.0, 0.2, 0.45), smoothstep(0.3, -0.5, p.y));\n    vec3 col = mix(bg, wax, m);\n    col += vec3(1.0, 0.4, 0.2) * 0.12 * smoothstep(0.4, 1.0, field) * (1.0 - m);\n    col *= 1.0 - 0.4 * length(p * vec2(0.6, 1.0));\n    fragColor = vec4(col, 1.0);\n}\n"
+  },
+  {
+   "id": "maze",
+   "name": "Labyrinthe",
+   "author": "NOOS",
+   "description": "Promenade sans fin dans des couloirs de briques",
+   "tags": [
+    "rétro",
+    "3d"
+   ],
+   "license": "CC0-1.0",
+   "homage": "Écran de veille « 3D Maze » de Windows 95 / 98",
+   "code": "float h2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }\nbool wall(vec2 c) {\n    if (c.y == 0.0) return false;\n    if (abs(c.y) == 1.0) return h2(c) > 0.45;\n    return abs(c.y) > 2.0 || h2(c + 7.0) > 0.4;\n}\nvec3 brick(vec2 uv) {\n    uv *= vec2(4.0, 8.0);\n    uv.x += 0.5 * mod(floor(uv.y), 2.0);\n    vec2 f = fract(uv);\n    float m = step(0.06, f.x) * step(0.1, f.y);\n    vec3 b = mix(vec3(0.55, 0.22, 0.14), vec3(0.72, 0.33, 0.2), h2(floor(uv)));\n    return mix(vec3(0.75, 0.72, 0.66), b, m);\n}\nvoid mainImage(out vec4 fragColor, in vec2 fragCoord) {\n    vec2 sc = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;\n    float t = iTime * 0.9;\n    vec2 ro = vec2(t, 0.5 + 0.12 * sin(t * 0.37));\n    float ang = 0.25 * sin(t * 0.21);\n    vec2 fw = vec2(cos(ang), sin(ang));\n    vec2 rt = vec2(-fw.y, fw.x);\n    vec2 rd = normalize(fw + rt * sc.x * 1.2);\n    // Lancer de rayon sur la grille (DDA).\n    vec2 cell = floor(ro);\n    vec2 stp = sign(rd);\n    vec2 dd = abs(1.0 / rd);\n    vec2 side = (stp * (cell - ro) + stp * 0.5 + 0.5) * dd;\n    float dist = 30.0;\n    float sideHit = 0.0;\n    for (int i = 0; i < 40; i++) {\n        if (side.x < side.y) { side.x += dd.x; cell.x += stp.x; sideHit = 0.0; }\n        else { side.y += dd.y; cell.y += stp.y; sideHit = 1.0; }\n        if (wall(cell)) { dist = sideHit < 0.5 ? side.x - dd.x : side.y - dd.y; break; }\n    }\n    float perp = dist * dot(rd, fw);\n    float hgt = 0.5 / perp;\n    vec3 col;\n    if (abs(sc.y) < hgt) {\n        vec2 hit = ro + rd * dist;\n        float u = sideHit < 0.5 ? hit.y : hit.x;\n        float v = sc.y / hgt * 0.5 + 0.5;\n        col = brick(vec2(u, v)) * (sideHit < 0.5 ? 1.0 : 0.75);\n    } else {\n        float rowDist = 0.5 / abs(sc.y);\n        vec2 fp = ro + rd * rowDist / dot(rd, fw);\n        if (sc.y < 0.0) {\n            vec2 g = floor(fp * 2.0);\n            col = mix(vec3(0.16, 0.16, 0.2), vec3(0.3, 0.3, 0.36), mod(g.x + g.y, 2.0));\n        } else {\n            col = vec3(0.12, 0.14, 0.24) + 0.05 * step(0.9, fract(fp.x)) ;\n        }\n        dist = rowDist;\n    }\n    col *= exp(-dist * 0.12);\n    fragColor = vec4(col, 1.0);\n}\n"
+  },
+  {
+   "id": "mystify",
+   "name": "Mystique",
+   "author": "NOOS",
+   "description": "Deux polygones lumineux rebondissent et laissent des échos colorés",
+   "tags": [
+    "lignes",
+    "rétro",
+    "néon"
+   ],
+   "license": "CC0-1.0",
+   "homage": "Écran de veille « Mystify Your Mind » de Windows 95 / 98",
+   "code": "float tri(float x) { return abs(fract(x) - 0.5) * 2.0; }\nfloat h1(float n) { return fract(sin(n) * 43758.5453123); }\nfloat seg(vec2 p, vec2 a, vec2 b) {\n    vec2 pa = p - a, ba = b - a;\n    float k = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-6), 0.0, 1.0);\n    return length(pa - ba * k);\n}\nvec3 hue(float h) { return clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0); }\nvec2 vert(int poly, int k, float t, vec2 box) {\n    float s = float(poly * 4 + k);\n    vec2 sp = vec2(0.045 + 0.05 * h1(s * 3.7), 0.05 + 0.05 * h1(s * 5.1));\n    vec2 ph = vec2(h1(s * 7.3), h1(s * 1.9));\n    return (vec2(tri(t * sp.x + ph.x), tri(t * sp.y + ph.y)) - 0.5) * 2.0 * box;\n}\nvoid mainImage(out vec4 fragColor, in vec2 fragCoord) {\n    vec2 box = vec2(0.5 * iResolution.x / iResolution.y, 0.5) * 0.94;\n    vec2 p = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;\n    float px = 1.0 / iResolution.y;\n    vec3 col = vec3(0.0);\n    for (int poly = 0; poly < 2; poly++) {\n        vec3 c = hue(fract(iTime * 0.03 + float(poly) * 0.45));\n        for (int e = 0; e < 6; e++) {\n            float t = iTime - float(e) * 0.55;\n            float fade = 1.0 - float(e) / 6.0;\n            for (int k = 0; k < 4; k++) {\n                vec2 a = vert(poly, k, t, box);\n                vec2 b = vert(poly, (k + 1) % 4, t, box);\n                float d = seg(p, a, b);\n                col += c * fade * (smoothstep(px * 1.6, 0.0, d) + 0.18 * smoothstep(px * 7.0, 0.0, d));\n            }\n        }\n    }\n    fragColor = vec4(min(col, vec3(1.0)), 1.0);\n}\n"
+  },
+  {
+   "id": "pipes",
+   "name": "Tuyauterie",
+   "author": "NOOS",
+   "description": "Des tuyaux brillants poussent en zigzag puis l'écran repart à zéro",
+   "tags": [
+    "rétro",
+    "3d",
+    "géométrie"
+   ],
+   "license": "CC0-1.0",
+   "homage": "Écran de veille « 3D Pipes » de Windows 95 / 98",
+   "code": "float h1(float n) { return fract(sin(n) * 43758.5453123); }\nvec2 dirv(int d) { return d == 0 ? vec2(1.0, 0.0) : d == 1 ? vec2(0.0, 1.0) : d == 2 ? vec2(-1.0, 0.0) : vec2(0.0, -1.0); }\nvec3 shade(vec3 n, vec3 base) {\n    vec3 l = normalize(vec3(-0.5, 0.6, 0.65));\n    float dif = max(dot(n, l), 0.0);\n    float spe = pow(max(dot(reflect(-l, n), vec3(0.0, 0.0, 1.0)), 0.0), 24.0);\n    return base * (0.18 + 0.85 * dif) + vec3(0.9) * spe;\n}\nvoid mainImage(out vec4 fragColor, in vec2 fragCoord) {\n    const float H = 14.0;\n    float cs = iResolution.y / H;\n    float W = floor(iResolution.x / cs);\n    vec2 q = fragCoord / cs;\n    const int STEPS = 90;\n    float cycle = 22.0;\n    float seed = floor(iTime / cycle);\n    float local = mod(iTime, cycle);\n    int grown = int(local * 6.0);\n    float fadeOut = smoothstep(cycle, cycle - 1.5, local);\n    vec3 col = mix(vec3(0.01, 0.01, 0.03), vec3(0.03, 0.03, 0.07), fragCoord.y / iResolution.y);\n    float r = 0.28;\n    for (int pi = 0; pi < 5; pi++) {\n        float fp = float(pi) + seed * 17.0;\n        vec3 base = clamp(abs(mod(h1(fp * 3.3) * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0) * 0.85 + 0.1;\n        vec2 pos = floor(vec2(h1(fp * 1.7) * W, h1(fp * 2.9) * H));\n        int dir = int(h1(fp * 4.1) * 4.0);\n        int start = int(h1(fp * 5.7) * 25.0);\n        for (int s = 0; s < STEPS; s++) {\n            if (s + start > grown) break;\n            float fs = float(s);\n            int ndir = dir;\n            if (h1(fp * 11.0 + fs * 1.37) < 0.28) ndir = (dir + (h1(fp * 13.0 + fs * 2.11) < 0.5 ? 1 : 3)) % 4;\n            vec2 np = pos + dirv(ndir);\n            if (np.x < 0.0 || np.x >= W || np.y < 0.0 || np.y >= H) { ndir = (ndir + 2) % 4; np = pos + dirv(ndir); }\n            vec2 a = pos + 0.5, b = np + 0.5;\n            vec2 ba = b - a;\n            float k = clamp(dot(q - a, ba) / dot(ba, ba), 0.0, 1.0);\n            vec2 off = q - (a + ba * k);\n            float d = length(off);\n            if (d < r) {\n                vec2 perp = vec2(-ba.y, ba.x);\n                float o = dot(off, perp) / r;\n                vec3 n = normalize(vec3(perp * o, sqrt(max(1.0 - o * o, 0.0))));\n                col = shade(n, base);\n            }\n            if (ndir != dir || s == 0) {\n                float dj = length(q - a);\n                if (dj < r * 1.35) {\n                    vec2 o2 = (q - a) / (r * 1.35);\n                    col = shade(vec3(o2, sqrt(max(1.0 - dot(o2, o2), 0.0))), base);\n                }\n            }\n            dir = ndir;\n            pos = np;\n        }\n    }\n    fragColor = vec4(col * fadeOut, 1.0);\n}\n"
+  },
+  {
+   "id": "stained-glass",
+   "name": "Vitrail",
+   "author": "NOOS",
+   "description": "Un vitrail vivant dont les cellules changent doucement de couleur",
+   "tags": [
+    "géométrie",
+    "couleurs",
+    "lumière"
+   ],
+   "license": "CC0-1.0",
+   "homage": "",
+   "code": "vec2 h22(vec2 p) {\n    p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));\n    return fract(sin(p) * 43758.5453);\n}\nvoid mainImage(out vec4 fragColor, in vec2 fragCoord) {\n    vec2 p = fragCoord / iResolution.y * 5.0;\n    vec2 i = floor(p), f = fract(p);\n    float d1 = 8.0, d2 = 8.0;\n    vec2 best = vec2(0.0);\n    for (int y = -1; y <= 1; y++)\n        for (int x = -1; x <= 1; x++) {\n            vec2 g = vec2(float(x), float(y));\n            vec2 o = h22(i + g);\n            o = 0.5 + 0.4 * sin(iTime * 0.25 + 6.2831 * o);\n            float d = length(g + o - f);\n            if (d < d1) { d2 = d1; d1 = d; best = i + g; }\n            else if (d < d2) d2 = d;\n        }\n    vec2 r = h22(best);\n    vec3 c = 0.5 + 0.5 * cos(6.2831 * (r.x + iTime * 0.02 + vec3(0.0, 0.33, 0.67)));\n    c = mix(c, vec3(0.3, 0.45, 1.0), 0.25);\n    float lead = smoothstep(0.03, 0.07, d2 - d1);\n    float glow = 0.75 + 0.35 * sin(iTime * 0.6 + r.y * 6.0) * (1.0 - d1);\n    vec2 uv = fragCoord / iResolution.xy;\n    float beam = 0.7 + 0.5 * smoothstep(0.9, 0.0, length(uv - vec2(0.3 + 0.1 * sin(iTime * 0.1), 0.85)));\n    vec3 col = c * glow * beam * lead + vec3(0.02) * (1.0 - lead);\n    fragColor = vec4(col, 1.0);\n}\n"
+  },
+  {
+   "id": "starfield",
+   "name": "Champ d'étoiles",
+   "author": "NOOS",
+   "description": "Voyage à travers les étoiles, avec traînées de vitesse",
+   "tags": [
+    "espace",
+    "rétro"
+   ],
+   "license": "CC0-1.0",
+   "homage": "Écran de veille « Starfield Simulation » de Windows 95 / 98",
+   "code": "float h1(float n) { return fract(sin(n) * 43758.5453123); }\nfloat seg(vec2 p, vec2 a, vec2 b) {\n    vec2 pa = p - a, ba = b - a;\n    float k = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-6), 0.0, 1.0);\n    return length(pa - ba * k);\n}\nvoid mainImage(out vec4 fragColor, in vec2 fragCoord) {\n    vec2 p = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;\n    vec3 col = vec3(0.0);\n    float px = 1.0 / iResolution.y;\n    for (int i = 0; i < 180; i++) {\n        float fi = float(i);\n        vec2 dir = vec2(h1(fi * 1.31) - 0.5, h1(fi * 2.17 + 3.1) - 0.5) * 2.2;\n        float speed = 0.10 + 0.10 * h1(fi * 5.3);\n        float z = fract(h1(fi * 7.7) - iTime * speed);\n        float z2 = min(z + 0.035, 1.0);\n        vec2 a = dir * 0.12 / (z + 0.04);\n        vec2 b = dir * 0.12 / (z2 + 0.04);\n        float near = 1.0 - z;\n        float d = seg(p, a, b);\n        float w = px * (0.6 + 2.2 * near * near);\n        float bright = smoothstep(1.0, 0.55, z) * near;\n        vec3 tint = mix(vec3(0.75, 0.85, 1.0), vec3(1.0, 0.92, 0.8), h1(fi * 9.1));\n        col += tint * bright * (smoothstep(w, 0.0, d) + 0.25 * smoothstep(w * 5.0, 0.0, d));\n    }\n    fragColor = vec4(col, 1.0);\n}\n"
+  },
+  {
+   "id": "synthwave",
+   "name": "Horizon rétro",
+   "author": "NOOS",
+   "description": "Soleil couchant à rayures, montagnes et grille néon qui défile",
+   "tags": [
+    "néon",
+    "rétro",
+    "paysage"
+   ],
+   "license": "CC0-1.0",
+   "homage": "",
+   "code": "float h2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }\nfloat noise(float x) { float i = floor(x), f = fract(x); return mix(h2(vec2(i, 0.0)), h2(vec2(i + 1.0, 0.0)), f * f * (3.0 - 2.0 * f)); }\nvoid mainImage(out vec4 fragColor, in vec2 fragCoord) {\n    vec2 p = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;\n    float hz = -0.05;\n    vec3 col;\n    if (p.y > hz) {\n        float y = p.y - hz;\n        col = mix(vec3(0.95, 0.35, 0.55), vec3(0.08, 0.03, 0.2), smoothstep(0.0, 0.5, y));\n        vec2 g = floor(fragCoord / 2.0);\n        col += vec3(step(0.997, h2(g))) * smoothstep(0.15, 0.4, y);\n        // Soleil.\n        vec2 sp = p - vec2(0.0, hz + 0.16);\n        float sun = smoothstep(0.205, 0.2, length(sp));\n        float stripes = step(0.0, sin((sp.y + iTime * 0.02) * 90.0) + smoothstep(-0.2, 0.15, sp.y) * 2.2 - 1.0);\n        vec3 sc = mix(vec3(1.0, 0.25, 0.55), vec3(1.0, 0.88, 0.3), smoothstep(-0.2, 0.2, sp.y));\n        col = mix(col, sc, sun * stripes);\n        col += vec3(1.0, 0.4, 0.6) * 0.25 * exp(-length(sp) * 4.0);\n        // Montagnes.\n        float m = 0.05 + 0.09 * noise(p.x * 6.0 + 3.0) + 0.04 * noise(p.x * 17.0);\n        float mm = 0.03 + 0.05 * noise(p.x * 9.0 + 11.0);\n        col = mix(col, vec3(0.1, 0.03, 0.2), step(y, m));\n        col = mix(col, vec3(0.05, 0.01, 0.1), step(y, mm));\n    } else {\n        float d = hz - p.y;\n        float z = 0.25 / d;\n        vec2 g = vec2(p.x * z, z + iTime * 1.6);\n        vec2 f = abs(fract(g) - 0.5);\n        float w = fwidth(g.y) * 1.5 + 0.01;\n        float line = smoothstep(w, 0.0, 0.5 - f.y) + smoothstep(fwidth(g.x) * 1.5 + 0.01, 0.0, 0.5 - f.x);\n        col = vec3(0.04, 0.0, 0.08) + vec3(1.0, 0.25, 0.85) * min(line, 1.0) * exp(-z * 0.08);\n        col += vec3(0.9, 0.2, 0.6) * 0.3 * exp(-d * 18.0);\n    }\n    fragColor = vec4(col, 1.0);\n}\n"
+  },
+  {
+   "id": "tunnel",
+   "name": "Tunnel",
+   "author": "NOOS",
+   "description": "Plongée hypnotique dans un tunnel de damiers, façon démoscène",
+   "tags": [
+    "rétro",
+    "hypnotique",
+    "géométrie"
+   ],
+   "license": "CC0-1.0",
+   "homage": "",
+   "code": "void mainImage(out vec4 fragColor, in vec2 fragCoord) {\n    vec2 p = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;\n    p += 0.08 * vec2(sin(iTime * 0.5), cos(iTime * 0.37));\n    float a = atan(p.y, p.x);\n    float r = length(p);\n    vec2 uv = vec2(0.35 / r + iTime * 0.6, a / 3.14159 * 4.0 + iTime * 0.1);\n    vec2 c = floor(uv * vec2(2.0, 2.0));\n    float chk = mod(c.x + c.y, 2.0);\n    vec3 col = mix(vec3(0.15, 0.1, 0.5), vec3(0.85, 0.3, 0.7), chk);\n    col = mix(col, vec3(0.2, 0.8, 1.0), 0.3 + 0.3 * sin(uv.x * 0.5));\n    vec2 f = abs(fract(uv * 2.0) - 0.5);\n    col += vec3(0.8, 0.9, 1.0) * smoothstep(0.47, 0.5, max(f.x, f.y)) * 0.5;\n    col *= smoothstep(0.0, 0.35, r);\n    fragColor = vec4(col, 1.0);\n}\n"
+  }
+ ]
+}

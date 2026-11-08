@@ -1,4 +1,4 @@
-//! Rendu d'une animation Shadertoy dans un `GtkGLArea`.
+//! Rendu d'une animation GLSL (format Shadertoy) dans un `GtkGLArea`.
 //!
 //! Le code de l'utilisateur (`mainImage`) est enveloppé : en-tête GLSL (ES 3.0 ou 3.3 core
 //! selon le contexte), uniformes Shadertoy (`iResolution`, `iTime`, `iTimeDelta`, `iFrame`,

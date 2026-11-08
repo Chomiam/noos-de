@@ -2,13 +2,15 @@
 //!
 //! Verrouille la session avec `ext-session-lock-v1` (gtk4-session-lock) : une fenêtre par
 //! écran avec l'animation choisie (Paramètres › Personnalisation › Écran de verrouillage :
-//! animation NOOS ou Shadertoy, sinon le fond d'écran), une grande horloge, et au premier
+//! animation NOOS ou de la bibliothèque, sinon le fond d'écran), une grande horloge, et au premier
 //! appui (touche ou clic) la carte de connexion : avatar, nom, mot de passe vérifié par PAM
 //! (service `noos-lock`).
 //!
 //! Lancé par le compositeur (Super+L, inactivité, avant la mise en veille, IPC `Lock`).
 //! `noos-lock --preview [animation]` : même écran dans une fenêtre, sans verrouiller (tests,
 //! aperçu des Paramètres) ; le mot de passe n'y est pas vérifié.
+//! `noos-lock --screensaver` : écran de veille (`[lock] mode = "screensaver"`) — animation et
+//! horloge seulement ; la première touche, un clic ou un mouvement de souris le retire.
 
 use std::{
     cell::{Cell, RefCell},
@@ -24,6 +26,7 @@ const APP_ID: &str = "org.noos.Lock";
 
 const CSS: &str = "
 window.noos-lock { background: black; }
+.lock-dim { background-color: black; }
 .lock-time { font-size: 112px; font-weight: 300; color: white; text-shadow: 0 2px 18px rgba(0,0,0,0.45); }
 .lock-date { font-size: 22px; font-weight: 500; color: rgba(255,255,255,0.92); text-shadow: 0 1px 8px rgba(0,0,0,0.5); }
 .lock-hint { color: rgba(255,255,255,0.75); font-size: 14px; text-shadow: 0 1px 6px rgba(0,0,0,0.6); }
@@ -89,7 +92,7 @@ struct Screen {
 /// Ce qu'il faut faire quand le mot de passe est bon.
 type OnUnlock = Rc<dyn Fn()>;
 
-fn build_screen(cfg: &NoosConfig, animation_override: Option<&str>, preview: bool, on_unlock: OnUnlock) -> Rc<Screen> {
+fn build_screen(cfg: &NoosConfig, animation_override: Option<&str>, preview: bool, screensaver: bool, on_unlock: OnUnlock) -> Rc<Screen> {
     let window = gtk::Window::new();
     window.add_css_class("noos-lock");
     window.set_title(Some("Écran de verrouillage"));
@@ -115,6 +118,12 @@ fn build_screen(cfg: &NoosConfig, animation_override: Option<&str>, preview: boo
         bg.set_visible_child_name("animation");
     }
     overlay.set_child(Some(&bg));
+    // Assombrissement réglable de l'animation (Paramètres › Écran de verrouillage).
+    let dim = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    dim.add_css_class("lock-dim");
+    dim.set_opacity(cfg.lock.animation_dim.clamp(0.0, 0.85) as f64);
+    dim.set_can_target(false);
+    overlay.add_overlay(&dim);
     let shade = gtk::Box::new(gtk::Orientation::Vertical, 0);
     shade.add_css_class("lock-shade");
     shade.set_can_target(false);
@@ -253,6 +262,40 @@ fn build_screen(cfg: &NoosConfig, animation_override: Option<&str>, preview: boo
     }
     go.connect_clicked(move |_| submit());
 
+    if screensaver {
+        // Écran de veille : ni carte ni invite ; toute activité le retire.
+        s.hint.set_visible(false);
+        let started = std::time::Instant::now();
+        let grace = move || started.elapsed() > Duration::from_millis(1200);
+        let keys = gtk::EventControllerKey::new();
+        {
+            let on_unlock = on_unlock.clone();
+            keys.connect_key_pressed(move |_, _, _, _| {
+                if grace() {
+                    on_unlock();
+                }
+                glib::Propagation::Stop
+            });
+        }
+        s.window.add_controller(keys);
+        let click = gtk::GestureClick::new();
+        {
+            let on_unlock = on_unlock.clone();
+            click.connect_pressed(move |_, _, _, _| on_unlock());
+        }
+        s.window.add_controller(click);
+        let motion = gtk::EventControllerMotion::new();
+        let origin: Rc<Cell<Option<(f64, f64)>>> = Rc::new(Cell::new(None));
+        motion.connect_motion(move |_, x, y| match origin.get() {
+            None => origin.set(Some((x, y))),
+            // Un vrai mouvement (pas une vibration du bureau) après le délai de grâce.
+            Some((ox, oy)) if grace() && ((x - ox).powi(2) + (y - oy).powi(2)).sqrt() > 12.0 => on_unlock(),
+            _ => {}
+        });
+        s.window.add_controller(motion);
+        return s;
+    }
+
     // Première touche / clic : la carte apparaît (la touche tapée est gardée).
     let keys = gtk::EventControllerKey::new();
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);
@@ -325,6 +368,7 @@ fn show_card(s: &Screen, show: bool) {
 fn main() -> glib::ExitCode {
     let args: Vec<String> = std::env::args().collect();
     let preview = args.iter().any(|a| a == "--preview");
+    let screensaver = args.iter().any(|a| a == "--screensaver");
     let animation = args.iter().skip_while(|a| *a != "--preview").nth(1).cloned();
     let app = adap::Application::builder().application_id(APP_ID).flags(gio::ApplicationFlags::NON_UNIQUE).build();
     app.connect_startup(|_| {
@@ -341,7 +385,7 @@ fn main() -> glib::ExitCode {
         let cfg = NoosConfig::load();
         if preview {
             let a = app.clone();
-            let s = build_screen(&cfg, animation.as_deref(), true, Rc::new(move || a.quit()));
+            let s = build_screen(&cfg, animation.as_deref(), true, screensaver, Rc::new(move || a.quit()));
             s.window.set_application(Some(app));
             s.window.set_default_size(1280, 800);
             s.window.present();
@@ -362,7 +406,7 @@ fn main() -> glib::ExitCode {
         {
             let (screens, cfg, unlock) = (screens.clone(), cfg.clone(), unlock.clone());
             instance.connect_monitor(move |inst, monitor| {
-                let s = build_screen(&cfg, None, false, unlock.clone());
+                let s = build_screen(&cfg, None, false, screensaver, unlock.clone());
                 inst.assign_window_to_monitor(&s.window, monitor);
                 s.window.present();
                 screens.borrow_mut().push(s);

@@ -40,7 +40,7 @@ Le `README.md` décrit les fonctionnalités ; ce fichier donne le contexte de tr
 | `noos-core/src/disk_image.rs` | Images disque : montage / démontage par udisks (sans mot de passe), détection (`losetup -J`) ; Explorateur : bandeau « Démonter », alerte avant suppression |
 | `noos-texteditor/` | Éditeur de texte et de code (GtkSourceView 5 : 160+ langages, recherche / remplacement, onglets, dossier, mini-carte, thèmes NOOS `data/sourceview/`) |
 | `noos-lock/` | Écran de verrouillage (ext-session-lock via gtk4-session-lock, PAM service `noos-lock`) : animation, horloge, mot de passe ; `--preview [animation]` sans verrouiller |
-| `noos-shader/` | Animations GLSL format Shadertoy (GLArea, libepoxy chargée à l'exécution) : intégrées, bibliothèque `~/.local/share/noos/shaders`, API Shadertoy (clé de l'utilisateur dans `~/.config/noos/shadertoy-key`) |
+| `noos-shader/` | Animations GLSL format Shadertoy `mainImage` (GLArea, libepoxy chargée à l'exécution) : intégrées, bibliothèque `~/.local/share/noos/shaders` (`library:<id>`), catalogue NOOS = `data/shaders/catalog/*.frag` → `build-index.py` → `index.json` téléchargé depuis GitHub (repli : copie du paquet), import de fichiers / code collé (GLSL Sandbox converti par `adapt`). Plus d'API Shadertoy (abandonnée : clé personnelle, licences NC) |
 | `noos-archive/` | « Archives » : parcourir, extraire, créer, tester, convertir (7-Zip, bsdtar, unar, xorriso) ; modes `--extract-here`, `--extract-to`, `--compress`, `--quick zip\|7z` pour le menu de l'Explorateur |
 | `noos-widget-vitals/` | Widget « Ressources » de la barre (coin gauche) : processeur, carte graphique (AMD `gpu_busy_percent`, Intel fréquence réelle / max, NVIDIA `nvidia-smi`), mémoire, disque (temps occupé), réseau ; détail avec historique 2 min. Bibliothèque utilisée par `noos-shell` ; `[taskbar] show_vitals` ; `NOOS_VITALS_OPEN=1` ouvre le détail (captures) |
 | `noos-save/` | « Sauvegarder et Restaurer » : instantanés Btrfs (snapper), restauration au redémarrage ; `noos-save-helper` (root, pkexec + actions dnf5) |
@@ -97,7 +97,8 @@ On ne peut pas cliquer dans l'aperçu : utiliser les variables de test ci-dessou
 | `NOOS_NET_DEMO=1` (+ `NOOS_NET_MEASURE=1`) | noos-settings › Réseau : connexions, Wi-Fi, DNS, VPN fictifs, sans NetworkManager (+ mesure DNS lancée) ; pages directes `noos-settings network\|wifi\|dns\|vpn\|ip\|hotspot\|network-diagnostics` |
 | `NOOS_VPN_DEMO=1` | noos-shell : profils VPN fictifs, bouclier VPN dans la barre et son menu ouvert |
 | `NOOS_EDITOR_DEMO=1` (+ `NOOS_EDITOR_SEARCH=mot`) | noos-texteditor : dossier et fichiers d'exemple (Rust, Python, CSS, Markdown), recherche lancée ; lancer depuis le conteneur (gtksourceview5) |
-| `NOOS_LOCK_DEMO_CARD=1` | noos-lock : carte de connexion affichée d'emblée (avec `--preview`) |
+| `NOOS_LOCK_DEMO_CARD=1` | noos-lock : carte de connexion affichée d'emblée (avec `--preview`) ; `noos-lock --preview --screensaver` : écran de veille |
+| `NOOS_SHADER_CATALOG=<fichier ou URL>` | catalogue d'animations à utiliser (ex. `data/shaders/catalog/index.json` avant de pousser) |
 | `NOOS_SETTINGS_SCROLL=px` | noos-settings : défile la page ouverte (captures) |
 | `NOOS_FILE_MENU_DEMO=x,y` | noos-file ouvre le menu contextuel de la vue en icônes en (x, y) ; y < 0 = depuis le bas |
 | `NOOS_FILE_SELECT_DEMO=0,1,2` | noos-file sélectionne ces éléments puis rejoue un clic dans le vide (coin inférieur droit) |
@@ -160,6 +161,13 @@ On ne peut pas cliquer dans l'aperçu : utiliser les variables de test ci-dessou
   de verrouillage sont rendues et reçoivent les entrées (aucun raccourci sauf VT). Plus de
   surface vivante → noos-lock relancé (testé : tué pendant le verrou, l'écran reste noir puis
   se reverrouille). Déclencheurs : Super+L, IPC `lock` / `suspend`, `[lock] idle_minutes`.
+  Inactivité (`noos-comp/src/idle.rs`, minuterie 1 s) : voile noir progressif pendant
+  `[lock] dim_seconds` (rendu par le compositeur, annulé par toute entrée), puis `noos-lock`
+  (mode `lock`) ou `noos-lock --screensaver` (mode `screensaver` : même protocole, se retire à
+  la première entrée). Super+L / mise en veille pendant l'écran de veille : on le tue et
+  `check_lock_client` relance le vrai verrouillage (`lock.command`).
+- Tester l'inactivité dans l'aperçu : `XDG_CONFIG_HOME=<dossier>` avec un `noos/noos.toml` de
+  test (`idle_minutes = 1`) pour ne pas toucher la configuration réelle.
 - **Restauration Btrfs** : la racine est montée par son nom (`subvol=@`, fstab + rootflags), donc
   `snapper rollback` (qui change le sous-volume par défaut) est sans effet. `noos-save-helper
   rollback` renomme `@` en `@.avant-restauration-…`, crée `@` depuis l'instantané, déplace

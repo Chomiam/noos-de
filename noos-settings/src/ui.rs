@@ -337,6 +337,7 @@ checkbutton.selection-check check:checked { background-color: @accent_bg_color; 
 picture.no-wallpaper { background: linear-gradient(155deg, shade(@accent_bg_color, 0.45) 0%, @window_bg_color 55%, shade(@window_bg_color, 0.8) 100%); }
 /* ── Écran de verrouillage ── */
 .ls-preview { border-radius: 12px; background: black; }
+.ls-dim { background-color: black; }
 .ls-clock { color: white; font-size: 44px; font-weight: 300; text-shadow: 0 1px 10px rgba(0,0,0,0.5); }
 button.ls-tile { padding: 8px; border-radius: 12px; background: transparent; }
 button.ls-tile:hover { background-color: alpha(@window_fg_color, 0.05); }

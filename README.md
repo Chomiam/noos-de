@@ -190,11 +190,16 @@ Verrouillage de session (`ext-session-lock-v1`) : Super+L, menu Démarrer, inact
 mise en veille. Animation en plein écran, grande horloge, mot de passe vérifié par PAM. Si
 l'écran de verrouillage s'arrête, la session reste verrouillée et il est relancé.
 
-Paramètres › Personnalisation › Écran de verrouillage : aperçu animé, verrouillage automatique,
-images par seconde et qualité de rendu, **animations NOOS** intégrées (Aurore, Plasma,
-Nébuleuse, Infini, Vagues), **bibliothèque** des animations téléchargées (appliquer, supprimer)
-et **parcours de Shadertoy** (recherche, tri, vignettes, compatibilité ; clé personnelle
-gratuite de l'utilisateur).
+Paramètres › Personnalisation › Écran de verrouillage : aperçu animé ; à l'inactivité,
+**verrouiller ou seulement afficher l'écran de veille** (sans mot de passe), **assombrissement
+progressif** de l'écran juste avant (annulé par la souris), **extinction de l'écran** ;
+assombrissement de l'animation, images par seconde, qualité de rendu ; **animations NOOS**
+intégrées (Aurore, Plasma, Nébuleuse, Infini, Vagues) ; **catalogue NOOS** (hébergé dans ce
+dépôt, `data/shaders/catalog/`, sans compte ni clé, licence CC0) avec des clins d'œil aux
+écrans de veille de Windows 95 / 98 (Champ d'étoiles, Mystique, Tuyauterie, Labyrinthe, Logos
+volants, Courbes) et des créations (Horizon rétro, Lampe à lave, Vitrail, Tunnel, Lucioles,
+Lumières de la ville) ; **bibliothèque** locale ; **import** d'un fichier ou de code collé
+(format Shadertoy `mainImage`, ou GLSL Sandbox converti automatiquement).
 
 ## Réseau et Internet (Paramètres)
 

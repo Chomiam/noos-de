@@ -1,13 +1,17 @@
-//! Personnalisation › Écran de verrouillage : aperçu animé, verrouillage automatique,
-//! animations NOOS intégrées, bibliothèque des animations Shadertoy téléchargées (appliquer,
-//! supprimer) et parcours de l'API Shadertoy (recherche, tri, vignettes, téléchargement).
+//! Personnalisation › Écran de verrouillage : aperçu animé ; inactivité (verrouillage ou
+//! simple écran de veille, assombrissement progressif, extinction de l'écran) ; animations
+//! NOOS intégrées ; bibliothèque locale ; catalogue NOOS (hébergé dans le dépôt GitHub, sans
+//! compte) ; import d'animations (fichier ou code collé, format Shadertoy ou GLSL Sandbox).
 
-use std::{cell::RefCell, rc::Rc};
+use std::rc::Rc;
 
 use adap::prelude::*;
 use gtk::{gio, glib};
-use noos_core::ipc::{IpcClient, Request};
-use noos_shader::{api, builtin, store, view::ShaderView};
+use noos_core::{
+    config::IdleMode,
+    ipc::{IpcClient, Request},
+};
+use noos_shader::{builtin, catalog, store, view::ShaderView};
 
 use crate::ui::{App, background, card, combo, group, page, switch};
 
@@ -35,6 +39,23 @@ fn apply_animation(app: &Rc<App>, holder: &gtk::Box, spec: &str, name: &str) {
     app.update(|c| c.lock.animation = spec);
     app.toast(&format!("« {name} » sera affiché à l'écran de verrouillage"));
     reload(app, holder);
+}
+
+/// Petit aperçu animé (léger : peu d'images par seconde, basse résolution).
+fn mini_view(src: Option<noos_shader::Source>) -> ShaderView {
+    let v = ShaderView::new();
+    v.set_fps(10);
+    v.set_render_scale(0.35);
+    v.set_source(src);
+    v
+}
+
+fn minutes_label(m: u32) -> String {
+    match m {
+        0 => "Jamais".into(),
+        60 => "1 heure".into(),
+        m => format!("{m} min"),
+    }
 }
 
 fn fill(app: &Rc<App>, holder: &gtk::Box) {
@@ -65,11 +86,18 @@ fn fill(app: &Rc<App>, holder: &gtk::Box) {
             preview.set_child(Some(&pic));
         }
     }
+    // Assombrissement de l'animation, tel qu'il sera appliqué.
+    let dim = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    dim.add_css_class("ls-dim");
+    dim.set_opacity(cfg.lock.animation_dim as f64);
+    dim.set_can_target(false);
+    preview.add_overlay(&dim);
     let clock = gtk::Label::new(Some(&glib::DateTime::now_local().ok().and_then(|d| d.format("%H:%M").ok()).map(|s| s.to_string()).unwrap_or_default()));
     clock.add_css_class("ls-clock");
     clock.set_valign(gtk::Align::Start);
     clock.set_margin_top(26);
     clock.set_can_target(false);
+    clock.set_visible(cfg.lock.show_clock);
     preview.add_overlay(&clock);
     hero.append(&preview);
     let v = gtk::Box::new(gtk::Orientation::Vertical, 6);
@@ -81,7 +109,8 @@ fn fill(app: &Rc<App>, holder: &gtk::Box) {
     v.append(&t);
     let sub = gtk::Label::new(Some(&match &current {
         Some(s) if s.author == "NOOS" => "Animation NOOS".to_string(),
-        Some(s) => format!("Shadertoy · par {}", s.author),
+        Some(s) if s.author.is_empty() => "Animation importée".to_string(),
+        Some(s) => format!("par {}", s.author),
         None => "Image fixe, sans animation".to_string(),
     }));
     sub.add_css_class("dim-label");
@@ -118,12 +147,12 @@ fn fill(app: &Rc<App>, holder: &gtk::Box) {
     hero.append(&v);
     holder.append(&hero);
 
-    // ── Verrouillage ──
-    let g = group("Verrouillage");
-    g.set_description(Some("Super+L verrouille à tout moment. L'écran de verrouillage demande le mot de passe de votre compte."));
+    // ── Inactivité ──
+    let g = group("Quand je m'absente");
+    g.set_description(Some("Super+L verrouille à tout moment, quel que soit ce réglage."));
     const MINUTES: [u32; 8] = [0, 1, 2, 5, 10, 15, 30, 60];
-    let labels: Vec<String> = MINUTES.iter().map(|m| if *m == 0 { "Jamais".into() } else { format!("Après {m} min d'inactivité") }).collect();
-    let idle = combo("preferences-system-time-symbolic", "Verrouiller automatiquement", "", &labels, MINUTES.iter().position(|m| *m == cfg.lock.idle_minutes).unwrap_or(3));
+    let labels: Vec<String> = MINUTES.iter().map(|m| if *m == 0 { "Jamais".into() } else { format!("Après {}", minutes_label(*m)) }).collect();
+    let idle = combo("preferences-system-time-symbolic", "Afficher l'écran de veille", "Délai sans clavier ni souris", &labels, MINUTES.iter().position(|m| *m == cfg.lock.idle_minutes).unwrap_or(3));
     {
         let app = app.clone();
         idle.connect_selected_notify(move |r| {
@@ -132,6 +161,62 @@ fn fill(app: &Rc<App>, holder: &gtk::Box) {
         });
     }
     g.add(&idle);
+    let mode = combo(
+        "system-lock-screen-symbolic",
+        "Ensuite",
+        "",
+        &["Verrouiller la session (mot de passe)".into(), "Écran de veille seulement, sans verrouiller".into()],
+        if cfg.lock.mode == IdleMode::Screensaver { 1 } else { 0 },
+    );
+    let set_mode_subtitle = |r: &adap::ComboRow| {
+        r.set_subtitle(if r.selected() == 1 {
+            "Une touche ou un mouvement de souris ramène directement au bureau"
+        } else {
+            "Le mot de passe de votre compte est demandé pour revenir"
+        });
+    };
+    set_mode_subtitle(&mode);
+    {
+        let app = app.clone();
+        mode.connect_selected_notify(move |r| {
+            set_mode_subtitle(r);
+            let m = if r.selected() == 1 { IdleMode::Screensaver } else { IdleMode::Lock };
+            app.update(|c| c.lock.mode = m);
+        });
+    }
+    g.add(&mode);
+    const DIM: [u32; 5] = [0, 5, 10, 20, 30];
+    let dim_row = combo(
+        "display-brightness-symbolic",
+        "Assombrir l'écran juste avant",
+        "L'écran s'assombrit progressivement ; bougez la souris pour l'annuler",
+        &DIM.map(|s| if s == 0 { "Non".to_string() } else { format!("Pendant {s} s") }),
+        DIM.iter().position(|s| *s == cfg.lock.dim_seconds).unwrap_or(2),
+    );
+    {
+        let app = app.clone();
+        dim_row.connect_selected_notify(move |r| {
+            let s = DIM[r.selected() as usize];
+            app.update(|c| c.lock.dim_seconds = s);
+        });
+    }
+    g.add(&dim_row);
+    const OFF: [u32; 9] = [0, 1, 2, 3, 5, 10, 15, 30, 60];
+    let off = combo(
+        "video-display-symbolic",
+        "Éteindre l'écran après",
+        "Inactivité totale, écran de veille compris (même réglage que Système › Alimentation)",
+        &OFF.map(|m| if m == 0 { "Jamais".to_string() } else { minutes_label(m) }),
+        OFF.iter().position(|m| *m == cfg.power.screen_off_minutes).unwrap_or(5),
+    );
+    {
+        let app = app.clone();
+        off.connect_selected_notify(move |r| {
+            let m = OFF[r.selected() as usize];
+            app.update(|c| c.power.screen_off_minutes = m);
+        });
+    }
+    g.add(&off);
     let suspend = switch("system-suspend-symbolic", "Verrouiller avant la mise en veille", "Au réveil, l'écran de verrouillage est déjà là", cfg.lock.before_suspend);
     {
         let app = app.clone();
@@ -152,8 +237,26 @@ fn fill(app: &Rc<App>, holder: &gtk::Box) {
     g.add(&clock_sw);
     holder.append(&g);
 
-    // ── Performances ──
+    // ── Performances et assombrissement de l'animation ──
     let g = group("Animation");
+    let dim_anim = card("weather-clear-night-symbolic", "Assombrir l'animation", "Moins éblouissant dans le noir");
+    let scale = gtk::Scale::with_range(gtk::Orientation::Horizontal, 0.0, 80.0, 5.0);
+    scale.set_value((cfg.lock.animation_dim * 100.0).round() as f64);
+    scale.set_size_request(200, -1);
+    scale.set_valign(gtk::Align::Center);
+    scale.set_draw_value(true);
+    scale.set_value_pos(gtk::PositionType::Left);
+    scale.set_format_value_func(|_, v| format!("{v:.0} %"));
+    {
+        let (app, dim) = (app.clone(), dim.clone());
+        scale.connect_value_changed(move |s| {
+            let v = (s.value() / 100.0) as f32;
+            dim.set_opacity(v as f64);
+            app.update(|c| c.lock.animation_dim = v);
+        });
+    }
+    dim_anim.add_suffix(&scale);
+    g.add(&dim_anim);
     const FPS: [u32; 4] = [15, 24, 30, 60];
     let fps = combo("speedometer-symbolic", "Images par seconde", "Moins d'images = moins de consommation", &FPS.map(|f| format!("{f} images/s")), FPS.iter().position(|f| *f == cfg.lock.fps).unwrap_or(2));
     {
@@ -168,7 +271,7 @@ fn fill(app: &Rc<App>, holder: &gtk::Box) {
     let quality = combo(
         "video-display-symbolic",
         "Qualité de rendu",
-        "Les animations Shadertoy peuvent être exigeantes pour la carte graphique",
+        "Certaines animations sont exigeantes pour la carte graphique",
         &["Maximale (pleine résolution)".into(), "Équilibrée (75 %)".into(), "Économe (50 %)".into()],
         SCALES.iter().position(|s| (s - cfg.lock.render_scale).abs() < 0.01).unwrap_or(1),
     );
@@ -194,14 +297,11 @@ fn fill(app: &Rc<App>, holder: &gtk::Box) {
     holder.append(&g);
 
     // ── Animations NOOS ──
-    holder.append(&section("Animations NOOS", "Créées pour NOOS, disponibles sans compte"));
+    holder.append(&section("Animations NOOS", "Intégrées à NOOS, toujours disponibles"));
     let flow = tiles_box();
     for b in builtin::BUILTINS {
         let spec = format!("builtin:{}", b.id);
-        let v = ShaderView::new();
-        v.set_fps(12);
-        v.set_render_scale(0.5);
-        v.set_source(noos_shader::resolve(&spec));
+        let v = mini_view(noos_shader::resolve(&spec));
         let t = tile(v.widget(), b.name, b.description, cfg.lock.animation == spec);
         let (app, holder, name) = (app.clone(), holder.clone(), b.name);
         t.connect_clicked(move |_| apply_animation(&app, &holder, &spec, name));
@@ -209,19 +309,28 @@ fn fill(app: &Rc<App>, holder: &gtk::Box) {
     }
     holder.append(&flow);
 
-    // ── Bibliothèque Shadertoy ──
+    // ── Bibliothèque ──
     let saved = store::list();
     holder.append(&section(
-        "Ma bibliothèque Shadertoy",
-        &if saved.is_empty() { "Les animations téléchargées depuis Shadertoy apparaîtront ici".to_string() } else { format!("{} animation{} téléchargée{}", saved.len(), plural(saved.len()), plural(saved.len())) },
+        "Ma bibliothèque",
+        &if saved.is_empty() {
+            "Les animations ajoutées depuis le catalogue ou importées apparaîtront ici".to_string()
+        } else {
+            format!("{} animation{}", saved.len(), plural(saved.len()))
+        },
     ));
     if !saved.is_empty() {
         let flow = tiles_box();
         for s in saved {
-            let spec = format!("shadertoy:{}", s.id);
-            let pic = gtk::Picture::for_filename(store::thumb_path(&s.id));
-            pic.set_content_fit(gtk::ContentFit::Cover);
-            let t = tile(&pic, &s.name, &format!("par {}", s.author), cfg.lock.animation == spec);
+            let spec = format!("library:{}", s.id);
+            let v = mini_view(noos_shader::resolve(&spec));
+            let desc = match s.origin.as_str() {
+                "import" => "Importée".to_string(),
+                "shadertoy" => format!("Shadertoy · par {}", s.author),
+                _ => s.description.clone(),
+            };
+            let active = cfg.lock.animation == spec || cfg.lock.animation == format!("shadertoy:{}", s.id);
+            let t = tile(v.widget(), &s.name, &desc, active);
             let (app, holder) = (app.clone(), holder.clone());
             t.connect_clicked(move |_| saved_dialog(&app, &holder, &s));
             flow.append(&t);
@@ -229,8 +338,11 @@ fn fill(app: &Rc<App>, holder: &gtk::Box) {
         holder.append(&flow);
     }
 
-    // ── Parcourir Shadertoy ──
-    holder.append(&browser(app, holder));
+    // ── Catalogue NOOS ──
+    holder.append(&catalog_section(app, holder));
+
+    // ── Import ──
+    holder.append(&import_group(app, holder));
 }
 
 fn plural(n: usize) -> &'static str {
@@ -269,7 +381,7 @@ fn tiles_box() -> gtk::FlowBox {
     f
 }
 
-/// Tuile : aperçu (animation ou vignette), nom, description, coche si actif.
+/// Tuile : aperçu animé, nom, description, coche si actif.
 fn tile(visual: &impl IsA<gtk::Widget>, name: &str, desc: &str, active: bool) -> gtk::Button {
     let b = gtk::Button::new();
     b.add_css_class("ls-tile");
@@ -307,8 +419,10 @@ fn tile(visual: &impl IsA<gtk::Widget>, name: &str, desc: &str, active: bool) ->
     b
 }
 
+type Action = (&'static str, &'static str, Rc<dyn Fn()>);
+
 /// Grand aperçu animé dans une fenêtre, avec actions.
-fn preview_dialog(app: &Rc<App>, title: &str, subtitle: &str, src: noos_shader::Source, actions: &[(&str, &str, Rc<dyn Fn()>)]) {
+fn preview_dialog(app: &Rc<App>, title: &str, subtitle: &str, src: noos_shader::Source, actions: &[Action]) {
     let d = adap::Dialog::new();
     d.set_title(title);
     d.set_content_width(760);
@@ -368,260 +482,238 @@ fn preview_dialog(app: &Rc<App>, title: &str, subtitle: &str, src: noos_shader::
 }
 
 fn saved_dialog(app: &Rc<App>, holder: &gtk::Box, s: &store::Saved) {
-    let spec = format!("shadertoy:{}", s.id);
+    let spec = format!("library:{}", s.id);
     let Some(src) = noos_shader::resolve(&spec) else { return };
     let apply: Rc<dyn Fn()> = {
         let (app, holder, spec, name) = (app.clone(), holder.clone(), spec.clone(), s.name.clone());
         Rc::new(move || apply_animation(&app, &holder, &spec, &name))
     };
     let delete: Rc<dyn Fn()> = {
-        let (app, holder, id, name, spec) = (app.clone(), holder.clone(), s.id.clone(), s.name.clone(), spec.clone());
+        let (app, holder, id, name) = (app.clone(), holder.clone(), s.id.clone(), s.name.clone());
         Rc::new(move || {
-            if let Err(e) = store::delete(&id) {
-                return app.error("Suppression", &format!("{e:#}"));
-            }
-            if app.cfg().lock.animation == spec {
-                app.update(|c| c.lock.animation = "builtin:aurora".into());
-            }
-            app.toast(&format!("« {name} » supprimée"));
-            reload(&app, &holder);
-        })
-    };
-    let open: Rc<dyn Fn()> = {
-        let url = s.url();
-        Rc::new(move || {
-            let _ = gio::AppInfo::launch_default_for_uri(&url, None::<&gio::AppLaunchContext>);
-        })
-    };
-    preview_dialog(
-        app,
-        &s.name,
-        &format!("par {} · {} vues · {} j'aime\n{}\nLicence : celle choisie par l'auteur sur Shadertoy (par défaut CC BY-NC-SA 3.0).", s.author, s.views, s.likes, s.description.lines().next().unwrap_or("")),
-        src,
-        &[("Supprimer", "destructive-action", delete), ("Voir sur Shadertoy", "", open), ("Appliquer", "suggested-action", apply)],
-    );
-}
-
-// ───────────────────────────── API Shadertoy ─────────────────────────────
-
-fn thumb_cache(id: &str) -> std::path::PathBuf {
-    glib::user_cache_dir().join("noos").join("shadertoy").join(format!("{id}.jpg"))
-}
-
-fn browser(app: &Rc<App>, holder: &gtk::Box) -> gtk::Box {
-    let v = gtk::Box::new(gtk::Orientation::Vertical, 12);
-    v.append(&section("Parcourir Shadertoy", "Des milliers d'animations GLSL partagées par la communauté (shadertoy.com)"));
-    let Some(key) = api::key() else {
-        let g = group("");
-        g.set_description(Some(
-            "Shadertoy demande une clé personnelle et gratuite : connectez-vous sur shadertoy.com, ouvrez « Your Apps », créez une application, puis collez sa clé ici. Elle reste sur ce PC.",
-        ));
-        let link = card("web-browser-symbolic", "Créer ma clé sur shadertoy.com", "shadertoy.com/myapps");
-        link.set_activatable(true);
-        link.add_suffix(&gtk::Image::from_icon_name("adw-external-link-symbolic"));
-        link.connect_activated(|_| {
-            let _ = gio::AppInfo::launch_default_for_uri("https://www.shadertoy.com/myapps", None::<&gio::AppLaunchContext>);
-        });
-        g.add(&link);
-        let entry = adap::EntryRow::new();
-        entry.set_title("Clé de l'API Shadertoy");
-        entry.set_show_apply_button(true);
-        {
-            let (app, holder) = (app.clone(), holder.clone());
-            entry.connect_apply(move |e| {
-                match api::set_key(&e.text()) {
-                    Ok(()) => app.toast("Clé enregistrée"),
-                    Err(err) => app.error("Clé Shadertoy", &format!("{err:#}")),
+            let (app2, holder2, id2, name2) = (app.clone(), holder.clone(), id.clone(), name.clone());
+            app.confirm(&format!("Retirer « {name} » ?"), "L'animation sera supprimée de votre bibliothèque.", "Retirer", true, move || {
+                if let Err(e) = store::delete(&id2) {
+                    return app2.error("Suppression", &format!("{e:#}"));
                 }
-                reload(&app, &holder);
+                let cur = app2.cfg().lock.animation;
+                if cur == format!("library:{id2}") || cur == format!("shadertoy:{id2}") {
+                    app2.update(|c| c.lock.animation = "builtin:aurora".into());
+                }
+                app2.toast(&format!("« {name2} » retirée"));
+                reload(&app2, &holder2);
             });
-        }
-        g.add(&entry);
-        v.append(&g);
-        return v;
+        })
     };
-
-    let bar = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    let search = gtk::SearchEntry::new();
-    search.set_placeholder_text(Some("Rechercher (ex. « ocean », « fractal », « clouds »)"));
-    search.set_hexpand(true);
-    let sorts = ["Populaires", "Les plus aimés", "Récents", "Tendances"];
-    let sort = gtk::DropDown::from_strings(&sorts);
-    let forget = gtk::Button::from_icon_name("dialog-password-symbolic");
-    forget.set_tooltip_text(Some("Changer de clé Shadertoy"));
-    forget.add_css_class("flat");
-    {
-        let (app, holder) = (app.clone(), holder.clone());
-        forget.connect_clicked(move |_| {
-            let _ = api::set_key("");
-            reload(&app, &holder);
-        });
+    let mut info = vec![];
+    if !s.author.is_empty() {
+        info.push(format!("par {}", s.author));
     }
-    bar.append(&search);
-    bar.append(&sort);
-    bar.append(&forget);
-    v.append(&bar);
-    let status = gtk::Label::new(Some("Recherchez ou choisissez un tri pour afficher des animations."));
-    status.add_css_class("dim-label");
-    status.set_xalign(0.0);
+    info.push(match s.origin.as_str() {
+        "catalogue" => "Catalogue NOOS".to_string(),
+        "import" => "Importée".to_string(),
+        "shadertoy" => "Shadertoy".to_string(),
+        o => o.to_string(),
+    });
+    if !s.license.is_empty() {
+        info.push(format!("licence {}", s.license));
+    }
+    let mut text = info.join(" · ");
+    if !s.description.is_empty() {
+        text = format!("{text}\n{}", s.description);
+    }
+    let mut actions: Vec<Action> = vec![("Retirer", "destructive-action", delete)];
+    if !s.url.is_empty() {
+        let url = s.url.clone();
+        actions.push((
+            "Page d'origine",
+            "",
+            Rc::new(move || {
+                let _ = gio::AppInfo::launch_default_for_uri(&url, None::<&gio::AppLaunchContext>);
+            }),
+        ));
+    }
+    actions.push(("Appliquer", "suggested-action", apply));
+    preview_dialog(app, &s.name, &text, src, &actions);
+}
+
+// ───────────────────────────── Catalogue NOOS ─────────────────────────────
+
+fn catalog_section(app: &Rc<App>, holder: &gtk::Box) -> gtk::Box {
+    let v = gtk::Box::new(gtk::Orientation::Vertical, 12);
+    v.append(&section(
+        "Catalogue NOOS",
+        "Animations créées pour NOOS, dont des clins d'œil aux écrans de veille de Windows 95 / 98. Sans compte, sous licence libre.",
+    ));
+    let status = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    let spinner = gtk::Spinner::new();
+    spinner.start();
+    let label = gtk::Label::new(Some("Chargement du catalogue…"));
+    label.add_css_class("dim-label");
+    status.append(&spinner);
+    status.append(&label);
     v.append(&status);
     let flow = tiles_box();
     v.append(&flow);
-    let more = gtk::Button::with_label("Plus de résultats");
-    more.add_css_class("pill");
-    more.set_halign(gtk::Align::Center);
-    more.set_visible(false);
-    v.append(&more);
 
-    struct Query {
-        text: String,
-        sort: api::Sort,
-        from: usize,
-        generation: u32,
-    }
-    let q = Rc::new(RefCell::new(Query { text: String::new(), sort: api::Sort::Popular, from: 0, generation: 0 }));
-    const PAGE: usize = 12;
-    let load: Rc<dyn Fn(bool)> = {
-        let (app, holder, flow, status, more, q, key) = (app.clone(), holder.clone(), flow.clone(), status.clone(), more.clone(), q.clone(), key.clone());
-        Rc::new(move |append: bool| {
-            if !append {
-                flow.remove_all();
-                q.borrow_mut().from = 0;
+    let task = background(|| catalog::fetch().map_err(|e| format!("{e:#}")));
+    let (app, holder) = (app.clone(), holder.clone());
+    glib::spawn_future_local(async move {
+        let cat = match task.await {
+            Ok(c) => c,
+            Err(e) => {
+                spinner.stop();
+                spinner.set_visible(false);
+                label.set_text(&format!("Catalogue indisponible : {e}"));
+                return;
             }
-            let (text, sort, from, generation) = {
-                let mut qq = q.borrow_mut();
-                qq.generation += 1;
-                (qq.text.clone(), qq.sort, qq.from, qq.generation)
+        };
+        status.set_visible(false);
+        let current = app.cfg().lock.animation;
+        for e in cat.shaders {
+            let src = noos_shader::Source { name: e.name.clone(), author: e.author.clone(), image: e.code.clone(), common: String::new() };
+            let view = mini_view(Some(src.clone()));
+            let have = catalog::installed(&e.id);
+            let desc = if have {
+                "Dans ma bibliothèque".to_string()
+            } else if !e.homage.is_empty() {
+                format!("Hommage · {}", e.homage.trim_start_matches("Écran de veille "))
+            } else {
+                e.description.clone()
             };
-            status.set_text("Recherche sur Shadertoy…");
-            more.set_visible(false);
-            let key2 = key.clone();
-            let task = background(move || api::query(&key2, &text, sort, from, PAGE).map_err(|e| format!("{e:#}")));
-            let (app, holder, flow, status, more, q, key) = (app.clone(), holder.clone(), flow.clone(), status.clone(), more.clone(), q.clone(), key.clone());
-            glib::spawn_future_local(async move {
-                let res = task.await;
-                if q.borrow().generation != generation {
-                    return;
-                }
-                let (total, ids) = match res {
-                    Ok(r) => r,
-                    Err(e) => {
-                        status.set_text(&e);
-                        return;
-                    }
-                };
-                status.set_text(&format!("{total} animation{} · les incompatibles (textures, son, plusieurs passes) sont grisées", plural(total)));
-                q.borrow_mut().from = from + ids.len();
-                more.set_visible(from + ids.len() < total);
-                for id in ids {
-                    let placeholder = gtk::Spinner::new();
-                    placeholder.start();
-                    let t = tile(&placeholder, "…", "", false);
-                    t.set_sensitive(false);
-                    flow.append(&t);
-                    let (key, id2) = (key.clone(), id.clone());
-                    let task = background(move || {
-                        let r = api::shader(&key, &id2);
-                        let thumb = thumb_cache(&id2);
-                        if !thumb.exists() {
-                            let _ = api::download_thumb(&id2, &thumb);
-                        }
-                        r.map_err(|e| format!("{e:#}"))
-                    });
-                    let (app, holder) = (app.clone(), holder.clone());
-                    glib::spawn_future_local(async move {
-                        let Ok(remote) = task.await else {
-                            t.set_visible(false);
-                            return;
-                        };
-                        let pic = gtk::Picture::for_filename(thumb_cache(&id));
-                        pic.set_content_fit(gtk::ContentFit::Cover);
-                        let desc = if remote.compatible {
-                            format!("par {} · ♥ {}", remote.saved.author, remote.saved.likes)
-                        } else {
-                            format!("Incompatible : {}", remote.reason)
-                        };
-                        let fresh = tile(&pic, &remote.saved.name, &desc, false);
-                        // Remplacer le contenu de la tuile provisoire.
-                        t.set_child(fresh.child().as_ref());
-                        t.set_sensitive(true);
-                        if !remote.compatible {
-                            t.add_css_class("incompatible");
-                        }
-                        t.connect_clicked(move |_| remote_dialog(&app, &holder, &remote));
-                    });
-                }
-            });
-        })
-    };
-    {
-        let (q, load) = (q.clone(), load.clone());
-        search.connect_activate(move |s| {
-            q.borrow_mut().text = s.text().to_string();
-            load(false);
-        });
-    }
-    {
-        let (q, load) = (q.clone(), load.clone());
-        sort.connect_selected_notify(move |d| {
-            q.borrow_mut().sort = match d.selected() {
-                1 => api::Sort::Love,
-                2 => api::Sort::Newest,
-                3 => api::Sort::Hot,
-                _ => api::Sort::Popular,
-            };
-            load(false);
-        });
-    }
-    {
-        let load = load.clone();
-        more.connect_clicked(move |_| load(true));
-    }
+            let t = tile(view.widget(), &e.name, &desc, current == catalog::spec(&e.id));
+            let (app, holder) = (app.clone(), holder.clone());
+            t.connect_clicked(move |_| catalog_dialog(&app, &holder, &e, src.clone()));
+            flow.append(&t);
+        }
+    });
     v
 }
 
-fn remote_dialog(app: &Rc<App>, holder: &gtk::Box, remote: &api::Remote) {
-    let s = &remote.saved;
-    if !remote.compatible {
-        app.error(&s.name, &format!("Cette animation {} : l'écran de verrouillage ne peut pas l'afficher.", remote.reason));
-        return;
+fn catalog_dialog(app: &Rc<App>, holder: &gtk::Box, e: &catalog::Entry, src: noos_shader::Source) {
+    let add = |apply: bool| -> Rc<dyn Fn()> {
+        let (app, holder, e) = (app.clone(), holder.clone(), e.clone());
+        Rc::new(move || match catalog::install(&e) {
+            Ok(s) if apply => apply_animation(&app, &holder, &format!("library:{}", s.id), &s.name),
+            Ok(s) => {
+                app.toast(&format!("« {} » ajoutée à votre bibliothèque", s.name));
+                reload(&app, &holder);
+            }
+            Err(err) => app.error("Ajout", &format!("{err:#}")),
+        })
+    };
+    let mut text = e.description.clone();
+    if !e.homage.is_empty() {
+        text = format!("{text}\nClin d'œil : {}", e.homage);
     }
-    let src = noos_shader::Source { name: s.name.clone(), author: s.author.clone(), image: s.image.clone(), common: s.common.clone() };
-    let download = |apply: bool| -> Rc<dyn Fn()> {
-        let (app, holder, remote) = (app.clone(), holder.clone(), remote.clone());
-        Rc::new(move || {
-            let r = remote.clone();
-            let task = background(move || api::save(&r).map_err(|e| format!("{e:#}")));
-            let (app, holder) = (app.clone(), holder.clone());
-            glib::spawn_future_local(async move {
-                match task.await {
-                    Ok(saved) if apply => apply_animation(&app, &holder, &format!("shadertoy:{}", saved.id), &saved.name),
-                    Ok(saved) => {
-                        app.toast(&format!("« {} » ajoutée à la bibliothèque", saved.name));
-                        reload(&app, &holder);
-                    }
-                    Err(e) => app.error("Téléchargement", &e),
-                }
+    text = format!("{text}\n{} · licence {}", if e.author.is_empty() { "NOOS" } else { &e.author }, e.license);
+    let actions: Vec<Action> = if catalog::installed(&e.id) {
+        vec![("Appliquer", "suggested-action", add(true))]
+    } else {
+        vec![("Ajouter à ma bibliothèque", "", add(false)), ("Ajouter et appliquer", "suggested-action", add(true))]
+    };
+    preview_dialog(app, &e.name, &text, src, &actions);
+}
+
+// ───────────────────────────── Import ─────────────────────────────
+
+fn import_group(app: &Rc<App>, holder: &gtk::Box) -> adap::PreferencesGroup {
+    let g = group("Importer une animation");
+    g.set_description(Some(
+        "Code GLSL d'une seule passe, sans textures ni son : format Shadertoy (fonction mainImage) ou GLSL Sandbox (main + gl_FragColor, converti automatiquement).",
+    ));
+    let file = card("document-open-symbolic", "Depuis un fichier", "Fichier .frag, .glsl ou .txt");
+    file.set_activatable(true);
+    file.add_suffix(&gtk::Image::from_icon_name("go-next-symbolic"));
+    {
+        let (app, holder) = (app.clone(), holder.clone());
+        file.connect_activated(move |_| {
+            let filter = gtk::FileFilter::new();
+            filter.set_name(Some("Animations GLSL"));
+            for p in ["*.frag", "*.glsl", "*.fs", "*.txt"] {
+                filter.add_pattern(p);
+            }
+            let filters = gio::ListStore::new::<gtk::FileFilter>();
+            filters.append(&filter);
+            let dialog = gtk::FileDialog::builder().title("Importer une animation").filters(&filters).build();
+            let (app2, holder2) = (app.clone(), holder.clone());
+            dialog.open(Some(&app.window), gio::Cancellable::NONE, move |res| {
+                let Ok(f) = res else { return };
+                let Some(path) = f.path() else { return };
+                let code = match std::fs::read_to_string(&path) {
+                    Ok(c) => c,
+                    Err(e) => return app2.error("Import", &e.to_string()),
+                };
+                let name = path.file_stem().map(|s| s.to_string_lossy().replace(['-', '_'], " ")).unwrap_or_default();
+                import_and_preview(&app2, &holder2, &name, &code, "");
             });
-        })
-    };
-    let open: Rc<dyn Fn()> = {
-        let url = s.url();
-        Rc::new(move || {
-            let _ = gio::AppInfo::launch_default_for_uri(&url, None::<&gio::AppLaunchContext>);
-        })
-    };
-    preview_dialog(
-        app,
-        &s.name,
-        &format!(
-            "par {} · {} vues · {} j'aime{}\nLicence : celle choisie par l'auteur sur Shadertoy (par défaut CC BY-NC-SA 3.0).",
-            s.author,
-            s.views,
-            s.likes,
-            if s.tags.is_empty() { String::new() } else { format!(" · {}", s.tags.join(", ")) }
-        ),
-        src,
-        &[("Voir sur Shadertoy", "", open), ("Télécharger", "", download(false)), ("Télécharger et appliquer", "suggested-action", download(true))],
-    );
+        });
+    }
+    g.add(&file);
+    let paste = card("edit-paste-symbolic", "Coller du code", "Depuis un site de partage d'animations ou votre éditeur");
+    paste.set_activatable(true);
+    paste.add_suffix(&gtk::Image::from_icon_name("go-next-symbolic"));
+    {
+        let (app, holder) = (app.clone(), holder.clone());
+        paste.connect_activated(move |_| paste_dialog(&app, &holder));
+    }
+    g.add(&paste);
+    g
+}
+
+fn import_and_preview(app: &Rc<App>, holder: &gtk::Box, name: &str, code: &str, url: &str) {
+    match store::import(name, code, url) {
+        Ok(s) => {
+            app.toast(&format!("« {} » importée", s.name));
+            reload(app, holder);
+            saved_dialog(app, holder, &s);
+        }
+        Err(e) => app.error("Import", &format!("{e:#}")),
+    }
+}
+
+fn paste_dialog(app: &Rc<App>, holder: &gtk::Box) {
+    let d = adap::Dialog::new();
+    d.set_title("Coller une animation");
+    d.set_content_width(640);
+    d.set_content_height(560);
+    let tv = adap::ToolbarView::new();
+    tv.add_top_bar(&adap::HeaderBar::new());
+    let b = gtk::Box::new(gtk::Orientation::Vertical, 12);
+    b.set_margin_start(18);
+    b.set_margin_end(18);
+    b.set_margin_bottom(18);
+    let fields = adap::PreferencesGroup::new();
+    let name = adap::EntryRow::new();
+    name.set_title("Nom");
+    let url = adap::EntryRow::new();
+    url.set_title("Page d'origine (facultatif)");
+    fields.add(&name);
+    fields.add(&url);
+    b.append(&fields);
+    let text = gtk::TextView::new();
+    text.set_monospace(true);
+    text.set_wrap_mode(gtk::WrapMode::None);
+    text.set_top_margin(8);
+    text.set_left_margin(8);
+    let sc = gtk::ScrolledWindow::builder().child(&text).vexpand(true).build();
+    sc.add_css_class("card");
+    b.append(&sc);
+    let go = gtk::Button::with_label("Importer");
+    go.add_css_class("pill");
+    go.add_css_class("suggested-action");
+    go.set_halign(gtk::Align::End);
+    b.append(&go);
+    {
+        let (app, holder, d2) = (app.clone(), holder.clone(), d.clone());
+        go.connect_clicked(move |_| {
+            let buf = text.buffer();
+            let code = buf.text(&buf.start_iter(), &buf.end_iter(), false).to_string();
+            d2.close();
+            import_and_preview(&app, &holder, &name.text(), &code, url.text().trim());
+        });
+    }
+    tv.set_content(Some(&b));
+    d.set_child(Some(&tv));
+    d.present(Some(&app.window));
 }

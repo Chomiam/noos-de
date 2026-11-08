@@ -1,6 +1,6 @@
 [package]
 name = "noos-shader"
-description = "Animations GLSL au format Shadertoy pour NOOS (écran de verrouillage) : rendu GTK4 (GLArea), animations intégrées, bibliothèque locale et API Shadertoy"
+description = "Animations GLSL pour NOOS (écran de verrouillage et de veille) : rendu GTK4 (GLArea), animations intégrées, catalogue NOOS, bibliothèque locale et import"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

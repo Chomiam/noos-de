@@ -128,6 +128,18 @@ pub fn output_elements(
         }
     }
 
+    // ── Assombrissement avant le verrouillage : voile noir par-dessus tout (sauf le curseur) ──
+    if let Some(a) = state.dim_alpha() {
+        state.dim_buffer.update(output_geo.size, [0.0, 0.0, 0.0, a]);
+        elements.push(NoosElement::Solid(smithay::backend::renderer::element::solid::SolidColorRenderElement::from_buffer(
+            &state.dim_buffer,
+            (0, 0),
+            scale,
+            1.0,
+            Kind::Unspecified,
+        )));
+    }
+
     // ── Session verrouillée : uniquement la surface de verrouillage de cet écran (sinon noir) ──
     if state.is_locked() {
         if let Some(surface) = state.lock_surface_for(output).map(|s| s.wl_surface().clone()) {
