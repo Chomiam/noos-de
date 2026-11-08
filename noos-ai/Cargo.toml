@@ -8,5 +8,6 @@ license.workspace = true
 [dependencies]
 noos-core.workspace = true
 noos-actions.workspace = true
+noos-theme.workspace = true
 gtk.workspace = true
 serde_json.workspace = true

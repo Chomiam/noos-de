@@ -47,6 +47,7 @@ enum Action {
     AltTab,
     ReloadConfig,
     Lock,
+    Assistant,
 }
 
 fn terminal_command() -> String {
@@ -99,6 +100,7 @@ fn shortcut(mods: &ModifiersState, sym: Keysym) -> Option<Action> {
         Keysym::Return | Keysym::KP_Enter => Some(Action::Spawn(terminal_command())),
         Keysym::d | Keysym::D => Some(Action::ShowDesktop),
         Keysym::l | Keysym::L => Some(Action::Lock),
+        Keysym::a | Keysym::A => Some(Action::Assistant),
         Keysym::q | Keysym::Q => Some(Action::Close),
         Keysym::f | Keysym::F => Some(Action::Fullscreen),
         Keysym::r | Keysym::R if mods.shift => Some(Action::ReloadConfig),
@@ -178,6 +180,7 @@ impl NoosState {
             Action::VtSwitch(vt) => self.backend.change_vt(vt),
             Action::Spawn(cmd) => self.spawn(&cmd),
             Action::Lock => self.lock_session(),
+            Action::Assistant => self.ipc.broadcast(&noos_core::ipc::Event::ToggleAssistant),
             Action::StartMenuKey => {
                 // Mode jeu : pas de menu Démarrer par-dessus un jeu en plein écran.
                 let in_game = self.config.gaming.game_mode

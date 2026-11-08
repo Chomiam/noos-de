@@ -129,7 +129,8 @@ pub fn detect() -> Hardware {
         gpus,
         vulkan_tools,
         ollama: which("ollama"),
-        ollama_vulkan: std::path::Path::new("/usr/lib64/ollama/vulkan").exists() || std::path::Path::new("/usr/lib/ollama/vulkan").exists(),
+        // Paquet ollama-vulkan : bibliothèque ggml Vulkan à côté des autres moteurs d'Ollama.
+        ollama_vulkan: ["/usr/lib/ollama/libggml-vulkan.so", "/usr/lib64/ollama/libggml-vulkan.so", "/usr/lib/ollama/vulkan", "/usr/lib64/ollama/vulkan"].iter().any(|p| std::path::Path::new(p).exists()),
         whisper: which("whisper-cli") || which("whisper-cpp"),
         on_battery: on_battery(),
     }

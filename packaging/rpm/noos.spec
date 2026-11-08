@@ -97,6 +97,10 @@ Requires:       lzip
 Requires:       udisks2
 # Assistant IA : détection des cartes graphiques Vulkan.
 Requires:       vulkan-tools
+# Assistant IA local (noos-ai) : moteur de modèles de langage, accélération Vulkan
+# (AMD / Intel / NVIDIA, repli processeur). Les modèles se téléchargent depuis Paramètres › IA.
+Requires:       ollama
+Requires:       ollama-vulkan
 # Éditeur de texte (coloration syntaxique, plus de 150 langages).
 Requires:       gtksourceview5
 # Polices : courantes, équivalentes métriques des polices Microsoft (Liberation = Arial / Times /

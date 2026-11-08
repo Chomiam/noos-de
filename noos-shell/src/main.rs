@@ -5,6 +5,7 @@
 //! activer / réduire / fermer.
 
 mod apps;
+mod assistant;
 mod audio;
 mod net;
 mod notify;
@@ -76,6 +77,8 @@ pub struct Shell {
     pub tray: RefCell<Option<Rc<tray::Tray>>>,
     pub net: RefCell<Option<Rc<net::NetFlyout>>>,
     pub audio: RefCell<Option<Rc<audio::AudioFlyout>>>,
+    /// Panneau Assistant (IA locale), Super+A.
+    pub assistant: RefCell<Option<Rc<assistant::Assistant>>>,
     status: RefCell<StatusIcons>,
     pub slideshow: wallpaper::Slideshow,
     css: gtk::CssProvider,
@@ -190,6 +193,14 @@ impl Shell {
                 }
                 if let Some(s) = self.start.borrow().as_ref() {
                     s.toggle(None);
+                }
+            }
+            Event::ToggleAssistant => {
+                let ai = self.config().ai;
+                if ai.enabled && ai.assistant {
+                    if let Some(a) = self.assistant.borrow().as_ref() {
+                        a.toggle();
+                    }
                 }
             }
             Event::Outputs { .. } | Event::ConfigReloaded => {
@@ -329,6 +340,7 @@ fn main() -> glib::ExitCode {
             tray: RefCell::new(None),
             net: RefCell::new(None),
             audio: RefCell::new(None),
+            assistant: RefCell::new(None),
             status: RefCell::new(StatusIcons::default()),
             slideshow: wallpaper::Slideshow::default(),
             css,
@@ -340,6 +352,7 @@ fn main() -> glib::ExitCode {
         *shell.tray.borrow_mut() = Some(tray::Tray::new(&shell));
         *shell.net.borrow_mut() = Some(net::NetFlyout::new(&shell));
         *shell.audio.borrow_mut() = Some(audio::AudioFlyout::new(&shell));
+        *shell.assistant.borrow_mut() = Some(assistant::Assistant::new(&shell));
         {
             // Icônes réseau / volume : toutes les 5 s (et juste après une action).
             shell.refresh_status_soon();
@@ -409,7 +422,7 @@ fn main() -> glib::ExitCode {
             });
         }
 
-        // Test : ouvrir un panneau au démarrage (NOOS_SHELL_OPEN=audio|net|quick|notifications).
+        // Test : ouvrir un panneau au démarrage (NOOS_SHELL_OPEN=audio|net|quick|notifications|assistant).
         if let Ok(which) = std::env::var("NOOS_SHELL_OPEN") {
             let shell = shell.clone();
             glib::timeout_add_local_once(Duration::from_millis(1500), move || match which.as_str() {
@@ -417,6 +430,16 @@ fn main() -> glib::ExitCode {
                 "net" => shell.net.borrow().as_ref().map(|n| n.toggle()).unwrap_or(()),
                 "quick" => shell.quick.borrow().as_ref().map(|q| q.toggle()).unwrap_or(()),
                 "notifications" => shell.notify.borrow().as_ref().map(|n| n.toggle()).unwrap_or(()),
+                "assistant" => {
+                    let Some(a) = shell.assistant.borrow().clone() else { return };
+                    a.toggle();
+                    // NOOS_AI_ASK="question 1|question 2" : questions posées à la suite (captures).
+                    let qs: Vec<String> = std::env::var("NOOS_AI_ASK").unwrap_or_default().split('|').filter(|s| !s.is_empty()).map(String::from).collect();
+                    for (i, q) in qs.into_iter().enumerate() {
+                        let a = a.clone();
+                        glib::timeout_add_local_once(Duration::from_millis(600 + 1500 * i as u64), move || a.ask(&q));
+                    }
+                }
                 _ => {}
             });
         }

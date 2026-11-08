@@ -75,8 +75,18 @@ CPU), assistant en **panneau latéral** (style Copilot), dictée en **push-to-ta
   animation de barres au rythme de la voix (style Gemini), aussi déclenchée par Super+H.
 - **Avancement** : phase 1 (socle) faite — `[ai]` dans `NoosConfig`, `noos-core/src/ai.rs`
   (détection, paliers Qwen 2.5 1,5 / 3 / 7 B), `noos-actions`, démon `noos-ai` (D-Bus activé à la
-  demande, arrêt après 10 min), Paramètres › IA. Suivantes : commandes (règles + Ollama), dictée,
-  météo, recherche de fichiers, actions dans chaque application.
+  demande, arrêt après 10 min), Paramètres › IA. Phase 2 (commandes) faite : `noos-ai/src/rules.rs`
+  (phrases françaises → action, tests), `actions.rs` (actions du bureau : son, luminosité via logind,
+  mode sombre, Paramètres, applis, capture, Wi-Fi, mises à jour, session, heure), `ollama.rs`
+  (curl ; réutilise un `ollama serve` sur 11434, sinon lance le sien sur 11535 avec
+  `OLLAMA_MODELS=~/.local/share/noos/ai/models` et `OLLAMA_VULKAN=1`), méthodes D-Bus `Ask`,
+  `Confirm`, `Models`, `PullModel`, `PullStatus`, `DeleteModel`, `Reset` ; panneau
+  `noos-shell/src/assistant.rs` (Super+A, bouton étoile de la barre, cartes de confirmation) ;
+  téléchargement des modèles dans Paramètres › IA. Suivantes : dictée + micro du dock, météo,
+  recherche de fichiers, actions dans chaque application.
+- Le démon est activé par D-Bus et n'a pas forcément l'environnement graphique : il lance les
+  applications par l'IPC du compositeur (`Request::Spawn`). `noos-ai --rules "phrase"` teste le
+  routeur sans rien exécuter.
 - Le D-Bus du projet passe par **gio** (`gio::bus_own_name`, `register_object`), pas zbus
   (même schéma que `noos-shell/src/notify.rs`).
 
@@ -132,6 +142,7 @@ On ne peut pas cliquer dans l'aperçu : utiliser les variables de test ci-dessou
 | `NOOS_EDITOR_DEMO=1` (+ `NOOS_EDITOR_SEARCH=mot`) | noos-texteditor : dossier et fichiers d'exemple (Rust, Python, CSS, Markdown), recherche lancée ; lancer depuis le conteneur (gtksourceview5) |
 | `NOOS_LOCK_DEMO_CARD=1` | noos-lock : carte de connexion affichée d'emblée (avec `--preview`) |
 | `NOOS_SETTINGS_SCROLL=px` | noos-settings : défile la page ouverte (captures) |
+| `NOOS_SHELL_OPEN=assistant` (+ `NOOS_AI_ASK="question 1\|question 2"`) | noos-shell : panneau Assistant ouvert, questions posées à la suite (lancer `noos-ai` sur le même bus avant) |
 | `NOOS_AI_DEMO=1` | Paramètres › IA : matériel fictif (Radeon 12 Go, 16 Go de RAM) ; `noos-ai --status` : diagnostic JSON |
 | `NOOS_FILE_MENU_DEMO=x,y` | noos-file ouvre le menu contextuel de la vue en icônes en (x, y) ; y < 0 = depuis le bas |
 | `NOOS_FILE_SELECT_DEMO=0,1,2` | noos-file sélectionne ces éléments puis rejoue un clic dans le vide (coin inférieur droit) |

@@ -308,6 +308,7 @@ fn fill_models(app: &Rc<App>, g: &adap::PreferencesGroup, hw: &Hardware) {
     let current = app.cfg().ai.tier;
     let selected = if current.is_empty() { rec.map(|t| t.id).unwrap_or("light").to_string() } else { current };
     let mut first: Option<gtk::CheckButton> = None;
+    let mut slots = vec![];
     for t in ai::TIERS {
         let r = adap::ActionRow::new();
         r.set_title(t.label);
@@ -334,6 +335,11 @@ fn fill_models(app: &Rc<App>, g: &adap::PreferencesGroup, hw: &Hardware) {
             w.set_tooltip_text(Some("Trop gros pour la mémoire de ce PC : risque de ralentir tout le système"));
             r.add_suffix(&w);
         }
+        // Téléchargement / suppression (rempli par `refresh_models`).
+        let slot = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        slot.set_valign(gtk::Align::Center);
+        r.add_suffix(&slot);
+        slots.push((t.id, slot));
         let (app, id) = (app.clone(), t.id);
         check.connect_toggled(move |c| {
             if c.is_active() {
@@ -345,6 +351,124 @@ fn fill_models(app: &Rc<App>, g: &adap::PreferencesGroup, hw: &Hardware) {
     if rec.is_none() {
         g.add(&card("dialog-information-symbolic", "Commandes rapides seulement", "Ce PC a peu de mémoire : l'assistant comprend les commandes courantes, sans modèle de langage"));
     }
+    if hw.ollama {
+        refresh_models(app, Rc::new(slots));
+    }
+}
+
+const BUS: &str = "org.noos.Assistant1";
+
+/// Appel asynchrone du démon `noos-ai` (activé à la demande par D-Bus).
+fn daemon(method: &str, args: glib::Variant, done: impl FnOnce(serde_json::Value) + 'static) {
+    let Ok(conn) = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE) else { return };
+    conn.call(
+        Some(BUS),
+        "/org/noos/Assistant",
+        BUS,
+        method,
+        Some(&args),
+        Some(glib::VariantTy::new("(s)").unwrap()),
+        gio::DBusCallFlags::NONE,
+        60_000,
+        gio::Cancellable::NONE,
+        move |r| {
+            let v = r.ok().and_then(|v| v.get::<(String,)>()).and_then(|(s,)| serde_json::from_str(&s).ok()).unwrap_or(serde_json::Value::Null);
+            done(v);
+        },
+    );
+}
+
+type Slots = Rc<Vec<(&'static str, gtk::Box)>>;
+
+fn clear(b: &gtk::Box) {
+    while let Some(c) = b.first_child() {
+        b.remove(&c);
+    }
+}
+
+fn gb(bytes: u64) -> String {
+    format!("{:.1} Go", bytes as f64 / 1e9).replace('.', ",")
+}
+
+/// État des modèles : « Télécharger » ou « Installé · Supprimer » ; suit un téléchargement en cours.
+fn refresh_models(app: &Rc<App>, slots: Slots) {
+    let app = app.clone();
+    daemon("Models", ().to_variant(), move |v| {
+        for (id, slot) in slots.iter() {
+            clear(slot);
+            let Some(t) = v["tiers"].as_array().and_then(|a| a.iter().find(|t| t["id"] == *id)) else { continue };
+            if t["installed"].as_bool().unwrap_or(false) {
+                let l = gtk::Label::new(Some(&format!("Installé · {}", gb(t["size"].as_u64().unwrap_or(0)))));
+                l.add_css_class("dim-label");
+                slot.append(&l);
+                let del = gtk::Button::from_icon_name("user-trash-symbolic");
+                del.add_css_class("flat");
+                del.set_tooltip_text(Some("Supprimer ce modèle"));
+                let (app2, slots2, id) = (app.clone(), slots.clone(), *id);
+                del.connect_clicked(move |_| {
+                    let (app3, slots3) = (app2.clone(), slots2.clone());
+                    app2.confirm("Supprimer ce modèle ?", "Il faudra le télécharger de nouveau pour l'utiliser.", "Supprimer", true, move || {
+                        let (app4, slots4) = (app3.clone(), slots3.clone());
+                        daemon("DeleteModel", (id,).to_variant(), move |r| {
+                            app4.toast(r["message"].as_str().unwrap_or("Modèle supprimé"));
+                            refresh_models(&app4, slots4);
+                        });
+                    });
+                });
+                slot.append(&del);
+            } else {
+                let dl = gtk::Button::with_label("Télécharger");
+                dl.add_css_class("pill");
+                let (app2, slots2, id) = (app.clone(), slots.clone(), *id);
+                dl.connect_clicked(move |b| {
+                    b.set_sensitive(false);
+                    let (app3, slots3) = (app2.clone(), slots2.clone());
+                    daemon("PullModel", (id,).to_variant(), move |r| {
+                        if r["ok"].as_bool() != Some(true) {
+                            app3.toast(r["message"].as_str().unwrap_or("Téléchargement impossible"));
+                        }
+                        watch_pull(&app3, slots3);
+                    });
+                });
+                slot.append(&dl);
+            }
+        }
+        watch_pull(&app, slots.clone());
+    });
+}
+
+/// Barre de progression sur la ligne du modèle en cours de téléchargement.
+fn watch_pull(app: &Rc<App>, slots: Slots) {
+    let app = app.clone();
+    daemon("PullStatus", ().to_variant(), move |v| {
+        let model = v["model"].as_str().unwrap_or("");
+        let Some((_, slot)) = slots.iter().find(|(id, _)| ai::tier(id).is_some_and(|t| t.model == model)) else { return };
+        if v["active"].as_bool() == Some(true) {
+            clear(slot);
+            let (c, t) = (v["completed"].as_u64().unwrap_or(0), v["total"].as_u64().unwrap_or(0));
+            let bar = gtk::ProgressBar::new();
+            bar.set_valign(gtk::Align::Center);
+            bar.set_size_request(120, -1);
+            if t > 0 {
+                bar.set_fraction(c as f64 / t as f64);
+            } else {
+                bar.pulse();
+            }
+            let l = gtk::Label::new(Some(&if t > 0 { format!("{} / {}", gb(c), gb(t)) } else { "Préparation…".into() }));
+            l.add_css_class("dim-label");
+            l.add_css_class("caption");
+            slot.append(&l);
+            slot.append(&bar);
+            glib::timeout_add_local_once(std::time::Duration::from_millis(700), move || watch_pull(&app, slots));
+        } else if v["done"].as_bool() == Some(true) && slot.first_child().is_some_and(|c| c.is::<gtk::Label>() && slot.last_child().is_some_and(|l| l.is::<gtk::ProgressBar>())) {
+            // Fin d'un téléchargement suivi ici : résultat puis état à jour.
+            match v["error"].as_str() {
+                Some(e) => app.toast(&format!("Échec du téléchargement : {e}")),
+                None => app.toast("Modèle téléchargé : l'assistant est prêt."),
+            }
+            refresh_models(&app, slots);
+        }
+    });
 }
 
 /// Applications publiant des actions (bus de session).
