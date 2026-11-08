@@ -20,6 +20,7 @@ pub struct NoosConfig {
     pub input: Input,
     pub power: Power,
     pub lock: Lock,
+    pub ai: Ai,
     pub notifications: Notifications,
     pub tiling: Tiling,
     /// Réglages par écran (nom du connecteur DRM, ex. `DP-1`, `HDMI-A-1`).
@@ -288,6 +289,65 @@ pub struct Lock {
 impl Default for Lock {
     fn default() -> Self {
         Self { idle_minutes: 5, before_suspend: true, animation: "builtin:aurora".into(), fps: 30, render_scale: 0.75, show_clock: true }
+    }
+}
+
+// ───────────────────────────── IA locale ─────────────────────────────
+
+/// Assistant IA local (démon `noos-ai`, Paramètres › IA). Rien ne sort du PC.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct Ai {
+    /// Interrupteur général.
+    pub enabled: bool,
+    /// Commandes du bureau (« monte le son à 90 % »), panneau Assistant.
+    pub assistant: bool,
+    /// Recherche de fichiers en langage naturel.
+    pub file_search: bool,
+    /// Dictée vocale (push-to-talk).
+    pub dictation: bool,
+    /// Touche maintenue pour dicter (format « Super+H », « Control_R »…).
+    pub ptt_key: String,
+    pub dictation_language: String,
+    /// Modèle de reconnaissance vocale whisper : `base` ou `small`.
+    pub speech_model: String,
+    /// Palier du modèle de langage (`light`, `balanced`, `advanced`) ; vide = conseillé.
+    pub tier: String,
+    pub use_gpu: bool,
+    /// Décharger le modèle de la mémoire après N minutes sans usage.
+    pub unload_minutes: u32,
+    /// Sur batterie : commandes rapides seulement (pas de modèle).
+    pub light_on_battery: bool,
+    /// Demander confirmation pour les actions système (mise à jour, extinction…).
+    pub confirm_system: bool,
+    /// Dossiers indexés (vide = dossier personnel) et motifs exclus.
+    pub index_dirs: Vec<String>,
+    pub index_exclude: Vec<String>,
+    pub keep_history: bool,
+    /// Applications dont les actions sont coupées pour l'IA (bus `org.noos.Actions.<App>`).
+    pub disabled_apps: Vec<String>,
+}
+
+impl Default for Ai {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            assistant: true,
+            file_search: true,
+            dictation: false,
+            ptt_key: "Super+H".into(),
+            dictation_language: "fr".into(),
+            speech_model: "base".into(),
+            tier: String::new(),
+            use_gpu: true,
+            unload_minutes: 5,
+            light_on_battery: true,
+            confirm_system: true,
+            index_dirs: vec![],
+            index_exclude: vec![".cache".into(), ".local/share/Trash".into(), "node_modules".into(), ".git".into(), "target".into()],
+            keep_history: false,
+            disabled_apps: vec![],
+        }
     }
 }
 

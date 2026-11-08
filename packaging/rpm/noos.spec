@@ -8,7 +8,7 @@
 %global __provides_exclude_from ^/opt/noos/lib/.*$
 %global __requires_exclude ^libadapta-1\\.so.*$
 
-%global noos_bins noos-comp noos-shell noos-file noos-settings noos-software noos-pkg noos-snip noos-term noos-keys noos-save noos-photoview noos-texteditor noos-lock noos-archive noos-login noos-installer
+%global noos_bins noos-comp noos-shell noos-file noos-settings noos-software noos-pkg noos-snip noos-term noos-keys noos-save noos-photoview noos-texteditor noos-lock noos-archive noos-ai noos-login noos-installer
 
 Name:           noos
 Version:        0.1.0
@@ -95,6 +95,8 @@ Requires:       zstd
 Requires:       lz4
 Requires:       lzip
 Requires:       udisks2
+# Assistant IA : détection des cartes graphiques Vulkan.
+Requires:       vulkan-tools
 # Éditeur de texte (coloration syntaxique, plus de 150 langages).
 Requires:       gtksourceview5
 # Polices : courantes, équivalentes métriques des polices Microsoft (Liberation = Arial / Times /
@@ -178,6 +180,9 @@ install -d %{buildroot}%{_datadir}/wayland-sessions
 sed 's|/usr/local/bin/noos-session|%{_bindir}/noos-session|g' noos-session/noos.desktop \
     > %{buildroot}%{_datadir}/wayland-sessions/noos.desktop
 install -Dm644 noos-session/noos-portals.conf %{buildroot}%{_datadir}/xdg-desktop-portal/noos-portals.conf
+%{_datadir}/dbus-1/services/org.noos.Assistant1.service
+# Assistant IA : démarré à la demande par D-Bus.
+install -Dm644 noos-session/org.noos.Assistant1.service %{buildroot}%{_datadir}/dbus-1/services/org.noos.Assistant1.service
 install -d %{buildroot}%{_sysconfdir}/ld.so.conf.d
 echo /opt/noos/lib > %{buildroot}%{_sysconfdir}/ld.so.conf.d/noos.conf
 

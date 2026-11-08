@@ -1,0 +1,3 @@
+[D-BUS Service]
+Name=org.noos.Assistant1
+Exec=/opt/noos/bin/noos-ai

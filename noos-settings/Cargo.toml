@@ -13,4 +13,5 @@ adap.workspace = true
 async-channel.workspace = true
 noos-pkg.workspace = true
 noos-shader.workspace = true
+noos-actions.workspace = true
 anyhow.workspace = true

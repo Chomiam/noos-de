@@ -335,6 +335,12 @@ button.current-wallpaper .wallpaper-preview { outline: 2px solid @accent_color; 
 checkbutton.selection-check check { background-color: alpha(black, 0.4); border: 2px solid white; min-width: 18px; min-height: 18px; }
 checkbutton.selection-check check:checked { background-color: @accent_bg_color; border-color: @accent_bg_color; }
 picture.no-wallpaper { background: linear-gradient(155deg, shade(@accent_bg_color, 0.45) 0%, @window_bg_color 55%, shade(@window_bg_color, 0.8) 100%); }
+/* ── IA ── */
+.ai-hero-icon { border-radius: 999px; min-width: 72px; min-height: 72px; color: #ff8fb1;
+  background: linear-gradient(135deg, alpha(#7aa7ff, 0.22), alpha(#ff8fb1, 0.22)); }
+.ai-badge { border-radius: 999px; padding: 2px 10px; font-size: 0.8em; font-weight: 700; background: alpha(@accent_bg_color, 0.2); color: @accent_color; }
+button.ai-key { font-family: monospace; font-weight: 800; padding: 4px 14px; }
+
 /* ── Écran de verrouillage ── */
 .ls-preview { border-radius: 12px; background: black; }
 .ls-clock { color: white; font-size: 44px; font-weight: 300; text-shadow: 0 1px 10px rgba(0,0,0,0.5); }

@@ -1347,6 +1347,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "noos-actions"
+version = "0.1.0"
+dependencies = [
+ "gtk4",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "noos-ai"
+version = "0.1.0"
+dependencies = [
+ "gtk4",
+ "noos-actions",
+ "noos-core",
+ "serde_json",
+]
+
+[[package]]
 name = "noos-archive"
 version = "0.1.0"
 dependencies = [
@@ -1494,6 +1513,7 @@ dependencies = [
  "async-channel",
  "gtk4",
  "libadapta",
+ "noos-actions",
  "noos-core",
  "noos-pkg",
  "noos-shader",

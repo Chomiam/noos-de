@@ -1,0 +1,11 @@
+[package]
+name = "noos-actions"
+description = "Actions des applications NOOS exposées à l'assistant IA (registre, D-Bus org.noos.Actions1, outils pour le modèle)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+gtk.workspace = true
+serde.workspace = true
+serde_json.workspace = true

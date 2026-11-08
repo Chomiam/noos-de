@@ -83,3 +83,5 @@ zstd
 lz4
 lzip
 udisks2
+# Assistant IA (détection Vulkan)
+vulkan-tools

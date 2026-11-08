@@ -15,7 +15,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DEST="${1:-$ROOT/noos-iso/out/stage}"
 PREFIX="$DEST/opt/noos"
-BINS=(noos-comp noos-shell noos-file noos-settings noos-software noos-pkg noos-snip noos-term noos-keys noos-save noos-photoview noos-texteditor noos-lock noos-archive noos-login noos-installer)
+BINS=(noos-comp noos-shell noos-file noos-settings noos-software noos-pkg noos-snip noos-term noos-keys noos-save noos-photoview noos-texteditor noos-lock noos-archive noos-ai noos-login noos-installer)
 
 "$ROOT/scripts/build-libadapta.sh"
 cd "$ROOT"
@@ -39,6 +39,7 @@ SYS="$PREFIX/share/noos/system"
 install -Dm755 noos-session/noos-session "$SYS/usr/local/bin/noos-session"
 install -Dm644 noos-session/noos.desktop "$SYS/usr/local/share/wayland-sessions/noos.desktop"
 install -Dm644 noos-session/noos-portals.conf "$SYS/usr/local/share/xdg-desktop-portal/noos-portals.conf"
+install -Dm644 noos-session/org.noos.Assistant1.service "$SYS/usr/share/dbus-1/services/org.noos.Assistant1.service"
 install -Dm755 noos-login/noos-greeter "$SYS/usr/local/bin/noos-greeter"
 install -Dm644 /dev/stdin "$SYS/etc/ld.so.conf.d/noos.conf" <<<"/opt/noos/lib"
 "$ROOT/noos-plymouth/install.sh" "$SYS" >/dev/null
