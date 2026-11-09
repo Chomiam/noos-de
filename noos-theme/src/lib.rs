@@ -14,6 +14,7 @@
 
 pub mod color;
 pub mod palette;
+pub mod thirdparty;
 
 use std::{cell::RefCell, path::PathBuf, rc::Rc};
 
@@ -151,6 +152,11 @@ pub fn install_theme(app: &Appearance) -> anyhow::Result<PathBuf> {
     apply_desktop_settings(app);
     apply_global_gtk_css(app)?;
     apply_gtk3_css(app)?;
+    // Applis externes : boutons de fenêtre (GTK, libadwaita, Qt « Adwaita ») et couleurs Qt.
+    thirdparty::apply_gnome_settings(app);
+    if let Err(e) = thirdparty::apply_qt(app, wants_dark(app)) {
+        eprintln!("noos-theme : palette Qt non écrite : {e:#}");
+    }
     Ok(theme_dir())
 }
 

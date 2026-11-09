@@ -420,8 +420,15 @@ mode = "2560x1440@165"
 vrr = "always"
 ```
 
-L'option `apply_to_all_apps` écrit aussi les couleurs dans `~/.config/gtk-4.0/gtk.css`, pour les
-applis libadwaita classiques. Attention : ce fichier est également lu par vos autres sessions.
+L'option `apply_to_all_apps` étend les couleurs aux applis externes : `~/.config/gtk-4.0/gtk.css`
+(libadwaita), `~/.config/gtk-3.0/gtk.css` (GTK3, thème adw-gtk3), palette **qt5ct / qt6ct**
+pour Qt 5 et 6 (la session exporte `QT_QPA_PLATFORMTHEME=qt6ct`) et la couleur d'accent GNOME
+la plus proche (seule couleur visible des applis Flatpak). La disposition des boutons
+(`button_layout`) est aussi écrite dans `org.gnome.desktop.wm.preferences button-layout` :
+les applis GTK3, GTK4, libadwaita et Qt (barre de titre « Adwaita »,
+`QT_WAYLAND_DECORATION=adwaita`) ont alors réduire / agrandir / fermer, et pas seulement
+fermer comme le veut Fedora. Attention : ces réglages sont également lus par vos autres
+sessions (GNOME…).
 
 ## État du prototype : ce qui marche, ce qui manque
 

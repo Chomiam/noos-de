@@ -1249,8 +1249,8 @@ pub fn themes(app: &Rc<App>) -> adap::NavigationPage {
     let adv = group("Avancé");
     let global = switch(
         "applications-system-symbolic",
-        "Appliquer aussi aux applis GTK3 et GTK4",
-        "Écrit les couleurs dans ~/.config/gtk-3.0 et gtk-4.0/gtk.css (également lus par vos autres sessions)",
+        "Appliquer aussi aux applis GTK3, GTK4 et Qt",
+        "Couleurs écrites dans ~/.config/gtk-3.0, gtk-4.0 (gtk.css) et qt5ct / qt6ct ; accent GNOME le plus proche pour les applis Flatpak",
         a.apply_to_all_apps,
     );
     {

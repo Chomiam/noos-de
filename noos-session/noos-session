@@ -40,6 +40,11 @@ export XDG_SESSION_TYPE=wayland
 export ADAP_DEBUG_THEME_NAME=NOOS
 export MOZ_ENABLE_WAYLAND=1
 export QT_QPA_PLATFORM="wayland;xcb"
+# Applis Qt : couleurs de Paramètres › Personnalisation (palette qt6ct écrite par NOOS ; le
+# module qt6ct sert aussi Qt 5 via qt5ct) et barre de titre « Adwaita », qui suit la
+# disposition des boutons (réduire / agrandir / fermer). Un choix déjà fait est respecté.
+export QT_QPA_PLATFORMTHEME="${QT_QPA_PLATFORMTHEME:-qt6ct}"
+export QT_WAYLAND_DECORATION="${QT_WAYLAND_DECORATION:-adwaita}"
 export ELECTRON_OZONE_PLATFORM_HINT=auto
 export RUST_LOG="${RUST_LOG:-info,smithay=warn}"
 

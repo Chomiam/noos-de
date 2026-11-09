@@ -64,6 +64,12 @@ Requires:       papirus-icon-theme
 Requires:       flatpak
 # Thème GTK3 qui suit les couleurs de la palette NOOS.
 Requires:       adw-gtk3-theme
+# Applis Qt : palette NOOS (qt6ct / qt5ct, écrite par noos-theme) et barre de titre « Adwaita »
+# qui suit la disposition des boutons de Paramètres.
+Requires:       qt6ct
+Requires:       qt6-qtwayland-adwaita-decoration
+Recommends:     qt5ct
+Recommends:     qadwaitadecorations-qt5
 Recommends:     xwayland-satellite
 Recommends:     grim
 Recommends:     bluez

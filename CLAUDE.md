@@ -222,6 +222,13 @@ compositeur y écrit (`[desktops] names`).
   les widgets du bureau sont dans leur propre surface (`noos-desktop-widgets`, couche
   « bottom », zone de clic limitée aux widgets, toute la surface en mode édition).
   `RUST_LOG=info,noos_comp::blur=debug` trace chaque recalcul (« flou du fond recalculé »).
+- **Applis externes** (`noos-theme/src/thirdparty.rs`) : Fedora règle `button-layout` sur
+  `appmenu:close` → GTK3/GTK4/libadwaita/Qt sans réduire ni agrandir ; NOOS y écrit
+  `[appearance] button_layout`. Couleurs Qt : qt5ct / qt6ct (leurs modules répondent aux deux
+  noms, donc `QT_QPA_PLATFORMTHEME=qt6ct` sert Qt 5 et 6), barre de titre Qt
+  `QT_WAYLAND_DECORATION=adwaita` (`qt6-qtwayland-adwaita-decoration`). Tester une appli
+  dans l'aperçu : étape `run <commande>` de `tools/preview/scenario.sh` (bus D-Bus et dconf
+  isolés) ; `qt6ct` et `gtk3-widget-factory` sont installés dans `noos-dev`.
 - **Configuration illisible** : `NoosConfig::save()` garde une copie `noos.toml.illisible`
   avant d'écraser un fichier qui ne se lit plus ; le compositeur n'enregistre pas les noms de
   bureaux dans ce cas (il écrasait tout avec les valeurs par défaut).
