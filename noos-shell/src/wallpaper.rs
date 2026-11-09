@@ -15,8 +15,15 @@ use crate::Shell;
 
 pub struct Wallpaper {
     pub window: gtk::Window,
-    /// Widgets du bureau (mode édition), posés librement sur le fond.
+    /// Widgets du bureau : surface à part (couche « bottom », juste au-dessus du fond). Dans la
+    /// surface du fond, chaque rafraîchissement d'un widget (Ressources : toutes les 2 s) faisait
+    /// recalculer au compositeur tout le flou Mica sur le processeur (≈ 170 ms, souris figée).
+    pub desk: gtk::Window,
     fixed: gtk::Fixed,
+    /// Mode édition : toute la surface des widgets reçoit les clics (glisser-déposer).
+    editing: Rc<Cell<bool>>,
+    /// Dernière zone de clic envoyée (rectangles des widgets).
+    input: Rc<RefCell<Vec<(i32, i32, i32, i32)>>>,
     widgets: RefCell<Vec<crate::editmode::DeskWidget>>,
     output: String,
     monitor: gdk::Monitor,
@@ -76,9 +83,25 @@ impl Wallpaper {
         }
         let overlay = gtk::Overlay::new();
         overlay.set_child(Some(&stack));
-        let fixed = gtk::Fixed::new();
-        overlay.add_overlay(&fixed);
         window.set_child(Some(&overlay));
+
+        // Widgets du bureau : même taille que le fond (positions en fraction de l'écran), fond
+        // transparent, clics seulement sur les widgets (zone de saisie de la surface).
+        let desk = gtk::Window::builder().application(&shell.app).decorated(false).build();
+        desk.add_css_class("noos-layer");
+        desk.init_layer_shell();
+        desk.set_namespace(Some("noos-desktop-widgets"));
+        desk.set_layer(Layer::Bottom);
+        desk.set_monitor(Some(monitor));
+        desk.set_keyboard_mode(KeyboardMode::None);
+        desk.set_exclusive_zone(-1);
+        for edge in [Edge::Top, Edge::Bottom, Edge::Left, Edge::Right] {
+            desk.set_anchor(edge, true);
+        }
+        let fixed = gtk::Fixed::new();
+        fixed.set_hexpand(true);
+        fixed.set_vexpand(true);
+        desk.set_child(Some(&fixed));
         // Clic droit sur le bureau : mode édition et réglages.
         {
             let menu = gtk::Box::new(gtk::Orientation::Vertical, 2);
@@ -129,7 +152,10 @@ impl Wallpaper {
 
         let w = Self {
             window,
+            desk,
             fixed,
+            editing: Rc::new(Cell::new(false)),
+            input: Rc::new(RefCell::new(vec![])),
             widgets: RefCell::new(vec![]),
             output: monitor.connector().map(|c| c.to_string()).unwrap_or_default(),
             monitor: monitor.clone(),
@@ -138,9 +164,25 @@ impl Wallpaper {
             front: Cell::new(0),
             shown: RefCell::new(None),
         };
+        // Après chaque dessin (un widget a pu changer de taille) : zone de clic à jour.
+        {
+            let (fixed, editing, input) = (w.fixed.clone(), w.editing.clone(), w.input.clone());
+            w.desk.connect_realize(move |desk| {
+                let (desk2, fixed, editing, input) = (desk.clone(), fixed.clone(), editing.clone(), input.clone());
+                if let Some(clock) = desk.frame_clock() {
+                    clock.connect_after_paint(move |_| sync_input(&desk2, &fixed, editing.get(), &input));
+                }
+            });
+        }
         w.apply_config(&shell.config());
         w.window.present();
         w
+    }
+
+    /// Zone de clic de la surface des widgets : leurs rectangles (le reste laisse passer les
+    /// clics vers le fond d'écran), ou toute la surface en mode édition.
+    pub fn sync_input(&self) {
+        sync_input(&self.desk, &self.fixed, self.editing.get(), &self.input);
     }
 
     /// (Re)construit les widgets du bureau de cet écran.
@@ -164,8 +206,17 @@ impl Wallpaper {
             dw.set_editing(editing);
             self.widgets.borrow_mut().push(dw);
         }
-        // Une note se tape au clavier : le fond d'écran accepte alors le focus clavier.
-        self.window.set_keyboard_mode(if has_note || editing { KeyboardMode::OnDemand } else { KeyboardMode::None });
+        // Une note se tape au clavier : la surface des widgets accepte alors le focus clavier.
+        self.desk.set_keyboard_mode(if has_note || editing { KeyboardMode::OnDemand } else { KeyboardMode::None });
+        self.editing.set(editing);
+        // Pas de widget : surface masquée (rien à composer par-dessus le fond).
+        let any = !self.widgets.borrow().is_empty();
+        self.desk.set_visible(any);
+        if any {
+            self.desk.present();
+        }
+        self.input.borrow_mut().clear();
+        self.sync_input();
     }
 
     /// Fond fixe (hors diaporama).
@@ -264,4 +315,34 @@ impl Slideshow {
         });
         *self.timer.borrow_mut() = Some(id);
     }
+}
+
+/// Zone de clic de la surface des widgets (voir `Wallpaper::sync_input`).
+fn sync_input(desk: &gtk::Window, fixed: &gtk::Fixed, editing: bool, input: &RefCell<Vec<(i32, i32, i32, i32)>>) {
+    let Some(surface) = desk.surface() else { return };
+    let rects: Vec<(i32, i32, i32, i32)> = if editing {
+        vec![(0, 0, desk.width().max(1), desk.height().max(1))]
+    } else {
+        let mut v = vec![];
+        let mut child = fixed.first_child();
+        while let Some(c) = child {
+            if let Some(b) = c.compute_bounds(desk) {
+                v.push((b.x().floor() as i32 - 4, b.y().floor() as i32 - 4, b.width().ceil() as i32 + 8, b.height().ceil() as i32 + 8));
+            }
+            child = c.next_sibling();
+        }
+        v
+    };
+    if *input.borrow() == rects {
+        return;
+    }
+    let region = gtk::cairo::Region::create();
+    for (x, y, w, h) in &rects {
+        let _ = region.union_rectangle(&gtk::cairo::RectangleInt::new(*x, *y, *w, *h));
+    }
+    surface.set_input_region(Some(&region));
+    *input.borrow_mut() = rects;
+    // La zone n'est transmise qu'avec le prochain dessin : en demander un (sans boucle : la
+    // zone sera alors identique).
+    desk.queue_draw();
 }

@@ -123,6 +123,7 @@ impl Shell {
         let monitors = display.monitors();
         for w in self.wallpapers.borrow_mut().drain(..) {
             w.window.destroy();
+            w.desk.destroy();
         }
         for i in 0..monitors.n_items() {
             let Some(monitor) = monitors.item(i).and_downcast::<gdk::Monitor>() else { continue };

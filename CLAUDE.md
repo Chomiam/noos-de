@@ -216,6 +216,12 @@ compositeur y écrit (`[desktops] names`).
 - **CSS du shell** : le style de la barre est chargé en `STYLE_PROVIDER_PRIORITY_USER + 10`
   (`.noos-taskbar button { background: none }`) ; une feuille ajoutée en plus doit être
   au-dessus (`USER + 20`, cas de `editmode::CSS`), sinon ses couleurs sont ignorées.
+- **Flou Mica** (`noos-comp/src/blur.rs`) : tout commit d'une surface de la couche
+  « background » fait recalculer le flou de tout l'écran sur le processeur (≈ 170 ms sur
+  l'UHD 630, souris figée). Rien qui se rafraîchit ne doit donc vivre dans le fond d'écran :
+  les widgets du bureau sont dans leur propre surface (`noos-desktop-widgets`, couche
+  « bottom », zone de clic limitée aux widgets, toute la surface en mode édition).
+  `RUST_LOG=info,noos_comp::blur=debug` trace chaque recalcul (« flou du fond recalculé »).
 - **Configuration illisible** : `NoosConfig::save()` garde une copie `noos.toml.illisible`
   avant d'écraser un fichier qui ne se lit plus ; le compositeur n'enregistre pas les noms de
   bureaux dans ce cas (il écrasait tout avec les valeurs par défaut).

@@ -225,6 +225,47 @@ pub fn build_widget(shell: &Rc<Shell>, index: usize, w: &DesktopWidget, fixed: &
     handle.append(&del);
     handle.set_visible(false);
     frame.append(&handle);
+    // Clic droit sur un widget (hors mode édition aussi) : le retirer, ou modifier le bureau.
+    {
+        let menu = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        let pop = gtk::Popover::new();
+        pop.set_has_arrow(false);
+        pop.set_child(Some(&menu));
+        pop.set_parent(&frame);
+        for (label, icon, remove) in [("Retirer ce widget", "user-trash-symbolic", true), ("Modifier le bureau", "document-edit-symbolic", false)] {
+            let b = gtk::Button::new();
+            b.add_css_class("flat");
+            let c = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+            c.append(&gtk::Image::from_icon_name(icon));
+            c.append(&gtk::Label::new(Some(label)));
+            b.set_child(Some(&c));
+            let (shell, pop2) = (Rc::downgrade(shell), pop.clone());
+            b.connect_clicked(move |_| {
+                pop2.popdown();
+                let Some(s) = shell.upgrade() else { return };
+                if remove {
+                    s.update_config(|c| {
+                        if index < c.desktop_widgets.len() {
+                            c.desktop_widgets.remove(index);
+                        }
+                    });
+                    let s2 = s.clone();
+                    glib::idle_add_local_once(move || s2.rebuild_desktop_widgets());
+                } else if let Some(e) = s.editmode.borrow().as_ref() {
+                    e.set_active(true);
+                }
+            });
+            menu.append(&b);
+        }
+        let click = gtk::GestureClick::new();
+        click.set_button(3);
+        click.connect_pressed(move |g, _, x, y| {
+            g.set_state(gtk::EventSequenceState::Claimed);
+            pop.set_pointing_to(Some(&gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
+            pop.popup();
+        });
+        frame.add_controller(click);
+    }
 
     let content: gtk::Widget = match w.kind.as_str() {
         "clock" => {
@@ -325,9 +366,12 @@ pub fn build_widget(shell: &Rc<Shell>, index: usize, w: &DesktopWidget, fixed: &
         let (start, fixed, frame, handle, mine) = (start.clone(), fixed.clone(), frame.clone(), handle.clone(), mine.clone());
         drag.connect_drag_begin(move |g, px, py| {
             mine.set(false);
-            let on_handle = handle.is_visible()
-                && fixed.pick(px, py, gtk::PickFlags::DEFAULT).is_some_and(|w| w == handle || w.is_ancestor(&handle));
-            if !on_handle {
+            let picked = fixed.pick(px, py, gtk::PickFlags::DEFAULT);
+            let on_handle = handle.is_visible() && picked.as_ref().is_some_and(|w| *w == handle || w.is_ancestor(&handle));
+            // Le × de la poignée garde son clic (sinon ce geste le lui prend : widget impossible
+            // à retirer).
+            let on_button = picked.as_ref().is_some_and(|w| w.is::<gtk::Button>() || w.ancestor(gtk::Button::static_type()).is_some());
+            if !on_handle || on_button {
                 g.set_state(gtk::EventSequenceState::Denied);
                 return;
             }

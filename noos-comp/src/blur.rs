@@ -199,8 +199,11 @@ impl NoosState {
             return None;
         }
         let refs: Vec<&NoosElement> = elements.iter().collect();
+        let t0 = std::time::Instant::now();
         let rgba = crate::capture::render_offscreen(renderer, size, scale, &refs, [0.0, 0.0, 0.0, 1.0])?;
         let (w, h, pixels) = blur_small(&rgba, size.w as usize, size.h as usize);
+        // Coûteux (processeur) : ne doit arriver qu'au changement de fond d'écran.
+        tracing::debug!(ms = t0.elapsed().as_millis() as u64, output = %output.name(), "flou du fond recalculé");
         self.blur.wallpapers.insert(output.name(), Wallpaper { generation, computed_at: std::time::Instant::now(), w, h, pixels, full: None, full_buffer: None });
         Some(())
     }
