@@ -3,7 +3,9 @@
 NOOS est un environnement de bureau Wayland en Rust : compositeur Smithay maison, interface
 façon Windows 11, applications GTK4 + **libAdapta**, pensé pour le jeu (VRR, HDR) et la
 personnalisation du thème. Dépôt : https://github.com/Chomiam/noos-de (public, GPL-3.0).
-Le `README.md` décrit les fonctionnalités ; ce fichier donne le contexte de travail.
+Le `README.md` est la vitrine (grand public, captures `docs/captures/*.webp`) ; le détail de
+chaque composant est dans `docs/GUIDE.md` (à compléter à chaque nouvelle fonction) ; ce fichier
+donne le contexte de travail.
 
 ## Préférences de l'utilisateur (Axel)
 
@@ -85,7 +87,12 @@ Scripts prêts à l'emploi (capture puis arrêt) : `tools/preview/run_app.sh cap
 (une appli en kiosque) et `tools/preview/shell_shot.sh capture.png 5 [VAR=valeur…]` (shell
 complet). À lancer sur l'hôte quand l'appli a besoin du bus système (udisks, NetworkManager).
 
-Scénarios scriptés (compositeur + shell, configuration **isolée** copiée dans le dossier) :
+Captures publiques (README) : `HOME=<faux dossier personnel>` + `NOOS_DEMO_NAME="Alex Martin"`
++ fond `docs/captures/fond-aurore.py` (jamais le fond d'écran, les fichiers ni le nom réels de
+l'utilisateur ; masquer les numéros de série, ex. Disques), puis `magick x.png -quality 90 x.webp`.
+
+Scénarios scriptés (compositeur + shell, configuration **isolée** copiée dans le dossier ;
+étapes `ipc`, `shot`, `sleep`, `run <commande>`, `snap <app_id> <zone>`) :
 `tools/preview/scenario.sh DOSSIER "ipc {json}\nsleep 1\nshot nom"` (requêtes IPC par
 `tools/preview/ipc.py`) — ne jamais tester bureaux / écrans avec la vraie configuration : le
 compositeur y écrit (`[desktops] names`).
@@ -114,6 +121,7 @@ compositeur y écrit (`[desktops] names`).
 | `NOOS_DISK_DIALOG=format\|free-format\|init\|bench\|bench-run\|smart` | noos-disk : ouvre ce dialogue (avec `noos-disk /dev/sdX`) ; lancer l'aperçu sur l'**hôte** (bus système / udisks absents du conteneur) |
 | `NOOS_DRIVES_OPEN=1` / `NOOS_AUTOPLAY_DEMO=1` | noos-shell : menu « Retirer en toute sécurité » ouvert / fenêtre « Lecture automatique » du premier disque externe |
 | `NOOS_SHADER_CATALOG=<fichier ou URL>` | catalogue d'animations à utiliser (ex. `data/shaders/catalog/index.json` avant de pousser) |
+| `NOOS_DEMO_NAME="Alex Martin"` | nom affiché (menu Démarrer, Paramètres) à la place du vrai : captures publiques |
 | `NOOS_SETTINGS_SCROLL=px` | noos-settings : défile la page ouverte (captures) |
 | `NOOS_FILE_MENU_DEMO=x,y` | noos-file ouvre le menu contextuel de la vue en icônes en (x, y) ; y < 0 = depuis le bas |
 | `NOOS_FILE_SELECT_DEMO=0,1,2` | noos-file sélectionne ces éléments puis rejoue un clic dans le vide (coin inférieur droit) |

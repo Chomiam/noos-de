@@ -150,7 +150,8 @@ impl StartMenu {
         // ── Pied : utilisateur + alimentation ──
         let footer = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         footer.add_css_class("footer");
-        let user_name = glib::real_name().to_string_lossy().to_string();
+        // NOOS_DEMO_NAME : nom affiché à la place du vôtre (captures d'écran publiques).
+        let user_name = std::env::var("NOOS_DEMO_NAME").unwrap_or_else(|_| glib::real_name().to_string_lossy().to_string());
         let user_name = if user_name.is_empty() || user_name == "Unknown" {
             glib::user_name().to_string_lossy().to_string()
         } else {

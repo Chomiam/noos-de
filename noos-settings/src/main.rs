@@ -131,7 +131,8 @@ fn nav_row(title: &str, icon: &str, color: &str) -> gtk::ListBoxRow {
 }
 
 fn user_card() -> gtk::Box {
-    let real = glib::real_name().to_string_lossy().to_string();
+    // NOOS_DEMO_NAME : nom affiché à la place du vôtre (captures d'écran publiques).
+    let real = std::env::var("NOOS_DEMO_NAME").unwrap_or_else(|_| glib::real_name().to_string_lossy().to_string());
     let name = if real.is_empty() || real == "Unknown" { glib::user_name().to_string_lossy().to_string() } else { real };
     let h = gtk::Box::new(gtk::Orientation::Horizontal, 14);
     h.add_css_class("win11-user");

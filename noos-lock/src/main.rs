@@ -160,7 +160,8 @@ fn build_screen(cfg: &NoosConfig, animation_override: Option<&str>, preview: boo
     });
 
     // ── Carte de connexion ──
-    let real = glib::real_name().to_string_lossy().into_owned();
+    // NOOS_DEMO_NAME : nom affiché à la place du vôtre (captures d'écran publiques).
+    let real = std::env::var("NOOS_DEMO_NAME").unwrap_or_else(|_| glib::real_name().to_string_lossy().into_owned());
     let name = if real.is_empty() || real == "Unknown" { glib::user_name().to_string_lossy().into_owned() } else { real };
     let card = gtk::Box::new(gtk::Orientation::Vertical, 14);
     card.add_css_class("lock-card");

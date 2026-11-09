@@ -214,7 +214,8 @@ pub fn fill(holder: &gtk::Box, nav: &Nav, open: &Rc<dyn Fn(gio::File)>) {
     }
     let hour = glib::DateTime::now_local().map(|d| d.hour()).unwrap_or(12);
     let hello = if (5..18).contains(&hour) { "Bonjour" } else { "Bonsoir" };
-    let name = glib::real_name().to_string_lossy().to_string();
+    // NOOS_DEMO_NAME : nom affiché à la place du vôtre (captures d'écran publiques).
+    let name = std::env::var("NOOS_DEMO_NAME").unwrap_or_else(|_| glib::real_name().to_string_lossy().to_string());
     let name = if name.is_empty() || name == "Unknown" { glib::user_name().to_string_lossy().to_string() } else { name };
     let first = name.split_whitespace().next().unwrap_or(&name).to_string();
     let title = gtk::Label::new(Some(&format!("{hello}, {first}")));
