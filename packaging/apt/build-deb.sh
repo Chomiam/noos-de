@@ -21,8 +21,10 @@ STAMP="$(git log -1 --format=%cd --date=format:%Y%m%d%H%M)"
 VERSION="${BASE}~git${STAMP}.${COMMIT}"
 DATE="$(git log -1 --format=%cd --date=rfc2822)"
 
-cp debian/changelog debian/changelog.orig
-trap 'mv -f debian/changelog.orig debian/changelog' EXIT
+# Sauvegarde hors de debian/ : dh_clean supprime les fichiers *.orig.
+BACKUP="$(mktemp)"
+cp debian/changelog "$BACKUP"
+trap 'cp -f "$BACKUP" debian/changelog; rm -f "$BACKUP"' EXIT
 cat >debian/changelog <<CHANGELOG
 noos ($VERSION) unstable; urgency=medium
 

@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     container: debian:sid
     env:
-      CARGO_TERM_COLOR: always
+      CARGO_TERM_COLOR: never
       DEBIAN_FRONTEND: noninteractive
     steps:
       - name: Outils de base
@@ -78,7 +78,7 @@ jobs:
           # Annotations (publiques, lisibles par l'API sans connexion) : lignes d'erreur, puis
           # fin du journal, sur plusieurs lignes (%0A).
           esc() { sed 's/%/%25/g; s/\r//g' | awk 'BEGIN{ORS="%0A"} {print}'; }
-          errs=$(grep -n -E -A 8 'error(\[E[0-9]+\])?:|could not compile|dpkg-buildpackage: error|\*\*\*|ERROR|fatal' build.log | head -n 120 | esc)
+          errs=$(grep -n -E -A 16 'error(\[E[0-9]+\])?:|could not compile|dpkg-buildpackage: error|\*\*\*|ERROR|fatal' build.log | head -n 220 | esc)
           [ -n "$errs" ] && echo "::error title=Erreurs de compilation::$errs"
           echo "::warning title=Fin du journal::$(tail -n 120 build.log | esc)"
       # Cache enregistré même si la compilation échoue : la relance repart de là.
