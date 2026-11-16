@@ -21,7 +21,7 @@
   "modules": [
     "title",
     { "type": "separator", "string": "─" },
-    { "type": "os", "key": "Système", "format": "NOOS (basé sur Fedora Linux {version-id}) {arch}" },
+    { "type": "os", "key": "Système", "format": "NOOS (basé sur Debian sid) {arch}" },
     { "type": "host", "key": "Machine" },
     { "type": "kernel", "key": "Noyau" },
     { "type": "uptime", "key": "Allumé depuis" },

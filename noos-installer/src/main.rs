@@ -1,4 +1,4 @@
-//! noos-installer : installateur de NOOS (Fedora 45, installation réseau), plein écran.
+//! noos-installer : installateur de NOOS (Debian sid, installation réseau), plein écran.
 //!
 //! Lancé par l'ISO live via `noos-comp --drm --kiosk noos-installer` (root). Étapes :
 //! bienvenue (langue, réseau) → fuseau horaire (carte) → clavier → compte → disque (Btrfs
@@ -152,11 +152,11 @@ impl Installer {
         let spacer = gtk::Box::new(gtk::Orientation::Vertical, 0);
         spacer.set_vexpand(true);
         side.append(&spacer);
-        let fedora = gtk::Label::new(Some("Basé sur Fedora 45 · installation réseau"));
-        fedora.add_css_class("dim-label");
-        fedora.add_css_class("caption");
-        fedora.set_margin_bottom(18);
-        side.append(&fedora);
+        let base_label = gtk::Label::new(Some("Basé sur Debian sid · installation réseau"));
+        base_label.add_css_class("dim-label");
+        base_label.add_css_class("caption");
+        base_label.set_margin_bottom(18);
+        side.append(&base_label);
 
         // Contenu.
         let main = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -345,7 +345,7 @@ impl Installer {
         h.set_xalign(0.0);
         t.append(&h);
         let s = gtk::Label::new(Some(
-            "Un bureau moderne, rapide et pensé pour le jeu, construit sur Fedora. Quelques questions, puis NOOS s'installe depuis Internet avec les paquets les plus récents.",
+            "Un bureau moderne, rapide et pensé pour le jeu, construit sur Debian sid. Quelques questions, puis NOOS s'installe depuis Internet avec les paquets les plus récents.",
         ));
         s.set_wrap(true);
         s.set_xalign(0.0);
@@ -378,7 +378,7 @@ impl Installer {
         // Réseau (obligatoire : installation réseau).
         let g = adap::PreferencesGroup::new();
         g.set_title("Connexion à Internet");
-        g.set_description(Some("NOOS télécharge Fedora 45 depuis les miroirs officiels pendant l'installation."));
+        g.set_description(Some("NOOS télécharge Debian sid depuis les miroirs officiels pendant l'installation."));
         let status = adap::ActionRow::new();
         status.set_title("Vérification…");
         let icon = gtk::Image::from_icon_name("network-wired-symbolic");
@@ -644,7 +644,7 @@ impl Installer {
         let v = page_box();
         let g = adap::PreferencesGroup::new();
         g.set_title("Votre compte");
-        g.set_description(Some("Ce compte administre l'ordinateur (groupe wheel)."));
+        g.set_description(Some("Ce compte administre l'ordinateur (groupe sudo)."));
         let full = adap::EntryRow::new();
         full.set_title("Nom complet");
         let user = adap::EntryRow::new();
@@ -1050,16 +1050,16 @@ impl Installer {
         let g2 = adap::PreferencesGroup::new();
         g2.set_title("Logiciels");
         let fusion = adap::SwitchRow::new();
-        fusion.set_title("Pilotes et codecs propriétaires (RPM Fusion)");
-        fusion.set_subtitle("Pilote NVIDIA, codecs H.264/H.265, AAC, MP3, DVD, décodage vidéo matériel, Steam…");
+        fusion.set_title("Pilotes et firmwares non libres (contrib, non-free)");
+        fusion.set_subtitle("Pilote NVIDIA, firmwares Wi-Fi, son et cartes graphiques, décodage vidéo Intel complet, Steam…");
         fusion.set_active(true);
         g2.add(&fusion);
         let base = adap::ActionRow::new();
-        base.set_title("Fedora 45 (installation réseau) + bureau NOOS");
+        base.set_title("Debian sid (installation réseau) + bureau NOOS");
         base.set_subtitle("Plymouth NOOS, écran de connexion noos-login, GRUB");
         g2.add(&base);
         v.append(&g2);
-        // Matériel détecté : ce qui sera installé pour lui (mis à jour avec RPM Fusion).
+        // Matériel détecté : ce qui sera installé pour lui (mis à jour avec contrib / non-free).
         let hw = Rc::new(hardware::detect());
         let g3 = adap::PreferencesGroup::new();
         g3.set_title("Matériel détecté");
@@ -1070,11 +1070,11 @@ impl Installer {
         v.append(&g3);
         let fill_hw = {
             let (hw, hw_list) = (hw.clone(), hw_list.clone());
-            move |rpmfusion: bool| {
+            move |nonfree: bool| {
                 while let Some(c) = hw_list.first_child() {
                     hw_list.remove(&c);
                 }
-                for line in hardware::plan(&hw, rpmfusion).summary {
+                for line in hardware::plan(&hw, nonfree).summary {
                     let (title, sub) = line.split_once(" : ").map(|(a, b)| (a.to_string(), b.to_string())).unwrap_or((line.clone(), String::new()));
                     let r = adap::ActionRow::new();
                     r.set_use_markup(false);
@@ -1103,7 +1103,7 @@ impl Installer {
             let c = self.choices.clone();
             let fill_hw = fill_hw.clone();
             fusion.connect_active_notify(move |s| {
-                c.borrow_mut().rpmfusion = s.is_active();
+                c.borrow_mut().nonfree = s.is_active();
                 fill_hw(s.is_active());
             });
         }
@@ -1153,7 +1153,7 @@ impl Installer {
             }
         }
         self.title.set_label("Installation de NOOS");
-        self.subtitle.set_label("Téléchargement de Fedora 45 et configuration de votre système. Comptez de 10 à 30 minutes selon votre connexion.");
+        self.subtitle.set_label("Téléchargement de Debian sid et configuration de votre système. Comptez de 10 à 30 minutes selon votre connexion.");
 
         let v = page_box();
         let overall = gtk::ProgressBar::new();
@@ -1359,7 +1359,7 @@ fn connectivity() -> Net {
     }
     // Sans NetworkManager (aperçu) : test direct.
     let ok = std::process::Command::new("curl")
-        .args(["-sSfI", "--max-time", "6", "-o", "/dev/null", "https://mirrors.fedoraproject.org/"])
+        .args(["-sSfI", "--max-time", "6", "-o", "/dev/null", "https://deb.debian.org/debian/"])
         .status()
         .is_ok_and(|s| s.success());
     if ok { Net::Online } else { Net::Offline }
@@ -1535,7 +1535,7 @@ fn explain(error: &str) -> String {
         "Le disque est plein : choisissez un disque plus grand ou réduisez le swap."
     } else if lower.contains("device or resource busy") || lower.contains("target is busy") {
         "Le disque est utilisé (partition montée ?). Redémarrez le support d'installation puis réessayez."
-    } else if lower.contains("dnf") || lower.contains("mirror") || lower.contains("curl error") {
+    } else if lower.contains("apt") || lower.contains("debootstrap") || lower.contains("mirror") || lower.contains("curl error") {
         "Le téléchargement des paquets a échoué (miroir indisponible ?). Réessayez dans quelques instants."
     } else if lower.contains("efibootmgr") {
         "Impossible d'ajouter l'entrée de démarrage UEFI : vérifiez que le PC a démarré en mode UEFI."

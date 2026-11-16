@@ -1,5 +1,5 @@
 #!/bin/sh
-# Écran de connexion NOOS, lancé par greetd (utilisateur « greeter ») :
+# Écran de connexion NOOS, lancé par greetd (utilisateur « _greetd » sur Debian) :
 # compositeur NOOS en mode kiosque + noos-login. Voir /etc/greetd/config.toml.
 PREFIX=/opt/noos
 export PATH="$PREFIX/bin:$PATH"
@@ -14,8 +14,12 @@ if ! ls /dev/dri/renderD* >/dev/null 2>&1; then
 fi
 export RUST_LOG="${RUST_LOG:-warn}"
 # Langue du système (dates, messages PAM).
-if [ -f /etc/locale.conf ]; then
-    . /etc/locale.conf
-    export LANG
-fi
+# Debian : /etc/default/locale (update-locale) ; /etc/locale.conf en repli.
+for f in /etc/default/locale /etc/locale.conf; do
+    if [ -f "$f" ]; then
+        . "$f"
+        export LANG
+        break
+    fi
+done
 exec dbus-run-session -- noos-comp --drm --kiosk noos-login

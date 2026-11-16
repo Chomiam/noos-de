@@ -1,0 +1,7 @@
+# Dépôt APT de NOOS (GitHub Pages) : bureau NOOS et ses applications.
+# Installé par le paquet noos ; désactivable dans Logiciels › Sources.
+Types: deb
+URIs: https://chomiam.github.io/noos-de
+Suites: sid
+Components: main
+Signed-By: /usr/share/keyrings/noos-archive-keyring.asc

@@ -1,5 +1,6 @@
-//! Moteur d'installation : partitionnement Btrfs, installation réseau (dnf --installroot
-//! sur les dépôts Fedora 45 + RPM Fusion), copie de NOOS, configuration et GRUB.
+//! Moteur d'installation : partitionnement Btrfs, installation réseau de Debian sid
+//! (debootstrap puis apt dans le système cible, contrib / non-free au choix), paquet NOOS
+//! depuis le dépôt APT de NOOS (GitHub Pages), configuration et GRUB (shim signé en UEFI).
 //!
 //! Tourne dans un fil séparé ; chaque commande est journalisée ligne à ligne (stdout et
 //! stderr) dans l'interface et dans `/tmp/noos-install.log` (copié ensuite dans
@@ -25,7 +26,9 @@ use crate::{
 pub const TARGET: &str = "/mnt/noos-target";
 const BTRFS_TOP: &str = "/mnt/noos-btrfs";
 pub const LOG_FILE: &str = "/tmp/noos-install.log";
-const RELEASE: &str = "45";
+/// Suite Debian installée.
+const SUITE: &str = "sid";
+const MIRROR: &str = "http://deb.debian.org/debian";
 /// Fichiers de NOOS dans le système live (copiés tels quels dans le système installé).
 const NOOS_PREFIX: &str = "/opt/noos";
 
@@ -34,7 +37,7 @@ pub const STEPS: &[&str] = &[
     "Partitionnement du disque",
     "Formatage",
     "Sous-volumes Btrfs",
-    "Téléchargement et installation de Fedora",
+    "Téléchargement et installation de Debian",
     "Pilotes graphiques et codecs",
     "Installation de NOOS",
     "Configuration du système",
@@ -89,6 +92,9 @@ impl Ctx {
         let mut child = Command::new(program)
             .args(args)
             .env("LC_ALL", "C.UTF-8")
+            // apt / dpkg dans le système cible : aucune question, configuration par défaut.
+            .env("DEBIAN_FRONTEND", "noninteractive")
+            .env("DEBCONF_NONINTERACTIVE_SEEN", "true")
             .stdin(if stdin.is_some() { Stdio::piped() } else { Stdio::null() })
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -116,7 +122,7 @@ impl Ctx {
             }
         });
         for line in BufReader::new(child.stdout.take().unwrap()).lines().map_while(Result::ok) {
-            // dnf réécrit ses barres de progression avec \r : on garde la dernière.
+            // apt et debootstrap réécrivent leurs barres de progression avec \r : on garde la dernière.
             let line = line.rsplit('\r').next().unwrap_or(&line).to_string();
             on_line(&line);
             {
@@ -214,8 +220,8 @@ fn uuid(ctx: &Ctx, dev: &str) -> anyhow::Result<String> {
     Ok(u)
 }
 
-/// Paquets du système : liste fournie par l'ISO + paquets selon le matériel et la langue.
-fn packages(c: &Choices, uefi: bool) -> Vec<String> {
+/// Paquets du système : liste fournie par l'ISO + paquets selon le démarrage (UEFI / BIOS).
+fn packages(uefi: bool) -> Vec<String> {
     let listed = std::fs::read_to_string(format!("{NOOS_PREFIX}/share/noos/install/packages.txt")).unwrap_or_default();
     let mut p: Vec<String> = listed
         .lines()
@@ -226,20 +232,18 @@ fn packages(c: &Choices, uefi: bool) -> Vec<String> {
     if p.is_empty() {
         // Liste de secours (ISO incomplète) : de quoi démarrer NOOS.
         for x in [
-            "@core", "kernel", "linux-firmware", "btrfs-progs", "NetworkManager-wifi", "plymouth", "plymouth-plugin-script",
-            "plymouth-plugin-label", "adw-gtk3-theme",
-            "greetd", "gtk4", "vte291-gtk4", "libseat", "gtk4-layer-shell", "pipewire", "wireplumber", "xdg-desktop-portal",
-            "xdg-desktop-portal-gtk", "polkit", "papirus-icon-theme", "google-noto-sans-fonts", "mesa-dri-drivers",
+            "linux-image-amd64", "systemd-sysv", "dbus-user-session", "locales", "console-setup", "sudo", "btrfs-progs",
+            "network-manager", "plymouth", "plymouth-label", "greetd", "libgtk-4-1", "libvte-2.91-gtk4-0", "libseat1",
+            "libgtk4-layer-shell0", "pipewire", "wireplumber", "xdg-desktop-portal", "xdg-desktop-portal-gtk", "polkitd",
+            "pkexec", "papirus-icon-theme", "fonts-noto-core", "mesa-utils", "libgl1-mesa-dri",
         ] {
             p.push(x.into());
         }
     }
-    p.push(model::langpack(&c.locale));
-    p.extend(["grub2-tools", "grub2-common", "efibootmgr"].map(String::from));
     if uefi {
-        p.extend(["grub2-efi-x64", "shim-x64", "dosfstools"].map(String::from));
+        p.extend(["grub-efi-amd64", "grub-efi-amd64-signed", "shim-signed", "efibootmgr", "dosfstools"].map(String::from));
     } else {
-        p.push("grub2-pc".into());
+        p.push("grub-pc".into());
     }
     p.sort();
     p.dedup();
@@ -261,6 +265,79 @@ fn console_keymap(layout: &str, variant: &str) -> String {
     }
 }
 
+/// Composants Debian du système installé.
+fn components(c: &Choices) -> &'static str {
+    if c.nonfree { "main contrib non-free non-free-firmware" } else { "main" }
+}
+
+/// apt-get dans le système cible, avancement lu sur `APT::Status-Fd` (« pmstatus:…:42.5:… »).
+fn apt_install(ctx: &Ctx, packages: &[String], from: f64, span: f64) -> anyhow::Result<()> {
+    let mut a: Vec<String> = [
+        TARGET, "apt-get", "install", "-y", "--no-install-recommends", "-o", "APT::Status-Fd=1",
+        "-o", "Dpkg::Options::=--force-confdef", "-o", "Dpkg::Options::=--force-confold",
+    ]
+    .map(String::from)
+    .to_vec();
+    a.extend(packages.iter().cloned());
+    let refs: Vec<&str> = a.iter().map(String::as_str).collect();
+    let tx = ctx.tx.clone();
+    ctx.run_with("chroot", &refs, None, &move |line: &str| {
+        if let Some(p) = apt_progress(line) {
+            let _ = tx.send_blocking(Event::Progress(from + span * p));
+        }
+    })
+}
+
+/// Paquets connus des dépôts du système cible (`apt-cache policy` : candidat ≠ « (none) »).
+fn available(ctx: &Ctx, packages: &[String]) -> (Vec<String>, Vec<String>) {
+    if ctx.dry || packages.is_empty() {
+        return (packages.to_vec(), vec![]);
+    }
+    let out = Command::new("chroot")
+        .arg(TARGET)
+        .args(["apt-cache", "policy"])
+        .args(packages)
+        .env("LC_ALL", "C.UTF-8")
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_default();
+    let mut ok = Vec::new();
+    let mut current: Option<String> = None;
+    for line in out.lines() {
+        if !line.starts_with(' ') && line.ends_with(':') {
+            current = Some(line.trim_end_matches(':').to_string());
+        } else if let (Some(name), Some(c)) = (&current, line.trim().strip_prefix("Candidate:")) {
+            if c.trim() != "(none)" {
+                ok.push(name.clone());
+            }
+        }
+    }
+    let (found, missing): (Vec<String>, Vec<String>) = packages.iter().cloned().partition(|p| ok.contains(p));
+    (found, missing)
+}
+
+/// Comme `apt_install`, sans les paquets absents des miroirs, puis paquet par paquet si
+/// l'ensemble échoue encore : renvoie les paquets non installés.
+fn apt_install_lenient(ctx: &Ctx, packages: &[String], from: f64, span: f64) -> Vec<String> {
+    let (packages, mut absent) = available(ctx, packages);
+    if !absent.is_empty() {
+        ctx.line(format!("(attention) absents des dépôts : {}", absent.join(" ")));
+    }
+    if packages.is_empty() || apt_install(ctx, &packages, from, span).is_ok() {
+        return absent;
+    }
+    ctx.line("(attention) installation groupée impossible : paquet par paquet…");
+    let mut missing = Vec::new();
+    for (i, p) in packages.iter().enumerate() {
+        let f = from + span * i as f64 / packages.len() as f64;
+        if apt_install(ctx, std::slice::from_ref(p), f, 0.0).is_err() {
+            missing.push(p.clone());
+        }
+    }
+    absent.extend(missing);
+    absent
+}
+
 fn install(ctx: &Ctx, c: &Choices) -> anyhow::Result<()> {
     let Some(target_disk) = c.disk.clone() else { bail!("aucun disque choisi") };
     let dev = target_disk.path.as_str();
@@ -274,11 +351,11 @@ fn install(ctx: &Ctx, c: &Choices) -> anyhow::Result<()> {
         bail!("l'installateur doit tourner en root");
     }
     ctx.line(format!("Démarrage {} · disque {} ({})", if uefi { "UEFI" } else { "BIOS" }, dev, disk::human(target_disk.size)));
-    ctx.run("curl", &["-sSfI", "--max-time", "20", "-o", "/dev/null", "https://mirrors.fedoraproject.org/"])
-        .context("pas d'accès à Internet : l'installation réseau télécharge Fedora depuis les miroirs officiels")?;
+    ctx.run("curl", &["-sSfI", "--max-time", "20", "-o", "/dev/null", "https://deb.debian.org/debian/"])
+        .context("pas d'accès à Internet : l'installation réseau télécharge Debian depuis les miroirs officiels")?;
     // Matériel graphique : pilotes et codecs installés à l'étape 5, arguments du noyau ci-dessous.
     let hw = hardware::detect();
-    let hw_plan = hardware::plan(&hw, c.rpmfusion);
+    let hw_plan = hardware::plan(&hw, c.nonfree);
     for line in &hw_plan.summary {
         ctx.line(format!("Matériel : {line}"));
     }
@@ -342,17 +419,6 @@ fn install(ctx: &Ctx, c: &Choices) -> anyhow::Result<()> {
         ctx.run("mkdir", &["-p", &format!("{TARGET}/boot/efi")])?;
         ctx.run("mount", &["-o", "umask=0077", &efi, &format!("{TARGET}/boot/efi")])?;
     }
-    for d in ["proc", "sys", "dev", "run", "etc/kernel", "etc/default", "var/log"] {
-        ctx.run("mkdir", &["-p", &format!("{TARGET}/{d}")])?;
-    }
-    ctx.run("mount", &["-t", "proc", "proc", &format!("{TARGET}/proc")])?;
-    ctx.run("mount", &["--rbind", "/sys", &format!("{TARGET}/sys")])?;
-    ctx.run("mount", &["--make-rslave", &format!("{TARGET}/sys")])?;
-    ctx.run("mount", &["--rbind", "/dev", &format!("{TARGET}/dev")])?;
-    ctx.run("mount", &["--make-rslave", &format!("{TARGET}/dev")])?;
-    ctx.run("mount", &["-t", "tmpfs", "tmpfs", &format!("{TARGET}/run")])?;
-
-    // Avant les paquets : fstab, cmdline du noyau (entrées BLS) et GRUB.
     let (root_uuid, boot_uuid) = (uuid(ctx, &root)?, uuid(ctx, &boot)?);
     let mut fstab = format!(
         "# /etc/fstab — créé par l'installateur NOOS\nUUID={root_uuid} /      btrfs subvol=@,{OPTS} 0 0\nUUID={root_uuid} /home  btrfs subvol=@home,{OPTS} 0 0\nUUID={boot_uuid} /boot  ext4  defaults 1 2\n"
@@ -363,156 +429,116 @@ fn install(ctx: &Ctx, c: &Choices) -> anyhow::Result<()> {
     if let Some(swap) = part(Role::Swap) {
         fstab.push_str(&format!("UUID={} none   swap  defaults 0 0\n", uuid(ctx, &swap)?));
     }
+
+    // ── 4. Debian (installation réseau) ──
+    // debootstrap : système de base minimal ; le reste avec apt dans le système cible. Les
+    // paquets sont téléchargés sur le disque cible (/var/cache/apt), pas dans la RAM du live.
+    ctx.step(4);
+    let comps = components(c).replace(' ', ",");
+    {
+        let tx = ctx.tx.clone();
+        ctx.run_with(
+            "debootstrap",
+            &[
+                "--arch=amd64",
+                &format!("--components={comps}"),
+                "--include=ca-certificates,locales,apt-utils,curl,gnupg",
+                "--keyring=/usr/share/keyrings/debian-archive-keyring.gpg",
+                SUITE,
+                TARGET,
+                MIRROR,
+            ],
+            None,
+            &move |line: &str| {
+                let p = if line.starts_with("I: Retrieving") || line.starts_with("I: Validating") {
+                    0.05
+                } else if line.starts_with("I: Extracting") {
+                    0.12
+                } else if line.starts_with("I: Unpacking") {
+                    0.18
+                } else if line.starts_with("I: Configuring") {
+                    0.24
+                } else {
+                    return;
+                };
+                let _ = tx.send_blocking(Event::Progress(p));
+            },
+        )?;
+    }
+    for d in ["proc", "sys", "dev", "run"] {
+        ctx.run("mkdir", &["-p", &format!("{TARGET}/{d}")])?;
+    }
+    ctx.run("mount", &["-t", "proc", "proc", &format!("{TARGET}/proc")])?;
+    ctx.run("mount", &["--rbind", "/sys", &format!("{TARGET}/sys")])?;
+    ctx.run("mount", &["--make-rslave", &format!("{TARGET}/sys")])?;
+    ctx.run("mount", &["--rbind", "/dev", &format!("{TARGET}/dev")])?;
+    ctx.run("mount", &["--make-rslave", &format!("{TARGET}/dev")])?;
+    ctx.run("mount", &["-t", "tmpfs", "tmpfs", &format!("{TARGET}/run")])?;
     ctx.write("/etc/fstab", &fstab)?;
-    // Arguments propres au matériel (pilote NVIDIA : KMS, nouveau écarté).
-    let extra = hw_plan.kernel_args.iter().map(|a| format!(" {a}")).collect::<String>();
-    let cmdline = format!("root=UUID={root_uuid} rootflags=subvol=@ ro rhgb quiet{extra}");
-    ctx.write("/etc/kernel/cmdline", &format!("{cmdline}\n"))?;
+    // Sources APT au format deb822 (comme le fera Logiciels), sources.list de debootstrap retiré.
     ctx.write(
-        "/etc/default/grub",
+        "/etc/apt/sources.list.d/debian.sources",
         &format!(
-            "GRUB_TIMEOUT=3\nGRUB_DISTRIBUTOR=\"NOOS\"\nGRUB_DEFAULT=saved\nGRUB_DISABLE_SUBMENU=true\nGRUB_TERMINAL_OUTPUT=\"gfxterm\"\nGRUB_CMDLINE_LINUX=\"rootflags=subvol=@ rhgb quiet{extra}\"\nGRUB_DISABLE_RECOVERY=\"true\"\nGRUB_ENABLE_BLSCFG=true\n"
+            "# Dépôts de Debian sid — installateur NOOS\nTypes: deb\nURIs: {MIRROR}\nSuites: {SUITE}\nComponents: {}\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\n",
+            components(c)
         ),
     )?;
-    ctx.run("systemd-machine-id-setup", &["--root", TARGET])?;
-
-    // ── 4. Paquets (installation réseau) ──
-    ctx.step(4);
-    let pkgs = packages(c, uefi);
+    ctx.try_run("rm", &["-f", &format!("{TARGET}/etc/apt/sources.list")]);
+    // Pas de services démarrés dans le chroot pendant l'installation.
+    ctx.write("/usr/sbin/policy-rc.d", "#!/bin/sh\n# Installateur NOOS : aucun service démarré dans le chroot.\nexit 101\n")?;
+    ctx.try_run("chmod", &["755", &format!("{TARGET}/usr/sbin/policy-rc.d")]);
+    // Recommandations désactivées pendant l'installation (liste NOOS complète et maîtrisée).
+    ctx.write("/etc/apt/apt.conf.d/90noos-install", "APT::Install-Recommends \"false\";\n")?;
+    // Architecture 32 bits (i386) active d'emblée : Steam, Wine et beaucoup de jeux en ont
+    // besoin, et Debian ne l'active pas par défaut.
+    ctx.chroot(&["dpkg", "--add-architecture", "i386"])?;
+    ctx.chroot(&["apt-get", "update"])?;
+    ctx.progress(0.3);
+    let pkgs = packages(uefi);
     ctx.line(format!("{} paquets demandés (et leurs dépendances)", pkgs.len()));
-    let mut args: Vec<String> = vec![
-        "install".into(),
-        "-y".into(),
-        format!("--installroot={TARGET}"),
-        format!("--releasever={RELEASE}"),
-        "--use-host-config".into(),
-        "--setopt=keepcache=False".into(),
-        // Un paquet absent d'un miroir ne doit pas bloquer toute l'installation.
-        "--skip-unavailable".into(),
-        // kmscon (console de Fedora 45) garderait l'écran de tty1 : greetd l'utilise.
-        "--exclude=kmscon".into(),
-        // Paquets téléchargés sur le disque cible, pas dans la RAM du système live.
-        format!("--setopt=cachedir={TARGET}/var/cache/noos-install"),
-    ];
-    args.extend(pkgs);
-    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    // « [ 12/345] Installing … » : avancement.
-    let tx = ctx.tx.clone();
-    ctx.run_with("dnf", &refs, None, &move |line: &str| {
-        if let Some((n, m)) = dnf_counter(line) {
-            let _ = tx.send_blocking(Event::Progress(n as f64 / m.max(1) as f64));
+    let missing = apt_install_lenient(ctx, &pkgs, 0.3, 0.7);
+    if !missing.is_empty() {
+        ctx.line(format!("(attention) paquets indisponibles : {}", missing.join(" ")));
+        if missing.iter().any(|m| m.starts_with("linux-image") || m.starts_with("grub") || m == "systemd-sysv") {
+            bail!("paquets indispensables indisponibles : {}", missing.join(" "));
         }
-    })?;
+    }
+    ctx.try_run("systemd-machine-id-setup", &["--root", TARGET]);
 
-    // ── 5. RPM Fusion ──
+    // ── 5. Pilotes et codecs ──
     ctx.step(5);
-    if c.rpmfusion {
-        let free = format!("https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-{RELEASE}.noarch.rpm");
-        let nonfree = format!("https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-{RELEASE}.noarch.rpm");
-        // Paquets de dépôt téléchargés en HTTPS depuis le miroir officiel ; leurs clés GPG
-        // ne sont pas encore connues du système cible.
-        ctx.run(
-            "dnf",
-            &["install", "-y", &format!("--installroot={TARGET}"), &format!("--releasever={RELEASE}"), "--use-host-config", "--nogpgcheck", &free, &nonfree],
-        )?;
-    } else {
-        ctx.line("RPM Fusion non demandé : pilotes et codecs libres seulement.");
-    }
-    ctx.progress(0.2);
-    // Clés de RPM Fusion importées dans la base RPM du système cible : avec --installroot, dnf
-    // cherche sinon les fichiers de clés sur le système live, où ils n'existent pas.
-    if c.rpmfusion {
-        let dir = format!("{TARGET}/usr/share/pki/rpm-gpg");
-        let keys: Vec<String> = std::fs::read_dir(&dir)
-            .map(|rd| {
-                rd.flatten()
-                    .map(|e| e.path())
-                    .filter(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("RPM-GPG-KEY-rpmfusion-")))
-                    .map(|p| p.to_string_lossy().to_string())
-                    .collect()
-            })
-            .unwrap_or_default();
-        if !keys.is_empty() {
-            let mut a: Vec<&str> = vec!["--root", TARGET, "--import"];
-            a.extend(keys.iter().map(String::as_str));
-            ctx.try_run("rpm", &a);
-        }
-    }
-    // Dépôts du système cible (RPM Fusion compris) : pas --use-host-config.
-    let root_args = [
-        "-y".to_string(),
-        format!("--installroot={TARGET}"),
-        format!("--releasever={RELEASE}"),
-        format!("--setopt=cachedir={TARGET}/var/cache/noos-install"),
-    ];
-    if hw_plan.tainted {
-        let mut a: Vec<String> = vec!["install".into()];
-        a.extend(root_args.iter().cloned());
-        a.extend(["rpmfusion-free-release-tainted".into(), "rpmfusion-nonfree-release-tainted".into()]);
-        let refs: Vec<&str> = a.iter().map(String::as_str).collect();
-        ctx.try_run("dnf", &refs);
-    }
     ctx.line(format!("Pilotes et codecs : {}", hw_plan.packages.join(" ")));
-    {
-        // --allowerasing : ffmpeg remplace ffmpeg-free, mesa-va-drivers-freeworld remplace
-        // mesa-va-drivers ; --skip-unavailable : un paquet absent ne bloque pas le reste.
-        let mut a: Vec<String> = vec!["install".into()];
-        a.extend(root_args.iter().cloned());
-        a.extend(["--allowerasing".into(), "--skip-unavailable".into()]);
-        a.extend(hw_plan.packages.iter().cloned());
-        let refs: Vec<&str> = a.iter().map(String::as_str).collect();
-        let tx = ctx.tx.clone();
-        if let Err(e) = ctx.run_with("dnf", &refs, None, &move |line: &str| {
-            if let Some((n, m)) = dnf_counter(line) {
-                let _ = tx.send_blocking(Event::Progress(0.2 + 0.6 * n as f64 / m.max(1) as f64));
-            }
-        }) {
-            ctx.line(format!("(attention) pilotes et codecs incomplets : {e:#}"));
-        }
+    if hw_plan.dkms {
+        ctx.line("Pilote NVIDIA : le module est compilé par DKMS pendant son installation (quelques minutes).");
     }
-    if hw_plan.akmods {
-        // Module NVIDIA compilé maintenant, pour chaque noyau installé : sinon le premier
-        // démarrage attendrait la compilation (écran noir plusieurs minutes).
-        ctx.line("Compilation du module NVIDIA (akmods)… quelques minutes.");
-        let kernels: Vec<String> = std::fs::read_dir(format!("{TARGET}/lib/modules"))
-            .map(|rd| rd.flatten().map(|e| e.file_name().to_string_lossy().to_string()).collect())
-            .unwrap_or_default();
-        for k in kernels {
-            ctx.try_run("chroot", &[TARGET, "akmods", "--force", "--kernels", &k]);
-        }
+    let missing = apt_install_lenient(ctx, &hw_plan.packages, 0.0, 1.0);
+    if !missing.is_empty() {
+        ctx.line(format!("(attention) pilotes et codecs non installés : {}", missing.join(" ")));
     }
     ctx.progress(1.0);
 
     // ── 6. NOOS ──
-    // Paquet « noos » du dépôt COPR : dernière version, et mises à jour avec dnf ensuite.
-    // Sans accès au dépôt, copie de la version fournie avec l'ISO.
+    // Paquet « noos » du dépôt APT de NOOS (GitHub Pages) : dernière version, puis mises à jour
+    // avec apt. Sans accès au dépôt, copie de la version fournie avec l'ISO.
     ctx.step(6);
-    let from_copr = match copr_project() {
-        Some((owner, project)) => {
-            ctx.write(&format!("/etc/yum.repos.d/_copr:copr.fedorainfracloud.org:{owner}:{project}.repo"), &copr_repo(&owner, &project))?;
-            ctx.progress(0.2);
-            let res = ctx.run(
-                "dnf",
-                &[
-                    "install",
-                    "-y",
-                    &format!("--installroot={TARGET}"),
-                    &format!("--releasever={RELEASE}"),
-                    &format!("--setopt=cachedir={TARGET}/var/cache/noos-install"),
-                    "noos",
-                ],
-            );
-            match res {
-                Ok(()) => true,
-                Err(e) => {
-                    ctx.line(format!("(attention) paquet NOOS indisponible sur COPR ({e:#}) : version de l'ISO"));
-                    false
-                }
+    let keyring = "/usr/share/keyrings/noos-archive-keyring.asc";
+    let from_repo = if Path::new(keyring).exists() || ctx.dry {
+        ctx.run("install", &["-Dm644", keyring, &format!("{TARGET}{keyring}")])?;
+        ctx.write("/etc/apt/sources.list.d/noos.sources", &noos_sources(keyring))?;
+        ctx.progress(0.2);
+        let res = ctx.chroot(&["apt-get", "update"]).and_then(|_| apt_install(ctx, &["noos".to_string()], 0.2, 0.8));
+        match res {
+            Ok(()) => true,
+            Err(e) => {
+                ctx.line(format!("(attention) paquet NOOS indisponible sur le dépôt APT ({e:#}) : version de l'ISO"));
+                false
             }
         }
-        None => false,
+    } else {
+        ctx.line("(attention) clé du dépôt NOOS absente de l'ISO : version de l'ISO");
+        false
     };
-    if !from_copr {
+    if !from_repo {
         ctx.run("cp", &["-a", NOOS_PREFIX, &format!("{TARGET}/opt/")])?;
         ctx.progress(0.6);
         // Fichiers système préparés par la construction de l'ISO (session, greeter, plymouth…).
@@ -529,15 +555,26 @@ fn install(ctx: &Ctx, c: &Choices) -> anyhow::Result<()> {
 
     // ── 7. Configuration ──
     ctx.step(7);
+    // Langue : locale générée (+ anglais américain, utilisé par certains outils).
+    let mut gen = format!("{}\n", model::locale_gen_line(&c.locale));
+    if c.locale != "en_US.UTF-8" {
+        gen.push_str("en_US.UTF-8 UTF-8\n");
+    }
+    ctx.write("/etc/locale.gen", &gen)?;
+    ctx.try_run("chroot", &[TARGET, "locale-gen"]);
+    ctx.write("/etc/default/locale", &format!("LANG={}\n", c.locale))?;
     ctx.write("/etc/locale.conf", &format!("LANG={}\n", c.locale))?;
+    // Clavier : console-setup (/etc/default/keyboard), lu aussi par NOOS et noos-login.
+    ctx.write(
+        "/etc/default/keyboard",
+        &format!(
+            "# Créé par l'installateur NOOS (voir keyboard(5))\nXKBMODEL=\"pc105\"\nXKBLAYOUT=\"{}\"\nXKBVARIANT=\"{}\"\nXKBOPTIONS=\"\"\nBACKSPACE=\"guess\"\n",
+            c.kb_layout, c.kb_variant
+        ),
+    )?;
     ctx.write(
         "/etc/vconsole.conf",
-        &format!(
-            "KEYMAP={}\nXKBLAYOUT={}\nXKBVARIANT={}\nFONT=eurlatgr\n",
-            console_keymap(&c.kb_layout, &c.kb_variant),
-            c.kb_layout,
-            c.kb_variant
-        ),
+        &format!("KEYMAP={}\nXKBLAYOUT={}\nXKBVARIANT={}\n", console_keymap(&c.kb_layout, &c.kb_variant), c.kb_layout, c.kb_variant),
     )?;
     ctx.write(
         "/etc/X11/xorg.conf.d/00-keyboard.conf",
@@ -546,17 +583,23 @@ fn install(ctx: &Ctx, c: &Choices) -> anyhow::Result<()> {
             c.kb_layout, c.kb_variant
         ),
     )?;
-    ctx.run("ln", &["-sf", &format!("../usr/share/zoneinfo/{}", c.timezone), &format!("{TARGET}/etc/localtime")])?;
+    ctx.run("ln", &["-sf", &format!("/usr/share/zoneinfo/{}", c.timezone), &format!("{TARGET}/etc/localtime")])?;
+    ctx.write("/etc/timezone", &format!("{}\n", c.timezone))?;
     ctx.write("/etc/hostname", &format!("{}\n", c.hostname))?;
+    ctx.write("/etc/hosts", &format!("127.0.0.1\tlocalhost\n127.0.1.1\t{0}\n\n::1\tlocalhost ip6-localhost ip6-loopback\nff02::1\tip6-allnodes\nff02::2\tip6-allrouters\n", c.hostname))?;
     ctx.progress(0.2);
-    // Compte administrateur (groupe wheel) ; root verrouillé.
+    // Compte administrateur (groupe sudo) ; root verrouillé.
     // fish (fastfetch à l'ouverture d'un terminal) s'il est installé, sinon bash ; il devient
     // aussi le shell des comptes créés plus tard.
     let shell = if ctx.dry || Path::new(&format!("{TARGET}/usr/bin/fish")).exists() { "/usr/bin/fish" } else { "/bin/bash" };
     if shell == "/usr/bin/fish" {
         ctx.try_run("chroot", &[TARGET, "useradd", "-D", "-s", "/usr/bin/fish"]);
     }
-    ctx.chroot(&["useradd", "-m", "-G", "wheel", "-c", &c.full_name, "-s", shell, &c.username])?;
+    ctx.chroot(&["useradd", "-m", "-G", "sudo", "-c", &c.full_name, "-s", shell, &c.username])?;
+    // Groupes facultatifs (présents selon les paquets installés).
+    for group in ["audio", "video", "render", "input", "netdev", "plugdev", "bluetooth", "lpadmin"] {
+        ctx.try_run("chroot", &[TARGET, "usermod", "-aG", group, &c.username]);
+    }
     ctx.line(format!("$ chroot {TARGET} chpasswd   (mot de passe masqué)"));
     if !ctx.dry {
         let mut child = Command::new("chroot").args([TARGET, "chpasswd"]).stdin(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
@@ -568,13 +611,12 @@ fn install(ctx: &Ctx, c: &Choices) -> anyhow::Result<()> {
     }
     ctx.try_run("chroot", &[TARGET, "passwd", "-l", "root"]);
     ctx.progress(0.4);
-    // Écran de connexion noos-login (greetd). Le paquet Fedora crée le compte « greetd »
-    // (« greeter » ailleurs) : on prend celui qui existe.
+    // Écran de connexion noos-login (greetd). Le paquet Debian crée le compte « _greetd ».
     let greeter = greeter_user();
     ctx.line(format!("compte de l'écran de connexion : {greeter}"));
     ctx.write(
         "/etc/greetd/config.toml",
-        &format!("[terminal]\nvt = 1\n\n[default_session]\ncommand = \"{}\"\nuser = \"{greeter}\"\n", greeter_command()),
+        &format!("[terminal]\nvt = 7\n\n[default_session]\ncommand = \"{}\"\nuser = \"{greeter}\"\n", greeter_command()),
     )?;
     ctx.run("mkdir", &["-p", &format!("{TARGET}/var/lib/noos-login")])?;
     ctx.chroot(&["chown", &format!("{greeter}:{greeter}"), "/var/lib/noos-login"])?;
@@ -583,22 +625,19 @@ fn install(ctx: &Ctx, c: &Choices) -> anyhow::Result<()> {
     if !Path::new(&format!("{TARGET}/etc/noos/login.toml")).exists() {
         ctx.write("/etc/noos/login.toml", &noos_core::login::LoginConfig::default().to_toml()?)?;
     }
-    ctx.try_run("chroot", &[TARGET, "chgrp", "-R", "wheel", "/etc/noos"]);
+    ctx.try_run("chroot", &[TARGET, "chgrp", "-R", "sudo", "/etc/noos"]);
     ctx.try_run("chroot", &[TARGET, "chmod", "-R", "g+w", "/etc/noos"]);
     ctx.try_run("chroot", &[TARGET, "chmod", "g+s", "/etc/noos"]);
     ctx.try_run("chroot", &[TARGET, "ldconfig"]);
     ctx.progress(0.55);
-    for unit in ["greetd.service", "NetworkManager.service", "bluetooth.service", "fstrim.timer", "systemd-oomd.service"] {
+    for unit in ["greetd.service", "NetworkManager.service", "bluetooth.service", "fstrim.timer", "systemd-oomd.service", "power-profiles-daemon.service"] {
         ctx.try_run("systemctl", &["--root", TARGET, "enable", unit]);
     }
-    ctx.try_run("systemctl", &["--root", TARGET, "disable", "gdm.service"]);
     // Recherche régulière des mises à jour (timer de session de chaque utilisateur).
     ctx.try_run("systemctl", &["--root", TARGET, "--global", "enable", "noos-update-check.timer"]);
-    // kmscon exclu : consoles texte classiques (Ctrl+Alt+F2…) via agetty.
-    ctx.try_run("ln", &["-sf", "/usr/lib/systemd/system/getty@.service", &format!("{TARGET}/etc/systemd/system/autovt@.service")]);
     ctx.run("systemctl", &["--root", TARGET, "set-default", "graphical.target"])?;
     ctx.try_run("chroot", &[TARGET, "plymouth-set-default-theme", "noos"]);
-    // Flathub actif par défaut, à côté de Fedora Flatpaks (fichier embarqué : pas de réseau).
+    // Flathub actif par défaut (fichier embarqué : pas de réseau).
     ctx.try_run(
         "chroot",
         &[TARGET, "flatpak", "remote-add", "--system", "--if-not-exists", "flathub", "/opt/noos/share/noos/flathub.flatpakrepo"],
@@ -606,51 +645,58 @@ fn install(ctx: &Ctx, c: &Choices) -> anyhow::Result<()> {
     ctx.try_run("chroot", &[TARGET, "flatpak", "remote-modify", "--system", "--no-filter", "--enable", "flathub"]);
     // Thème GRUB NOOS (grub.cfg est régénéré à l'étape GRUB).
     ctx.try_run("chroot", &[TARGET, "/usr/share/noos-grub/install.sh"]);
-    // Instantanés Btrfs (snapper) : configuration de / et instantanés avant / après dnf.
+    // Instantanés Btrfs (snapper) : configuration de / et instantanés avant / après apt.
     ctx.line("Configuration des instantanés du système (Sauvegarder et Restaurer)…");
     ctx.try_run("chroot", &[TARGET, "/opt/noos/libexec/noos-save-helper", "setup"]);
-    // SELinux : le système live tourne sans SELinux (selinux=0), les fichiers créés ici
-    // (comptes, /opt/noos, configuration) n'ont pas d'étiquette. Étiquetage complet hors
-    // ligne avec la politique du système installé (sinon systemd ne démarre pas en
-    // mode « enforcing »).
-    ctx.line("Étiquetage SELinux du système installé…");
-    ctx.chroot(&[
-        "setfiles", "-F", "-e", "/proc", "-e", "/sys", "-e", "/dev", "-e", "/run", "-e", "/boot/efi",
-        "/etc/selinux/targeted/contexts/files/file_contexts", "/",
-    ])?;
-    // Premier instantané, une fois le système étiqueté (sinon le restaurer donnerait un
-    // système sans étiquettes SELinux) ; seuls ses fichiers de suivi sont étiquetés ensuite.
-    ctx.try_run("chroot", &[TARGET, "/opt/noos/libexec/noos-save-helper", "create", "Installation de NOOS"]);
-    ctx.try_run("chroot", &[TARGET, "sh", "-c", "restorecon -F /.snapshots /.snapshots/* /.snapshots/*/info.xml 2>/dev/null || true"]);
+    ctx.progress(0.8);
+    // Fin des réglages propres à l'installation.
+    ctx.try_run("rm", &["-f", &format!("{TARGET}/usr/sbin/policy-rc.d"), &format!("{TARGET}/etc/apt/apt.conf.d/90noos-install")]);
     ctx.progress(1.0);
 
     // ── 8. GRUB ──
     ctx.step(8);
+    // Arguments propres au matériel (pilote NVIDIA : KMS, nouveau écarté). Debian ajoute
+    // lui-même rootflags=subvol=@ (racine Btrfs détectée par grub-mkconfig).
+    let extra = hw_plan.kernel_args.join(" ");
+    ctx.write(
+        "/etc/default/grub",
+        &format!(
+            "# Créé par l'installateur NOOS — voir aussi /etc/default/grub.d/\nGRUB_DEFAULT=saved\nGRUB_TIMEOUT=3\nGRUB_DISTRIBUTOR=\"NOOS\"\nGRUB_DISABLE_SUBMENU=y\nGRUB_TERMINAL_OUTPUT=\"gfxterm\"\nGRUB_CMDLINE_LINUX_DEFAULT=\"quiet splash loglevel=3\"\nGRUB_CMDLINE_LINUX=\"{extra}\"\nGRUB_DISABLE_RECOVERY=\"true\"\nGRUB_DISABLE_OS_PROBER=\"false\"\n"
+        ),
+    )?;
+    ctx.try_run("chroot", &[TARGET, "/usr/share/noos-grub/install.sh"]);
     // Démarrage fluide : pilote graphique de ce PC chargé tôt, Plymouth sans simpledrm
-    // (l'initramfs est régénéré juste après), entrées GRUB « NOOS ».
+    // (l'initramfs est régénéré juste après).
     ctx.try_run("chroot", &[TARGET, "/usr/libexec/noos-boot-setup", "--no-initramfs"]);
     ctx.line("Régénération de l'initramfs (thème Plymouth NOOS inclus)…");
-    ctx.chroot(&["dracut", "-f", "--regenerate-all", "--no-hostonly"])?;
+    ctx.chroot(&["update-initramfs", "-u", "-k", "all"])?;
     ctx.progress(0.5);
     if uefi {
-        // Configuration GRUB « relais » de Fedora : la vraie est dans /boot/grub2.
-        ctx.write(
-            "/boot/efi/EFI/fedora/grub.cfg",
-            &format!("search --no-floppy --fs-uuid --set=dev {boot_uuid}\nset prefix=($dev)/grub2\nexport $prefix\nconfigfile $prefix/grub.cfg\n"),
-        )?;
-        ctx.chroot(&["grub2-mkconfig", "-o", "/boot/grub2/grub.cfg"])?;
+        // GRUB signé de Debian derrière shim (Secure Boot) : dossier EFI « debian » imposé par
+        // la signature ; entrée de démarrage « NOOS » créée ensuite, plus la copie de secours
+        // EFI/BOOT/BOOTX64.EFI (micrologiciels qui ignorent les entrées).
+        ctx.chroot(&["grub-install", "--target=x86_64-efi", "--efi-directory=/boot/efi", "--bootloader-id=debian", "--no-nvram"])?;
+        ctx.try_run("chroot", &[TARGET, "grub-install", "--target=x86_64-efi", "--efi-directory=/boot/efi", "--removable", "--no-nvram"]);
+        ctx.chroot(&["grub-mkconfig", "-o", "/boot/grub/grub.cfg"])?;
         let efi_num = plan.iter().find(|p| p.role == Role::Efi).map(|p| p.number).unwrap_or(1).to_string();
-        ctx.run("efibootmgr", &["--create", "--disk", dev, "--part", &efi_num, "--label", "NOOS", "--loader", "\\EFI\\fedora\\shimx64.efi"])?;
+        let loader = if ctx.dry || Path::new(&format!("{TARGET}/boot/efi/EFI/debian/shimx64.efi")).exists() {
+            "\\EFI\\debian\\shimx64.efi"
+        } else {
+            "\\EFI\\debian\\grubx64.efi"
+        };
+        ctx.run("efibootmgr", &["--create", "--disk", dev, "--part", &efi_num, "--label", "NOOS", "--loader", loader])?;
     } else {
-        ctx.chroot(&["grub2-install", "--target=i386-pc", dev])?;
-        ctx.chroot(&["grub2-mkconfig", "-o", "/boot/grub2/grub.cfg"])?;
+        ctx.chroot(&["grub-install", "--target=i386-pc", dev])?;
+        ctx.chroot(&["grub-mkconfig", "-o", "/boot/grub/grub.cfg"])?;
     }
+    // Premier instantané, une fois le système complet (grub.cfg compris).
+    ctx.try_run("chroot", &[TARGET, "/opt/noos/libexec/noos-save-helper", "create", "Installation de NOOS"]);
     ctx.progress(1.0);
 
     // ── 9. Finalisation ──
     ctx.step(9);
     ctx.line("Installation terminée : copie du journal et démontage.");
-    ctx.try_run("rm", &["-rf", &format!("{TARGET}/var/cache/noos-install")]);
+    ctx.try_run("chroot", &[TARGET, "apt-get", "clean"]);
     if !ctx.dry {
         let _ = std::fs::copy(LOG_FILE, format!("{TARGET}/var/log/noos-install.log"));
     }
@@ -660,43 +706,41 @@ fn install(ctx: &Ctx, c: &Choices) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Projet COPR de NOOS (« propriétaire/projet »), fourni par l'ISO.
-fn copr_project() -> Option<(String, String)> {
-    let text = std::fs::read_to_string(format!("{NOOS_PREFIX}/share/noos/install/copr")).ok()?;
-    let line = text.lines().map(str::trim).find(|l| !l.is_empty() && !l.starts_with('#'))?;
-    let (owner, project) = line.split_once('/')?;
-    Some((owner.to_string(), project.to_string()))
-}
-
-/// Fichier de dépôt COPR (identique à celui de `dnf copr enable`).
-fn copr_repo(owner: &str, project: &str) -> String {
-    let base = format!("https://download.copr.fedorainfracloud.org/results/{owner}/{project}");
+/// Fichier de sources du dépôt APT de NOOS (identique à celui du paquet `noos`).
+fn noos_sources(keyring: &str) -> String {
     format!(
-        "[copr:copr.fedorainfracloud.org:{owner}:{project}]\nname=Copr repo for {project} owned by {owner}\nbaseurl={base}/fedora-$releasever-$basearch/\ntype=rpm-md\nskip_if_unavailable=True\ngpgcheck=1\ngpgkey={base}/pubkey.gpg\nrepo_gpgcheck=0\nenabled=1\nenabled_metadata=1\n"
+        "# Dépôt APT de NOOS (GitHub Pages) : bureau NOOS et ses applications.\nTypes: deb\nURIs: https://chomiam.github.io/noos-de\nSuites: sid\nComponents: main\nSigned-By: {keyring}\n"
     )
 }
 
-/// Lanceur de l'écran de connexion : paquet RPM (/usr/bin) ou copie de l'ISO (/usr/local/bin).
+/// Lanceur de l'écran de connexion : paquet Debian (/usr/bin) ou copie de l'ISO (/usr/local/bin).
 fn greeter_command() -> &'static str {
     if Path::new(&format!("{TARGET}/usr/bin/noos-greeter")).exists() { "/usr/bin/noos-greeter" } else { "/usr/local/bin/noos-greeter" }
 }
 
-/// Compte système de l'écran de connexion dans le système cible.
+/// Compte système de l'écran de connexion dans le système cible (« _greetd » sur Debian).
 fn greeter_user() -> String {
     let passwd = std::fs::read_to_string(format!("{TARGET}/etc/passwd")).unwrap_or_default();
-    ["greetd", "greeter"]
+    ["_greetd", "greetd", "greeter"]
         .into_iter()
         .find(|u| passwd.lines().any(|l| l.starts_with(&format!("{u}:"))))
         .map(String::from)
-        .unwrap_or_else(|| "greetd".into())
+        .unwrap_or_else(|| "_greetd".into())
 }
 
-/// « [ 12/345] … » (dnf5) → (12, 345).
-pub fn dnf_counter(line: &str) -> Option<(u32, u32)> {
-    let s = line.trim_start().strip_prefix('[')?;
-    let (inner, _) = s.split_once(']')?;
-    let (a, b) = inner.split_once('/')?;
-    Some((a.trim().parse().ok()?, b.trim().parse().ok()?))
+/// Ligne d'état d'apt (`-o APT::Status-Fd=1`) → avancement 0 – 1 : téléchargement
+/// (« dlstatus:n:10.0:… ») sur les premiers 40 %, installation (« pmstatus:paquet:42.5:… »)
+/// sur le reste.
+pub fn apt_progress(line: &str) -> Option<f64> {
+    let (download, rest) = match line.strip_prefix("dlstatus:") {
+        Some(r) => (true, r),
+        None => (false, line.strip_prefix("pmstatus:")?),
+    };
+    let mut f = rest.splitn(3, ':');
+    let _ = f.next()?;
+    let pct: f64 = f.next()?.trim().parse().ok()?;
+    let x = (pct / 100.0).clamp(0.0, 1.0);
+    Some(if download { 0.4 * x } else { 0.4 + 0.6 * x })
 }
 
 pub fn is_root() -> bool {
@@ -722,8 +766,10 @@ mod tests {
 
     #[test]
     fn counters_and_keymaps() {
-        assert_eq!(dnf_counter("[ 12/345] Installing foo"), Some((12, 345)));
-        assert_eq!(dnf_counter("Downloading"), None);
+        assert!((apt_progress("pmstatus:libfoo1:50.0:Installation de libfoo1").unwrap() - 0.7).abs() < 1e-9);
+        assert!((apt_progress("dlstatus:3:10.0:Téléchargement").unwrap() - 0.04).abs() < 1e-9);
+        assert_eq!(apt_progress("Setting up foo"), None);
+        assert_eq!(model::locale_gen_line("fr_FR.UTF-8"), "fr_FR.UTF-8 UTF-8");
         assert_eq!(console_keymap("fr", ""), "fr");
         assert_eq!(console_keymap("ch", "fr"), "fr_CH");
     }

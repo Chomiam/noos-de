@@ -1,7 +1,7 @@
 //! Lecture de l'état des instantanés (sans privilège) et appel du script privilégié.
 //!
-//! - liste : `snapper --jsonout -c root list` (snapperd ; les membres de « wheel » y ont accès
-//!   grâce à `ALLOW_GROUPS=wheel`, réglé par `noos-save-helper setup`) ;
+//! - liste : `snapper --jsonout -c root list` (snapperd ; les membres de « sudo » y ont accès
+//!   grâce à `ALLOW_GROUPS=sudo`, réglé par `noos-save-helper setup`) ;
 //! - réglages : `/etc/snapper/configs/root` et `/etc/noos/save.conf` ;
 //! - restauration : `/var/lib/noos-save/pending` (prévue) et `restored` (faite) ;
 //! - modifications : `pkexec noos-save-helper …` (action polkit org.noos.save.helper).
@@ -49,7 +49,7 @@ impl Snapshot {
         } else if self.manual() || (self.cleanup.is_empty() && !self.userdata.contains_key("noos") && self.kind == Kind::Single) {
             Origin::Manual
         } else {
-            Origin::Dnf
+            Origin::Apt
         }
     }
 }
@@ -58,7 +58,8 @@ impl Snapshot {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Origin {
     Manual,
-    Dnf,
+    /// Avant / après une opération apt (crochets `DPkg::Pre-Invoke` / `Post-Invoke`).
+    Apt,
     Timeline,
 }
 
@@ -68,7 +69,7 @@ impl Origin {
     }
 }
 
-/// Une ligne de la liste : un instantané seul, ou une paire avant / après (dnf).
+/// Une ligne de la liste : un instantané seul, ou une paire avant / après (apt).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Entry {
     pub main: Snapshot,
@@ -86,7 +87,8 @@ pub struct Status {
     pub btrfs: bool,
     pub configured: bool,
     pub config: HashMap<String, String>,
-    pub dnf_snapshots: bool,
+    /// Instantanés avant / après chaque opération apt (`APT_SNAPSHOTS` de /etc/noos/save.conf).
+    pub apt_snapshots: bool,
     /// Restauration prévue au prochain redémarrage (SNAPSHOT, OLD, KERNEL, DATE).
     pub pending: Option<HashMap<String, String>>,
     /// Restauration effectuée (ancienne racine conservée dans OLD, si pas encore supprimée).
@@ -108,7 +110,7 @@ impl Default for Status {
             btrfs: false,
             configured: false,
             config: HashMap::new(),
-            dnf_snapshots: true,
+            apt_snapshots: true,
             pending: None,
             restored: None,
             entries: Ok(vec![]),
@@ -156,7 +158,7 @@ pub fn snapshot_root(number: u32) -> String {
 pub fn details(number: u32) -> Details {
     if std::env::var_os("NOOS_SAVE_DEMO").is_some() {
         std::thread::sleep(std::time::Duration::from_millis(300));
-        return Details { kernel: Some("7.2.15-300.fc45.x86_64".into()), packages: Some(1180 + number as usize * 3) };
+        return Details { kernel: Some("7.2.15-amd64".into()), packages: Some(1180 + number as usize * 3) };
     }
     let root = snapshot_root(number);
     let kernel = std::fs::read_dir(format!("{root}/usr/lib/modules"))
@@ -170,22 +172,33 @@ pub fn details(number: u32) -> Details {
     Details { kernel, packages }
 }
 
-/// Paquets installés (nom.arch → version-release) dans un instantané, ou le système actuel.
+/// Paquets installés (nom[:arch étrangère] → version) dans un instantané, ou le système actuel
+/// (base dpkg : `var/lib/dpkg`).
 pub fn packages(number: Option<u32>) -> anyhow::Result<HashMap<String, String>> {
-    let mut cmd = Command::new("rpm");
+    let mut cmd = Command::new("dpkg-query");
     if let Some(n) = number {
-        cmd.args(["--dbpath", &format!("{}/usr/lib/sysimage/rpm", snapshot_root(n))]);
+        cmd.arg(format!("--admindir={}/var/lib/dpkg", snapshot_root(n)));
     }
-    let out = cmd.args(["-qa", "--qf", "%{NAME}.%{ARCH} %{VERSION}-%{RELEASE}\\n"]).output().context("rpm")?;
+    let out = cmd
+        .args(["-W", "-f=${binary:Package} ${Version} ${db:Status-Abbrev}\\n"])
+        .env("LC_ALL", "C.UTF-8")
+        .output()
+        .context("dpkg-query")?;
     if !out.status.success() {
-        bail!("base rpm illisible");
+        bail!("base dpkg illisible");
     }
-    Ok(String::from_utf8_lossy(&out.stdout)
-        .lines()
-        .filter(|l| !l.starts_with("gpg-pubkey"))
-        .filter_map(|l| l.split_once(' '))
-        .map(|(n, v)| (n.trim_end_matches(".x86_64").trim_end_matches(".noarch").to_string(), v.to_string()))
-        .collect())
+    Ok(parse_dpkg(&String::from_utf8_lossy(&out.stdout)))
+}
+
+/// Lignes « nom[:arch] version état » de dpkg-query : paquets installés seulement (« ii »).
+pub fn parse_dpkg(out: &str) -> HashMap<String, String> {
+    out.lines()
+        .filter_map(|l| {
+            let mut w = l.split_whitespace();
+            let (name, version, state) = (w.next()?, w.next()?, w.next()?);
+            state.starts_with("ii").then(|| (name.trim_end_matches(":amd64").trim_end_matches(":all").to_string(), version.to_string()))
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -201,11 +214,11 @@ pub fn package_diff(from: u32, to: Option<u32>) -> anyhow::Result<Vec<(Change, S
     if std::env::var_os("NOOS_SAVE_DEMO").is_some() {
         std::thread::sleep(std::time::Duration::from_millis(500));
         return Ok(vec![
-            (Change::Added, "git".into(), "2.51.0-1.fc45".into()),
-            (Change::Added, "perl-Git".into(), "2.51.0-1.fc45".into()),
-            (Change::Upgraded, "noos".into(), "0.1.0-1.git0faf7d21 → 0.1.0-1.git295c319b".into()),
-            (Change::Upgraded, "kernel-core".into(), "7.2.14-300.fc45 → 7.2.15-300.fc45".into()),
-            (Change::Removed, "nano-default-editor".into(), "8.4-2.fc45".into()),
+            (Change::Added, "git".into(), "1:2.51.0-1".into()),
+            (Change::Added, "liberror-perl".into(), "0.17030-1".into()),
+            (Change::Upgraded, "noos".into(), "0.1.0~git202611060000.0faf7d21-1 → 0.1.0~git202611160000.295c319b-1".into()),
+            (Change::Upgraded, "linux-image-amd64".into(), "7.2.14-1 → 7.2.15-1".into()),
+            (Change::Removed, "nano".into(), "8.4-1".into()),
         ]);
     }
     let a = packages(Some(from))?;
@@ -230,7 +243,8 @@ pub fn package_diff(from: u32, to: Option<u32>) -> anyhow::Result<Vec<(Change, S
     Ok(out)
 }
 
-/// Comparaison simple de versions rpm (segments numériques / alphabétiques), suffisante ici.
+/// Comparaison simple de versions Debian (segments numériques / alphabétiques ; « ~ » et l'époque
+/// ne sont pas traités finement), suffisante pour classer une mise à jour.
 fn glib_vercmp(a: &str, b: &str) -> bool {
     fn parts(s: &str) -> Vec<Result<u64, String>> {
         let mut v = Vec::new();
@@ -280,8 +294,8 @@ pub fn file_changes(from: u32, to: u32) -> anyhow::Result<Vec<(char, String)>> {
         return Ok(vec![
             ('+', "/usr/bin/git".into()),
             ('+', "/usr/share/doc/git/README.md".into()),
-            ('c', "/etc/dnf/dnf.conf".into()),
-            ('c', "/var/lib/rpm/rpmdb.sqlite".into()),
+            ('c', "/etc/apt/sources.list.d/debian.sources".into()),
+            ('c', "/var/lib/dpkg/status".into()),
             ('-', "/usr/bin/nano".into()),
         ]);
     }
@@ -494,7 +508,7 @@ pub fn read() -> Status {
         grub_max: save.get("GRUB_SNAPSHOTS_MAX").and_then(|v| v.parse().ok()).unwrap_or(20),
         disk,
         device,
-        dnf_snapshots: save.get("DNF_SNAPSHOTS").is_none_or(|v| v != "no"),
+        apt_snapshots: save.get("APT_SNAPSHOTS").is_none_or(|v| v != "no"),
         pending: read_kv("/var/lib/noos-save/pending"),
         restored: read_kv("/var/lib/noos-save/restored").filter(|r| r.contains_key("OLD")),
         entries,
@@ -544,21 +558,21 @@ fn demo() -> Status {
     let list = vec![
         snap(1, Kind::Single, None, at(9, 20, 26, 2), "Installation de NOOS", "", "manuel"),
         snap(2, Kind::Single, None, at(6, 10, 0, 0), "timeline", "timeline", ""),
-        snap(3, Kind::Pre, None, at(3, 6, 31, 10), "dnf install -y git gh", "number", "dnf"),
-        snap(4, Kind::Post, Some(3), at(3, 6, 31, 40), "dnf install -y git gh", "number", "dnf"),
+        snap(3, Kind::Pre, None, at(3, 6, 31, 10), "apt-get install -y git gh", "number", "apt"),
+        snap(4, Kind::Post, Some(3), at(3, 6, 31, 40), "apt-get install -y git gh", "number", "apt"),
         snap(5, Kind::Single, None, at(1, 9, 0, 0), "timeline", "timeline", ""),
         important,
-        snap(7, Kind::Pre, None, at(0, 7, 40, 12), "dnf upgrade --refresh", "number", "dnf"),
-        snap(8, Kind::Post, Some(7), at(0, 7, 43, 3), "dnf upgrade --refresh", "number", "dnf"),
+        snap(7, Kind::Pre, None, at(0, 7, 40, 12), "apt-get full-upgrade -y", "number", "apt"),
+        snap(8, Kind::Post, Some(7), at(0, 7, 43, 3), "apt-get full-upgrade -y", "number", "apt"),
         snap(9, Kind::Single, None, at(0, 9, 12, 45), "Avant de tester le thème sombre", "", "manuel"),
     ];
     Status {
         btrfs: true,
         configured: true,
         config: parse_kv("NUMBER_LIMIT=\"10\"\nTIMELINE_CREATE=\"no\"\nTIMELINE_LIMIT_DAILY=\"7\"\nTIMELINE_LIMIT_WEEKLY=\"2\"\nTIMELINE_LIMIT_MONTHLY=\"1\"\n"),
-        dnf_snapshots: true,
+        apt_snapshots: true,
         pending: std::env::var_os("NOOS_SAVE_DEMO_PENDING")
-            .map(|_| parse_kv("SNAPSHOT=4\nOLD=@.avant-restauration-20261107-091500\nKERNEL=7.2.15-300.fc45.x86_64\n")),
+            .map(|_| parse_kv("SNAPSHOT=4\nOLD=@.avant-restauration-20261107-091500\nKERNEL=7.2.15-amd64\n")),
         restored: None,
         entries: Ok(group(list)),
         boot_snapshot: std::env::var("NOOS_SAVE_DEMO_BOOT").ok().and_then(|v| v.parse().ok()),
@@ -578,8 +592,8 @@ mod tests {
         let json = r#"{"root":[
           {"subvolume":"/","number":0,"default":false,"active":false,"type":"single","pre-number":null,"date":"","user":"root","cleanup":"","description":"current","userdata":null},
           {"subvolume":"/","number":1,"type":"single","pre-number":null,"date":"2026-11-07 06:00:00","cleanup":"","description":"Installation de NOOS","userdata":{"noos":"manuel"}},
-          {"subvolume":"/","number":2,"type":"pre","pre-number":null,"date":"2026-11-07 06:31:10","cleanup":"number","description":"dnf install git","userdata":{"noos":"dnf"}},
-          {"subvolume":"/","number":3,"type":"post","pre-number":2,"date":"2026-11-07 06:31:40","cleanup":"number","description":"dnf install git","userdata":{"noos":"dnf"}}
+          {"subvolume":"/","number":2,"type":"pre","pre-number":null,"date":"2026-11-07 06:31:10","cleanup":"number","description":"apt-get install git","userdata":{"noos":"apt"}},
+          {"subvolume":"/","number":3,"type":"post","pre-number":2,"date":"2026-11-07 06:31:40","cleanup":"number","description":"apt-get install git","userdata":{"noos":"apt"}}
         ]}"#;
         let snaps = parse_list(json).unwrap();
         assert_eq!(snaps.len(), 4);
@@ -593,12 +607,12 @@ mod tests {
 
     #[test]
     fn info_xml() {
-        let x = "<?xml version=\"1.0\"?>\n<snapshot>\n  <type>post</type>\n  <num>4</num>\n  <pre_num>3</pre_num>\n  <date>2026-11-07 22:27:20</date>\n  <description>dnf5 reinstall -y nano</description>\n  <cleanup>number</cleanup>\n  <userdata>\n    <key>noos</key>\n    <value>dnf</value>\n  </userdata>\n  <userdata>\n    <key>important</key>\n    <value>yes</value>\n  </userdata>\n</snapshot>\n";
+        let x = "<?xml version=\"1.0\"?>\n<snapshot>\n  <type>post</type>\n  <num>4</num>\n  <pre_num>3</pre_num>\n  <date>2026-11-07 22:27:20</date>\n  <description>apt-get reinstall -y nano</description>\n  <cleanup>number</cleanup>\n  <userdata>\n    <key>noos</key>\n    <value>apt</value>\n  </userdata>\n  <userdata>\n    <key>important</key>\n    <value>yes</value>\n  </userdata>\n</snapshot>\n";
         let s = parse_info(x).unwrap();
         assert_eq!(s.number, 4);
         assert_eq!(s.kind, Kind::Post);
         assert_eq!(s.pre_number, Some(3));
-        assert_eq!(s.userdata["noos"], "dnf");
+        assert_eq!(s.userdata["noos"], "apt");
         assert!(s.important());
         assert!(!s.date.is_empty());
     }

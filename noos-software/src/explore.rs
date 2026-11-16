@@ -70,21 +70,21 @@ impl App {
             .any(|(i, list, _)| self.kind(*i) == BackendKind::Flatpak && list.iter().any(|p| p.id == app_id))
     }
 
-    /// Paquet dnf qui fournit le même logiciel qu'une appli Flathub (même identifiant AppStream).
-    pub(crate) fn dnf_alternative(&self, app_id: &str) -> Option<Package> {
+    /// Paquet apt qui fournit le même logiciel qu'une appli Flathub (même identifiant AppStream).
+    pub(crate) fn apt_alternative(&self, app_id: &str) -> Option<Package> {
         let id = app_id.to_lowercase();
         let name = self.appstream.borrow().iter().find(|(_, v)| **v == id).map(|(k, _)| k.clone())?;
-        self.backend_index(BackendKind::Dnf)?;
+        self.backend_index(BackendKind::Apt)?;
         let installed = self
             .installed
             .borrow()
             .iter()
-            .any(|(i, list, _)| self.kind(*i) == BackendKind::Dnf && list.iter().any(|p| p.id == name));
+            .any(|(i, list, _)| self.kind(*i) == BackendKind::Apt && list.iter().any(|p| p.id == name));
         Some(Package {
-            backend: Some(BackendKind::Dnf),
+            backend: Some(BackendKind::Apt),
             id: name.clone(),
             name,
-            origin: "fedora".into(),
+            origin: "debian".into(),
             installed,
             ..Default::default()
         })
@@ -483,19 +483,19 @@ impl App {
             names.append(&sum);
             head.append(&names);
             let installed = app.is_flatpak_installed(&d.summary.app_id);
-            let alternative = app.dnf_alternative(&d.summary.app_id);
-            let action: gtk::Widget = if let Some(dnf) = alternative.as_ref().filter(|p| p.installed) {
-                // Déjà installé en paquet Fedora.
+            let alternative = app.apt_alternative(&d.summary.app_id);
+            let action: gtk::Widget = if let Some(deb) = alternative.as_ref().filter(|p| p.installed) {
+                // Déjà installé en paquet Debian.
                 let b = gtk::Button::with_label("Supprimer");
                 b.add_css_class("destructive-action");
-                b.set_tooltip_text(Some("Installé en paquet Fedora (dnf)"));
-                let (app2, pkg, dlg) = (app.clone(), dnf.clone(), dialog2.clone());
+                b.set_tooltip_text(Some("Installé en paquet Debian (apt)"));
+                let (app2, pkg, dlg) = (app.clone(), deb.clone(), dialog2.clone());
                 b.connect_clicked(move |_| {
                     dlg.close();
                     app2.remove(pkg.clone());
                 });
                 b.upcast()
-            } else if let (false, Some(dnf)) = (installed, alternative.clone()) {
+            } else if let (false, Some(deb)) = (installed, alternative.clone()) {
                 // Disponible de deux façons : on laisse choisir.
                 let flathub = Package {
                     backend: Some(BackendKind::Flatpak),
@@ -509,7 +509,7 @@ impl App {
                     key: d.summary.app_id.to_lowercase(),
                     name: d.summary.name.clone(),
                     summary: d.summary.summary.clone(),
-                    offers: vec![flathub, Package { name: d.summary.name.clone(), ..dnf }],
+                    offers: vec![flathub, Package { name: d.summary.name.clone(), ..deb }],
                 };
                 app.action_button(&sw)
             } else if installed {

@@ -21,7 +21,7 @@ image/x-portable-bitmap=org.noos.PhotoView.desktop
 image/x-portable-anymap=org.noos.PhotoView.desktop
 image/x-xpixmap=org.noos.PhotoView.desktop
 image/qoi=org.noos.PhotoView.desktop
-# Photos RAW (libopenraw) et HEIC d'iPhone (libheif-freeworld, RPM Fusion)
+# Photos RAW (libopenraw) et HEIC d'iPhone (libheif, décodeur libde265 de Debian)
 image/x-nikon-nef=org.noos.PhotoView.desktop
 image/x-nikon-nrw=org.noos.PhotoView.desktop
 image/x-canon-cr2=org.noos.PhotoView.desktop

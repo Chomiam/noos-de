@@ -1,9 +1,9 @@
-//! noos-pkg — paquets de NOOS (basé sur Fedora) : **dnf** et **Flatpak**.
+//! noos-pkg — paquets de NOOS (basé sur Debian sid) : **apt** et **Flatpak**.
 //!
-//! | Backend   | Contenu                                         | Élévation                 |
-//! |-----------|-------------------------------------------------|---------------------------|
-//! | `dnf`     | paquets RPM (Fedora, RPM Fusion, COPR…)         | pkexec                    |
-//! | `flatpak` | applications Flatpak (Flathub, Fedora Flatpaks) | aucune (`--user`) / polkit|
+//! | Backend   | Contenu                                              | Élévation                 |
+//! |-----------|------------------------------------------------------|---------------------------|
+//! | `apt`     | paquets .deb (Debian sid, contrib / non-free, NOOS…) | pkexec                    |
+//! | `flatpak` | applications Flatpak (Flathub)                       | aucune (`--user`) / polkit|
 //!
 //! Chaque backend sait : rechercher, lister les paquets installés explicitement, lister et
 //! appliquer les mises à jour, installer/supprimer, et gérer ses dépôts. Les dépôts bruts
@@ -28,26 +28,26 @@ pub use system::SystemInfo;
 #[serde(rename_all = "kebab-case")]
 pub enum BackendKind {
     Flatpak,
-    Dnf,
+    Apt,
 }
 
 impl BackendKind {
     pub fn id(self) -> &'static str {
         match self {
             Self::Flatpak => "flatpak",
-            Self::Dnf => "dnf",
+            Self::Apt => "apt",
         }
     }
 
     pub fn label(self) -> &'static str {
         match self {
             Self::Flatpak => "Applications Flatpak",
-            Self::Dnf => "Paquets Fedora (dnf)",
+            Self::Apt => "Paquets Debian (apt)",
         }
     }
 
     pub fn parse(s: &str) -> Option<Self> {
-        [Self::Flatpak, Self::Dnf]
+        [Self::Flatpak, Self::Apt]
             .into_iter()
             .find(|k| k.id() == s)
     }
@@ -106,10 +106,16 @@ pub struct Repo {
     pub url: String,
     pub enabled: bool,
     pub scope: Option<Scope>,
-    /// Fichier .repo (dnf) ou nom du remote (Flatpak).
+    /// Fichier de sources APT ou nom du remote (Flatpak).
     pub file: String,
     /// Dépôt fourni par la distribution (supprimable uniquement à vos risques).
     pub builtin: bool,
+    /// Suites APT (`sid`, `experimental`…) ; vide pour Flatpak.
+    #[serde(default)]
+    pub suites: Vec<String>,
+    /// Composants APT (`main`, `contrib`, `non-free`…) ; vide pour Flatpak.
+    #[serde(default)]
+    pub components: Vec<String>,
 }
 
 /// Dépôt additionnel proposé pour une distribution.
@@ -119,7 +125,7 @@ pub struct Preset {
     pub backend: BackendKind,
     pub name: &'static str,
     pub description: &'static str,
-    /// Le préréglage attend un argument (COPR « propriétaire/projet », URL…).
+    /// Le préréglage attend un argument (adresse d'un dépôt, URL…).
     pub argument: Option<&'static str>,
 }
 
@@ -152,7 +158,7 @@ pub trait Backend: Send + Sync {
     }
 
     /// Identifiants AppStream des paquets (nom du paquet → identifiant en minuscules) : sert à
-    /// reconnaître le même logiciel en paquet dnf et en Flatpak.
+    /// reconnaître le même logiciel en paquet Debian et en Flatpak.
     fn appstream_ids(&self) -> std::collections::HashMap<String, String> {
         Default::default()
     }
@@ -162,8 +168,8 @@ pub trait Backend: Send + Sync {
 pub fn detect() -> Vec<Box<dyn Backend>> {
     let sys = SystemInfo::detect();
     let mut list: Vec<Box<dyn Backend>> = Vec::new();
-    if exec::have("dnf") || exec::have("dnf5") {
-        list.push(Box::new(backends::dnf::Dnf::new(sys.clone())));
+    if exec::have("apt-get") && exec::have("dpkg-query") {
+        list.push(Box::new(backends::apt::Apt::new(sys.clone())));
     }
     if exec::have("flatpak") {
         list.push(Box::new(backends::flatpak::Flatpak::new(sys)));
@@ -171,20 +177,16 @@ pub fn detect() -> Vec<Box<dyn Backend>> {
     list
 }
 
-/// Recherche des mises à jour **sans droits root** : dnf rafraîchit ses métadonnées dans le
-/// cache de l'utilisateur (`force` : même si elles ne sont pas expirées), Flatpak interroge ses
-/// dépôts directement. Utilisé par le service `noos-update-check` et par Logiciels.
+/// Recherche des mises à jour **sans droits root** : apt télécharge les listes de paquets dans
+/// le cache de l'utilisateur (`~/.cache/noos/apt`, `force` : même si elles ont moins de 6 h),
+/// Flatpak interroge ses dépôts directement. Utilisé par le service `noos-update-check` et par
+/// Logiciels.
 pub fn check_updates(backends: &[Box<dyn Backend>], force: bool) -> Vec<(BackendKind, anyhow::Result<Vec<Update>>)> {
     backends
         .iter()
         .map(|b| {
-            if b.kind() == BackendKind::Dnf {
-                let bin = if exec::have("dnf5") { "dnf5" } else { "dnf" };
-                let mut argv = vec![bin, "makecache", "--quiet"];
-                if force {
-                    argv.push("--refresh");
-                }
-                let _ = exec::capture_codes(&argv, &[0, 1]);
+            if b.kind() == BackendKind::Apt {
+                backends::apt::refresh_user_lists(force);
             }
             (b.kind(), b.updates())
         })

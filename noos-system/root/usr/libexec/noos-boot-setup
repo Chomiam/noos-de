@@ -1,24 +1,20 @@
 #!/bin/bash
 # noos-boot-setup — démarrage fluide de NOOS, de GRUB à l'écran de connexion (root).
-# Lancé par le paquet (%post) et par l'installateur ; sans effet s'il n'y a rien à changer.
+# Lancé par le paquet (postinst) et par l'installateur ; sans effet s'il n'y a rien à changer.
 #
-#   1. entrées GRUB nommées « NOOS (noyau x.y.z) » au lieu de « Fedora Linux … » ;
-#   2. pilote graphique (i915, xe, amdgpu, radeon, nouveau) chargé dès le début de
-#      l'initramfs et Plymouth sans « simpledrm » : l'animation démarre directement sur le
-#      vrai pilote, sans s'interrompre au changement de pilote ;
+#   1. pilote graphique (i915, xe, amdgpu, radeon, nouveau) chargé dès le début de
+#      l'initramfs (initramfs-tools : /etc/initramfs-tools/modules) et Plymouth sans
+#      « simpledrm » : l'animation démarre directement sur le vrai pilote ;
+#   2. thème Plymouth NOOS par défaut ;
 #   3. initramfs régénéré si l'un de ces réglages a changé (--no-initramfs : ne pas le faire).
+#
+# Les entrées GRUB s'appellent « NOOS GNU/Linux » grâce à /etc/default/grub.d/90-noos.cfg.
 set -uo pipefail
 REGEN=1
 [ "${1:-}" = --no-initramfs ] && REGEN=0
 changed=0
 
-# ── 1. Noms des entrées ──
-for f in /boot/loader/entries/*.conf; do
-    [ -f "$f" ] || continue
-    /usr/lib/kernel/install.d/94-noos-title.install add "$(sed -n 's/^version[[:space:]]*//p' "$f" | head -1)" >/dev/null 2>&1 || true
-done
-
-# ── 2a. Pilote graphique chargé tôt ──
+# ── 1a. Pilote graphique chargé tôt ──
 drivers=""
 for d in /sys/class/drm/card[0-9]*/device/driver; do
     [ -e "$d" ] || continue
@@ -26,30 +22,41 @@ for d in /sys/class/drm/card[0-9]*/device/driver; do
     case "$m" in i915|xe|amdgpu|radeon|nouveau) ;; *) continue ;; esac
     case " $drivers " in *" $m "*) ;; *) drivers="$drivers $m" ;; esac
 done
-conf=/etc/dracut.conf.d/90-noos-early-kms.conf
-if [ -n "$drivers" ]; then
-    want="# NOOS : pilote graphique chargé dès le début (Plymouth sans saut d'écran)
-force_drivers+=\"$drivers \""
-    if [ "$(cat "$conf" 2>/dev/null)" != "$want" ]; then
-        mkdir -p /etc/dracut.conf.d
-        printf '%s\n' "$want" >"$conf"
+mods=/etc/initramfs-tools/modules
+BEGIN="# >>> NOOS : pilote graphique chargé tôt (Plymouth sans saut d'écran)"
+END="# <<< NOOS"
+if [ -n "$drivers" ] && [ -f "$mods" ]; then
+    want="$BEGIN"$'\n'"$(printf '%s\n' $drivers)"$'\n'"$END"
+    have=$(sed -n "/^$BEGIN\$/,/^$END\$/p" "$mods")
+    if [ "$have" != "$want" ]; then
+        sed -i "/^$BEGIN\$/,/^$END\$/d" "$mods"
+        printf '%s\n' "$want" >>"$mods"
         changed=1
     fi
 fi
 
-# ── 2b. Plymouth : pas d'affichage provisoire du micrologiciel (simpledrm) ──
+# ── 1b. Plymouth : pas d'affichage provisoire du micrologiciel (simpledrm) ──
 pc=/etc/plymouth/plymouthd.conf
-if [ -f "$pc" ] && ! grep -q '^UseSimpledrmNoLuks=0' "$pc"; then
+mkdir -p /etc/plymouth
+[ -f "$pc" ] || printf '[Daemon]\n' >"$pc"
+if ! grep -q '^UseSimpledrm=0' "$pc"; then
     if grep -q '^\[Daemon\]' "$pc"; then
         sed -i '/^UseSimpledrm/d; /^\[Daemon\]/a UseSimpledrmNoLuks=0\nUseSimpledrm=0' "$pc"
     else
-        printf '[Daemon]\nTheme=noos\nUseSimpledrmNoLuks=0\nUseSimpledrm=0\n' >>"$pc"
+        printf '[Daemon]\nUseSimpledrmNoLuks=0\nUseSimpledrm=0\n' >>"$pc"
     fi
     changed=1
 fi
 
+# ── 2. Thème Plymouth ──
+if command -v plymouth-set-default-theme >/dev/null && [ -d /usr/share/plymouth/themes/noos ]; then
+    if [ "$(plymouth-set-default-theme 2>/dev/null)" != noos ]; then
+        plymouth-set-default-theme noos >/dev/null 2>&1 && changed=1
+    fi
+fi
+
 # ── 3. initramfs ──
-if [ "$changed" = 1 ] && [ "$REGEN" = 1 ] && command -v dracut >/dev/null; then
-    dracut -f --regenerate-all >/dev/null 2>&1 || true
+if [ "$changed" = 1 ] && [ "$REGEN" = 1 ] && command -v update-initramfs >/dev/null; then
+    update-initramfs -u -k all >/dev/null 2>&1 || true
 fi
 exit 0

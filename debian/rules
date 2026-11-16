@@ -1,0 +1,80 @@
+#!/usr/bin/make -f
+# Paquet Debian de NOOS : libAdapta (meson, dans target/libadapta-build) puis les binaires Rust
+# (cargo, profil release). Tout NOOS vit dans /opt/noos (+ /usr/bin/noos-session,
+# /usr/bin/noos-greeter et les fichiers système) ; libAdapta est une bibliothèque privée
+# (/opt/noos/lib), jamais exposée au reste du système.
+
+export DH_VERBOSE = 1
+export CARGO_HOME ?= $(HOME)/.cargo
+export PATH := $(CARGO_HOME)/bin:$(PATH)
+# Le .pc « uninstalled » de libAdapta (meson) : prioritaire sur celui du système.
+export PKG_CONFIG_PATH := $(CURDIR)/target/libadapta-build/meson-uninstalled$(if $(PKG_CONFIG_PATH),:$(PKG_CONFIG_PATH))
+
+BINS := noos-comp noos-shell noos-file noos-settings noos-software noos-pkg noos-snip noos-term \
+        noos-keys noos-save noos-photoview noos-texteditor noos-lock noos-archive noos-disk \
+        noos-login noos-installer
+D := $(CURDIR)/debian/noos
+
+%:
+	dh $@
+
+override_dh_auto_configure:
+	[ -f target/libadapta-build/build.ninja ] || meson setup target/libadapta-build third_party/libadapta \
+	    --buildtype=release --wrap-mode=nodownload \
+	    -Dintrospection=disabled -Dvapi=false -Dtests=false -Dexamples=false -Dgtk_doc=false
+
+override_dh_auto_build:
+	ninja -C target/libadapta-build
+	cargo build --release --locked $(foreach b,$(BINS),-p $(b))
+
+# Les tests sont lancés par la CI (cargo test), pas pendant la construction du paquet.
+override_dh_auto_test:
+
+override_dh_auto_install:
+	install -d $(D)/opt/noos/bin $(D)/opt/noos/lib $(D)/opt/noos/share/noos $(D)/opt/noos/share/applications
+	for b in $(BINS); do install -m755 target/release/$$b $(D)/opt/noos/bin/$$b; done
+	for f in target/libadapta-build/src/libadapta-1.so*; do [ -d "$$f" ] || cp -P "$$f" $(D)/opt/noos/lib/; done
+	cp -r data/. $(D)/opt/noos/share/noos/
+	install -m644 noos-session/org.noos.*.desktop $(D)/opt/noos/share/applications/
+	# Session (greetd, GDM) et écran de connexion.
+	install -Dm755 noos-session/noos-session $(D)/usr/bin/noos-session
+	install -Dm755 noos-login/noos-greeter $(D)/usr/bin/noos-greeter
+	install -d $(D)/usr/share/wayland-sessions
+	sed 's|/usr/local/bin/noos-session|/usr/bin/noos-session|g' noos-session/noos.desktop \
+	    > $(D)/usr/share/wayland-sessions/noos.desktop
+	install -Dm644 noos-session/noos-portals.conf $(D)/usr/share/xdg-desktop-portal/noos-portals.conf
+	install -d $(D)/etc/ld.so.conf.d
+	echo /opt/noos/lib > $(D)/etc/ld.so.conf.d/noos.conf
+	# Thème Plymouth (images générées, présentes dans le dépôt).
+	install -d $(D)/usr/share/plymouth/themes/noos
+	install -m644 noos-plymouth/noos/*.png noos-plymouth/noos/noos.plymouth noos-plymouth/noos/noos.script \
+	    $(D)/usr/share/plymouth/themes/noos/
+	# Réglages système (réseau, son, sudo, fastfetch, fish, PAM de noos-lock, timer des mises à jour…).
+	./noos-system/install.sh $(D)
+	# Sauvegarder et Restaurer (crochets apt, règle polkit, GRUB) et Disques.
+	./noos-save/install-system.sh $(D) /opt/noos
+	./noos-disk/install-system.sh $(D) /opt/noos
+	# Thème GRUB : sources ici, copiées dans /boot/grub/themes/noos par postinst.
+	install -d $(D)/usr/share/noos-grub
+	install -m644 noos-grub/noos/* $(D)/usr/share/noos-grub/
+	install -m755 noos-grub/install.sh noos-grub/05_noos_background $(D)/usr/share/noos-grub/
+	# Dépôt APT de NOOS (GitHub Pages) : seulement si la clé publique est fournie (CI).
+	if [ -s packaging/apt/noos-archive-keyring.asc ]; then \
+	    install -Dm644 packaging/apt/noos-archive-keyring.asc $(D)/usr/share/keyrings/noos-archive-keyring.asc; \
+	    install -Dm644 packaging/apt/noos.sources $(D)/etc/apt/sources.list.d/noos.sources; \
+	fi
+
+# Les unités systemd sont activées par postinst, une seule fois (choix de l'utilisateur respectés).
+override_dh_installsystemd:
+override_dh_installsystemduser:
+
+# Binaires Rust : pas de dwz (inutile et parfois en échec sur leurs informations de débogage).
+override_dh_dwz:
+
+# libAdapta privée : dh_shlibdeps doit la trouver dans /opt/noos/lib pour lister ses dépendances.
+override_dh_shlibdeps:
+	dh_shlibdeps -l$(D)/opt/noos/lib -- --ignore-missing-info
+
+# Pas de « shlibs » publics pour libAdapta (bibliothèque privée de /opt).
+override_dh_makeshlibs:
+	dh_makeshlibs --no-scripts -X/opt/noos/lib

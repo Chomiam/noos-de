@@ -1,11 +1,13 @@
 //! Validation du compte : identifiant, nom de la machine, robustesse du mot de passe.
 
-/// Noms réservés par le système (comptes de service Fedora courants).
+/// Noms réservés par le système (comptes de service Debian courants).
 const RESERVED: &[&str] = &[
     "root", "bin", "daemon", "adm", "lp", "sync", "shutdown", "halt", "mail", "operator", "games", "ftp", "nobody",
     "dbus", "systemd-network", "systemd-resolve", "systemd-timesync", "systemd-oom", "systemd-coredump", "tss",
     "polkitd", "avahi", "sshd", "chrony", "greeter", "geoclue", "pipewire", "rtkit", "colord", "gdm", "flatpak",
     "wheel", "users", "admin", "sudo", "nm-openconnect", "unbound", "dnsmasq", "qemu", "libvirt",
+    "_greetd", "_apt", "messagebus", "systemd-journal", "netdev", "plugdev", "audio", "video", "input", "render",
+    "bluetooth", "lpadmin", "sambashare", "www-data", "backup", "list", "irc", "news", "uucp", "proxy", "man",
 ];
 
 /// Erreur d'identifiant (None = valide). Règles de `useradd` en mode strict (portable) :
@@ -119,7 +121,7 @@ impl Strength {
 const COMMON: &[&str] = &[
     "password", "motdepasse", "azerty", "qwerty", "123456", "admin", "bonjour", "soleil", "louloute", "doudou",
     "loulou", "chouchou", "marseille", "iloveyou", "welcome", "letmein", "dragon", "monkey", "football", "noos",
-    "fedora", "linux", "secret", "abc123", "000000", "111111",
+    "debian", "linux", "secret", "abc123", "000000", "111111",
 ];
 
 /// Estimation de l'entropie (bits), pénalisée pour les motifs courants.

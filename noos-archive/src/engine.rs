@@ -105,7 +105,7 @@ impl OutFormat {
 
 pub use noos_core::archive::{is_archive, lower_name, stem, EXTENSIONS, TAR_SUFFIXES};
 
-/// Formats confiés d'abord à unar (absents du 7-Zip de Fedora ou mieux gérés par unar).
+/// Formats confiés d'abord à unar (absents du 7-Zip de Debian ou mieux gérés par unar).
 const UNAR_EXTS: &[&str] = &["rar", "sit", "sitx", "alz", "arc", "ark", "zoo", "ace", "cpt", "sea", "lbr", "pak", "pma", "dd", "nsa", "adf", "dms", "lzx"];
 
 /// Moteurs à essayer, dans l'ordre, pour lire `path`.

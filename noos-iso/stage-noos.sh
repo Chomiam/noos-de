@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Prépare l'arborescence de NOOS pour l'ISO : compile en release (toolbox noos-dev) et
-# assemble DEST/opt/noos :
+# Prépare l'arborescence de NOOS pour l'ISO : compile en release (Debian sid : conteneur
+# noos-dev ou CI) et assemble DEST/opt/noos :
 #
 #   bin/      programmes NOOS (dont noos-login et noos-installer)
-#   lib/      libAdapta (absente des dépôts Fedora)
+#   lib/      libAdapta (absente des dépôts Debian)
 #   share/noos/
 #     system/        fichiers à copier à la racine du système installé (session, greeter,
-#                    thème Plymouth, ld.so.conf.d…)
-#     install/packages.txt   paquets Fedora du système installé
+#                    thème Plymouth, ld.so.conf.d, clé du dépôt APT de NOOS…)
+#     install/packages.txt   paquets Debian du système installé
 #
-#     toolbox run -c noos-dev ./noos-iso/stage-noos.sh [DEST]   (défaut : noos-iso/out/stage)
+#     distrobox enter noos-dev -- ./noos-iso/stage-noos.sh [DEST]   (défaut : noos-iso/out/stage)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -44,7 +44,7 @@ install -Dm644 /dev/stdin "$SYS/etc/ld.so.conf.d/noos.conf" <<<"/opt/noos/lib"
 "$ROOT/noos-plymouth/install.sh" "$SYS" >/dev/null
 # Réglages système (réseau sans économie d'énergie, WirePlumber sans mise en veille).
 "$ROOT/noos-system/install.sh" "$SYS"
-# Sauvegarder et Restaurer : script privilégié, actions dnf5, règle polkit.
+# Sauvegarder et Restaurer : script privilégié, crochets apt, règle polkit.
 "$ROOT/noos-save/install-system.sh" "$SYS" /opt/noos
 "$ROOT/noos-disk/install-system.sh" "$SYS" /opt/noos
 install -Dm755 "$ROOT/noos-disk/noos-disk-helper" "$PREFIX/libexec/noos-disk-helper"
@@ -53,6 +53,12 @@ install -Dm755 "$ROOT/noos-save/noos-save-helper" "$PREFIX/libexec/noos-save-hel
 install -d "$SYS/usr/share/noos-grub"
 install -m644 "$ROOT"/noos-grub/noos/* "$SYS/usr/share/noos-grub/"
 install -m755 "$ROOT/noos-grub/install.sh" "$SYS/usr/share/noos-grub/install.sh"
+install -m755 "$ROOT/noos-grub/05_noos_background" "$SYS/usr/share/noos-grub/05_noos_background"
+# Dépôt APT de NOOS : clé publique (fournie par la CI, packaging/apt/noos-archive-keyring.asc)
+# et fichier de sources, pour que l'installateur installe le paquet « noos » à jour.
+if [ -s "$ROOT/packaging/apt/noos-archive-keyring.asc" ]; then
+    install -Dm644 "$ROOT/packaging/apt/noos-archive-keyring.asc" "$SYS/usr/share/keyrings/noos-archive-keyring.asc"
+fi
 
 # ── Paquets : listes du dépôt + bibliothèques dont dépendent les binaires ──
 libs_pkgs() {
@@ -60,8 +66,12 @@ libs_pkgs() {
     # (appstream…), sinon elles manqueraient dans l'ISO.
     for b in "${BINS[@]}"; do LD_LIBRARY_PATH="$ROOT/target/libadapta-build/src" ldd "target/release/$b"; done \
         | awk '/=> \// {print $3}' | sort -u \
-        | while read -r lib; do rpm -qf --qf '%{NAME}\n' "$lib" 2>/dev/null || true; done \
-        | grep -v '^glibc$' | sort -u
+        | while read -r lib; do
+            # usrmerge : dpkg connaît le fichier sous /lib ou sous /usr/lib.
+            alt="${lib#/usr}"; [ "$alt" = "$lib" ] && alt="/usr$lib"
+            dpkg -S "$lib" 2>/dev/null || dpkg -S "$alt" 2>/dev/null || true
+        done \
+        | sed 's/:.*//' | grep -vx 'libc6' | sort -u
     # Bibliothèques introuvables : la liste serait incomplète.
     if LD_LIBRARY_PATH="$ROOT/target/libadapta-build/src" ldd target/release/noos-* | grep -q "not found"; then
         echo "ERREUR : bibliothèque introuvable pour un binaire NOOS" >&2
@@ -74,10 +84,6 @@ libs_pkgs() {
     echo "# Bibliothèques des binaires NOOS"
     libs_pkgs
 } | awk '!seen[$0]++' >"$PREFIX/share/noos/install/packages.txt"
-# Projet COPR d'où l'installateur télécharge le paquet « noos » (sinon : copie de l'ISO).
-if [ -s noos-iso/copr.txt ]; then
-    install -m644 noos-iso/copr.txt "$PREFIX/share/noos/install/copr"
-fi
 # Le système live a besoin des mêmes bibliothèques pour faire tourner l'installateur.
 libs_pkgs >"$DEST/live-libs.txt"
 

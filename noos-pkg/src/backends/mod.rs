@@ -1,5 +1,5 @@
-//! Implémentations des gestionnaires de paquets de NOOS (basé sur Fedora).
+//! Implémentations des gestionnaires de paquets de NOOS (basé sur Debian sid).
 
-pub mod dnf;
+pub mod apt;
+pub mod aptsources;
 pub mod flatpak;
-pub mod yumrepo;

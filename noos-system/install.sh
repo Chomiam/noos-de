@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Réglages système de NOOS : ./install.sh [RACINE] — RACINE = / par défaut (le paquet RPM et la
+# Réglages système de NOOS : ./install.sh [RACINE] — RACINE = / par défaut (le paquet Debian et la
 # construction de l'ISO passent leur racine). Les fichiers vont dans /usr (défauts du paquet) :
 # l'administrateur garde la main via /etc.
 #
@@ -14,7 +14,7 @@ cd "$HERE/root"
 find . -type f | while read -r f; do
     case "$f" in
     ./etc/sudoers.d/*) install -Dm440 "$f" "$ROOT/${f#./}" ;;   # sudo refuse un autre mode
-    ./usr/libexec/*|./usr/lib/kernel/install.d/*) install -Dm755 "$f" "$ROOT/${f#./}" ;;
+    ./usr/libexec/*) install -Dm755 "$f" "$ROOT/${f#./}" ;;
     *) install -Dm644 "$f" "$ROOT/${f#./}" ;;
     esac
 done

@@ -1,7 +1,7 @@
 //! noos-save — « Sauvegarder et Restaurer » de NOOS (GTK4 + libAdapta).
 //!
 //! Instantanés Btrfs du système (snapper, config « root ») : création manuelle, instantanés
-//! automatiques avant / après chaque opération dnf et réguliers, restauration au prochain
+//! automatiques avant / après chaque opération apt et réguliers, restauration au prochain
 //! redémarrage, comparaison (paquets et fichiers), exploration, et sous-menu GRUB
 //! « Restaurer depuis un instantané ». Les opérations privilégiées passent par
 //! `noos-save-helper` (pkexec) ; voir `snapper.rs`.
@@ -33,7 +33,7 @@ const CSS: &str = "
 .ns-icon { border-radius: 999px; min-width: 34px; min-height: 34px; }
 .ns-badge { border-radius: 999px; padding: 2px 10px; font-size: 0.78em; font-weight: 700; }
 .ns-manual { background: alpha(@accent_color, 0.17); color: @accent_color; }
-.ns-dnf { background: alpha(@warning_color, 0.17); color: @warning_color; }
+.ns-apt { background: alpha(@warning_color, 0.17); color: @warning_color; }
 .ns-timeline { background: alpha(#c061cb, 0.2); color: #dc8add; }
 .ns-keep { color: #f6d32d; }
 .ns-grub { background: alpha(currentColor, 0.08); }
@@ -159,31 +159,32 @@ fn human_size(b: u64) -> String {
     if g >= 100.0 { format!("{g:.0} Go") } else { format!("{g:.1} Go").replace('.', ",") }
 }
 
-/// Titre lisible d'une description dnf (« dnf install -y git » → « Installation : git »).
+/// Titre lisible d'une description apt (« apt-get -y install git » → « Installation : git »).
 fn nice_description(e: &Entry) -> String {
     let d = e.main.description.trim();
     match e.main.origin() {
         Origin::Timeline => return "Instantané régulier".into(),
-        Origin::Dnf => {
-            let words: Vec<&str> = d.split_whitespace().filter(|w| !w.starts_with('-')).collect();
-            let words: Vec<&str> = match words.first() {
-                Some(w) if w.ends_with("dnf") || w.ends_with("dnf5") || w.ends_with("noos-pkg") => words[1..].to_vec(),
-                _ => words,
+        Origin::Apt => {
+            // Options (« -y », « -o Dpkg::Options::=… », « DEBIAN_FRONTEND=… ») écartées.
+            let words: Vec<&str> = d.split_whitespace().filter(|w| !w.starts_with('-') && !w.contains("::") && !w.contains('=')).collect();
+            let words: Vec<&str> = match words.iter().position(|w| {
+                let w = w.rsplit('/').next().unwrap_or(w);
+                matches!(w, "apt" | "apt-get" | "aptitude" | "dpkg" | "noos-pkg" | "unattended-upgrade")
+            }) {
+                Some(i) => words[i + 1..].to_vec(),
+                None => words,
             };
             let (verb, rest) = match words.split_first() {
                 Some((v, r)) => (*v, r.join(" ")),
                 None => ("", String::new()),
             };
             let what = match verb {
-                "install" | "in" => "Installation",
-                "remove" | "rm" | "erase" => "Suppression",
-                "upgrade" | "update" | "up" | "distro-sync" | "system-upgrade" | "offline" => "Mise à jour",
+                "install" | "-i" => "Installation",
+                "remove" | "purge" | "autoremove" | "autopurge" | "-r" | "-P" => "Suppression",
+                "upgrade" | "full-upgrade" | "dist-upgrade" => "Mise à jour",
                 "reinstall" => "Réinstallation",
-                "downgrade" => "Retour en arrière",
-                "swap" => "Remplacement",
-                "group" => "Groupe",
-                "" => return format!("Opération dnf n° {}", e.main.number),
-                v => return format!("dnf {v} {rest}").trim().to_string(),
+                "" => return format!("Opération apt n° {}", e.main.number),
+                v => return format!("apt {v} {rest}").trim().to_string(),
             };
             return if rest.is_empty() { format!("{what} du système") } else { format!("{what} : {rest}") };
         }
@@ -195,7 +196,7 @@ fn nice_description(e: &Entry) -> String {
 fn origin_style(o: Origin) -> (&'static str, &'static str, &'static str) {
     match o {
         Origin::Manual => ("ns-manual", "Manuel", "avatar-default-symbolic"),
-        Origin::Dnf => ("ns-dnf", "Auto · dnf", "system-software-install-symbolic"),
+        Origin::Apt => ("ns-apt", "Auto · apt", "system-software-install-symbolic"),
         Origin::Timeline => ("ns-timeline", "Auto · régulier", "alarm-symbolic"),
     }
 }
@@ -543,7 +544,7 @@ impl App {
 
         // Légende.
         let legend = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        for o in [Origin::Manual, Origin::Dnf, Origin::Timeline] {
+        for o in [Origin::Manual, Origin::Apt, Origin::Timeline] {
             legend.append(&badge(o));
         }
         let star = gtk::Image::from_icon_name("starred-symbolic");
@@ -573,7 +574,7 @@ impl App {
         card.add_css_class("ns-hero");
         let top = gtk::Box::new(gtk::Orientation::Horizontal, 18);
         let entries = st.list();
-        let auto = st.dnf_snapshots || st.get("TIMELINE_CREATE") == "yes";
+        let auto = st.apt_snapshots || st.get("TIMELINE_CREATE") == "yes";
         let (icon, class, title, sub) = if let Some(n) = st.boot_snapshot {
             (
                 "document-revert-symbolic",
@@ -590,15 +591,15 @@ impl App {
                 "Système protégé".into(),
                 format!(
                     "Instantané automatique {}. En cas de problème : Démarrage › « Restaurer depuis un instantané ».",
-                    match (st.dnf_snapshots, st.get("TIMELINE_CREATE") == "yes") {
-                        (true, true) => "avant et après chaque opération dnf, et toutes les heures",
-                        (true, false) => "avant et après chaque opération dnf",
+                    match (st.apt_snapshots, st.get("TIMELINE_CREATE") == "yes") {
+                        (true, true) => "avant et après chaque opération apt, et toutes les heures",
+                        (true, false) => "avant et après chaque opération apt",
                         _ => "toutes les heures",
                     }
                 ),
             )
         } else if auto {
-            ("security-medium-symbolic", "ok", "Protection active".into(), "Le premier instantané sera créé à la prochaine opération dnf. Vous pouvez aussi en créer un maintenant.".into())
+            ("security-medium-symbolic", "ok", "Protection active".into(), "Le premier instantané sera créé à la prochaine opération apt. Vous pouvez aussi en créer un maintenant.".into())
         } else {
             (
                 "security-low-symbolic",
@@ -725,7 +726,7 @@ impl App {
                 .icon_name(if entries.is_empty() { "document-revert-symbolic" } else { "edit-find-symbolic" })
                 .title(if entries.is_empty() { "Aucun instantané" } else { "Aucun résultat" })
                 .description(if entries.is_empty() {
-                    "Il en sera créé un avant chaque opération dnf. Vous pouvez aussi cliquer sur « Créer »."
+                    "Il en sera créé un avant chaque opération apt. Vous pouvez aussi cliquer sur « Créer »."
                 } else {
                     "Aucun instantané ne correspond à ce filtre."
                 })
@@ -765,8 +766,8 @@ impl App {
             None => fmt(&e.main.date, "%H:%M"),
         };
         let kind = match (origin, &e.post) {
-            (Origin::Dnf, Some(_)) => " · avant / après",
-            (Origin::Dnf, None) if e.main.kind == Kind::Pre => " · avant (opération interrompue ?)",
+            (Origin::Apt, Some(_)) => " · avant / après",
+            (Origin::Apt, None) if e.main.kind == Kind::Pre => " · avant (opération interrompue ?)",
             _ => "",
         };
         r.set_subtitle(&format!("{time} · {numbers}{kind}"));
@@ -807,7 +808,7 @@ impl App {
         }
         let source = match origin {
             Origin::Manual => "Créé manuellement".to_string(),
-            Origin::Dnf => format!("Automatique, par dnf : {}", if e.main.description.is_empty() { "dnf" } else { &e.main.description }),
+            Origin::Apt => format!("Automatique, par apt : {}", if e.main.description.is_empty() { "apt" } else { &e.main.description }),
             Origin::Timeline => "Automatique, instantané régulier (toutes les heures)".to_string(),
         };
         r.add_row(&info_row("Origine", &source));
@@ -816,7 +817,7 @@ impl App {
         } else {
             match origin {
                 Origin::Manual => "Jamais supprimé automatiquement".to_string(),
-                Origin::Dnf => format!("Supprimé automatiquement au-delà des {} opérations dnf les plus récentes", st.number("NUMBER_LIMIT", 10)),
+                Origin::Apt => format!("Supprimé automatiquement au-delà des {} opérations apt les plus récentes", st.number("NUMBER_LIMIT", 10)),
                 Origin::Timeline => "Supprimé automatiquement selon les limites des instantanés réguliers".to_string(),
             }
         };
@@ -1013,7 +1014,7 @@ impl App {
         r
     }
 
-    /// Fenêtre « Comparer » : paquets (rpm) et fichiers (snapper status).
+    /// Fenêtre « Comparer » : paquets (dpkg) et fichiers (snapper status).
     fn compare(self: &Rc<Self>, e: &Entry) {
         let (from, to, title) = match &e.post {
             Some(p) => (e.main.number, Some(p.number), format!("Changements de « {} »", nice_description(e))),
@@ -1191,20 +1192,20 @@ impl App {
         let g = adap::PreferencesGroup::new();
         g.set_title("Instantanés automatiques");
         g.set_description(Some("Marqués « Auto » dans la liste. Les plus anciens sont supprimés automatiquement, sauf ceux à conserver."));
-        let dnf = adap::SwitchRow::new();
-        dnf.set_title("Avant et après chaque opération dnf");
-        dnf.set_subtitle("Installation, suppression ou mise à jour de paquets (Logiciels, terminal, mises à jour…)");
-        dnf.set_active(st.dnf_snapshots);
+        let apt_row = adap::SwitchRow::new();
+        apt_row.set_title("Avant et après chaque opération apt");
+        apt_row.set_subtitle("Installation, suppression ou mise à jour de paquets (Logiciels, terminal, mises à jour…)");
+        apt_row.set_active(st.apt_snapshots);
         {
             let app = self.clone();
-            dnf.connect_active_notify(move |r| {
+            apt_row.connect_active_notify(move |r| {
                 let on = r.is_active();
-                app.run(&["dnf", if on { "on" } else { "off" }], if on { "Instantanés dnf activés" } else { "Instantanés dnf désactivés" });
+                app.run(&["apt", if on { "on" } else { "off" }], if on { "Instantanés apt activés" } else { "Instantanés apt désactivés" });
             });
         }
-        g.add(&dnf);
+        g.add(&apt_row);
         let keep = adap::SpinRow::with_range(2.0, 50.0, 1.0);
-        keep.set_title("Opérations dnf conservées");
+        keep.set_title("Opérations apt conservées");
         keep.set_subtitle("Chaque opération = une paire avant / après");
         keep.set_value(f64::from(st.number("NUMBER_LIMIT", 10)));
         self.on_spin(&keep, "NUMBER_LIMIT");

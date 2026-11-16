@@ -1,27 +1,29 @@
 # Système installé (en plus de packages-common.txt et des bibliothèques détectées).
-@hardware-support
 greetd
 pipewire
-pipewire-pulseaudio
+pipewire-pulse
 pipewire-alsa
-pipewire-utils
+pipewire-bin
 wireplumber
 xdg-desktop-portal
 xdg-desktop-portal-gtk
 xdg-desktop-portal-wlr
 xdg-user-dirs
 xdg-utils
+xwayland
 xwayland-satellite
-xorg-x11-server-Xwayland
 grim
-vte291-gtk4
-polkit
-oo7-daemon
-# Déverrouillage du trousseau à la connexion (greetd) et fenêtre de saisie du mot de passe.
-pam_oo7
-gcr3
+libvte-2.91-gtk4-0
+polkitd
+pkexec
+# Trousseau : gnome-keyring, déverrouillé à la connexion par greetd (libpam-gnome-keyring)
+gnome-keyring
+libpam-gnome-keyring
+gcr
 gvfs
+gvfs-backends
 flatpak
+appstream
 firefox
 bash-completion
 # Outils de l'utilisateur (première installation) ; fish = shell par défaut des comptes
@@ -29,7 +31,9 @@ fish
 git
 gh
 fastfetch
-# Sauvegarder et Restaurer : instantanés Btrfs avant / après chaque transaction dnf
+# Sauvegarder et Restaurer : instantanés Btrfs avant / après chaque opération apt
 snapper
-libdnf5-plugin-actions
 btrfs-progs
+# Recherche de mises à jour et sources APT
+apt-utils
+gnupg

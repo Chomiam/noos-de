@@ -1,8 +1,8 @@
 //! Configuration de l'écran de connexion noos-login : `/etc/noos/login.toml`.
 //!
-//! Fichier système (l'écran de connexion tourne sous l'utilisateur `greeter`, avant toute
+//! Fichier système (l'écran de connexion tourne sous l'utilisateur `_greetd`, avant toute
 //! session) : lu par noos-login, écrit par Paramètres → Personnalisation → Écran de
-//! connexion. L'installateur crée `/etc/noos` avec le groupe `wheel` en écriture : les
+//! connexion. L'installateur crée `/etc/noos` avec le groupe `sudo` en écriture : les
 //! administrateurs le modifient sans mot de passe ; sinon Paramètres passe par pkexec.
 
 use std::{fs, path::{Path, PathBuf}};

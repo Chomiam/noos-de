@@ -231,9 +231,11 @@ impl State {
 
 // ───────────────────────────── Divers ─────────────────────────────
 
-/// Disposition clavier du système (`/etc/vconsole.conf`, écrit par l'installateur).
+/// Disposition clavier du système (`/etc/default/keyboard` sur Debian, écrit par l'installateur ;
+/// repli `/etc/vconsole.conf`).
 pub fn keyboard_layout() -> String {
-    std::fs::read_to_string("/etc/vconsole.conf")
+    std::fs::read_to_string("/etc/default/keyboard")
+        .or_else(|_| std::fs::read_to_string("/etc/vconsole.conf"))
         .ok()
         .and_then(|t| {
             t.lines()

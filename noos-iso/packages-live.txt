@@ -1,11 +1,14 @@
 # Système live (installateur) en plus de packages-common.txt.
-dracut-live
+# Démarrage du live : squashfs monté par live-boot (initramfs-tools).
+live-boot
+live-boot-initramfs-tools
+# Installation réseau de Debian dans le disque cible.
+debootstrap
+debian-archive-keyring
 efibootmgr
 util-linux
+fdisk
 gdisk
-libtimezonemap
-grub2-tools
-# Clés GPG de RPM Fusion (paquets pilotes et codecs installés dans le système cible).
-distribution-gpg-keys
-# Noms des cartes graphiques (détection du matériel par l'installateur).
-hwdata
+parted
+libtimezonemap1
+grub-common

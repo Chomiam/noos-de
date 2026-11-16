@@ -19,7 +19,8 @@ pub struct Choices {
     pub disk: Option<Disk>,
     pub swap: bool,
     pub swap_gib: u32,
-    pub rpmfusion: bool,
+    /// Composants contrib, non-free et non-free-firmware de Debian (pilotes NVIDIA, firmwares).
+    pub nonfree: bool,
 }
 
 impl Default for Choices {
@@ -38,7 +39,7 @@ impl Default for Choices {
             disk: None,
             swap: true,
             swap_gib: crate::disk::default_swap_gib(),
-            rpmfusion: true,
+            nonfree: true,
         }
     }
 }
@@ -58,7 +59,8 @@ pub const LOCALES: &[(&str, &str, &str, &str)] = &[
     ("nl_NL.UTF-8", "Nederlands", "nl", "Europe/Amsterdam"),
 ];
 
-/// Paquet de langue glibc pour une locale (`fr_FR.UTF-8` → `glibc-langpack-fr`).
-pub fn langpack(locale: &str) -> String {
-    format!("glibc-langpack-{}", locale.split(['_', '.']).next().unwrap_or("en"))
+/// Ligne de /etc/locale.gen d'une locale (`fr_FR.UTF-8` → `fr_FR.UTF-8 UTF-8`).
+pub fn locale_gen_line(locale: &str) -> String {
+    let charset = locale.split_once('.').map(|(_, c)| c).unwrap_or("UTF-8");
+    format!("{locale} {charset}")
 }

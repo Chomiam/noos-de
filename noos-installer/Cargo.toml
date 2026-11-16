@@ -1,6 +1,6 @@
 [package]
 name = "noos-installer"
-description = "Installateur de NOOS (Fedora 45, installation réseau) en GTK4 + libAdapta"
+description = "Installateur de NOOS (Debian sid, installation réseau) en GTK4 + libAdapta"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

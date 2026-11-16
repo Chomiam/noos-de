@@ -1,0 +1,13 @@
+#!/bin/sh
+set -e
+case "$1" in
+remove)
+    ldconfig || true
+    ;;
+purge)
+    # Repères « une seule fois » de postinst ; la configuration de l'utilisateur reste.
+    rm -rf /var/lib/noos
+    ;;
+esac
+#DEBHELPER#
+exit 0

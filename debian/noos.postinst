@@ -1,0 +1,76 @@
+#!/bin/sh
+# Paquet noos : réglages faits une seule fois (repères dans /var/lib/noos) pour respecter les
+# choix ultérieurs de l'utilisateur, et mises à jour des thèmes à chaque installation.
+set -e
+
+if [ "$1" = configure ]; then
+    mkdir -p /var/lib/noos
+    ldconfig || true
+
+    # Architecture 32 bits (Steam, Wine) : Debian ne l'active pas par défaut.
+    if [ ! -e /var/lib/noos/i386 ]; then
+        if ! dpkg --print-foreign-architectures | grep -qx i386; then
+            dpkg --add-architecture i386 || true
+        fi
+        touch /var/lib/noos/i386
+    fi
+
+    # Flathub actif par défaut (fichier embarqué : pas de réseau). Si l'utilisateur retire
+    # Flathub, une mise à jour ne le remet pas.
+    if [ ! -e /var/lib/noos/flathub-added ] && command -v flatpak >/dev/null 2>&1; then
+        flatpak remote-add --system --if-not-exists flathub /opt/noos/share/noos/flathub.flatpakrepo >/dev/null 2>&1 || true
+        flatpak remote-modify --system --no-filter --enable flathub >/dev/null 2>&1 || true
+        touch /var/lib/noos/flathub-added
+    fi
+
+    # Instantanés Btrfs de / (snapper) : configurés si la racine est en Btrfs ; les réglages
+    # choisis ensuite dans « Sauvegarder et Restaurer » sont conservés aux mises à jour.
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    if [ "$(findmnt -no FSTYPE / 2>/dev/null)" = btrfs ]; then
+        /opt/noos/libexec/noos-save-helper setup >/dev/null 2>&1 || true
+    fi
+
+    # Profils d'énergie, une seule fois (l'utilisateur peut les couper).
+    if [ ! -e /var/lib/noos/power-profiles ]; then
+        systemctl enable power-profiles-daemon.service >/dev/null 2>&1 || true
+        touch /var/lib/noos/power-profiles
+    fi
+
+    # Nouveaux comptes (useradd) : fish par défaut, une seule fois.
+    if [ ! -e /var/lib/noos/useradd-fish ] && [ -x /usr/bin/fish ] && [ -f /etc/default/useradd ]; then
+        if grep -q '^SHELL=' /etc/default/useradd; then
+            sed -i 's|^SHELL=.*|SHELL=/usr/bin/fish|' /etc/default/useradd
+        else
+            echo 'SHELL=/usr/bin/fish' >>/etc/default/useradd
+        fi
+        touch /var/lib/noos/useradd-fish
+    fi
+
+    # Recherche régulière des mises à jour (timer utilisateur), une seule fois.
+    if [ ! -e /var/lib/noos/update-timer ]; then
+        systemctl --global enable noos-update-check.timer >/dev/null 2>&1 || true
+        touch /var/lib/noos/update-timer
+    fi
+
+    # Écran de connexion : répertoire d'état du greeter (compte _greetd du paquet greetd).
+    if getent passwd _greetd >/dev/null 2>&1; then
+        install -d -o _greetd -g _greetd /var/lib/noos-login 2>/dev/null || true
+    fi
+
+    # Démarrage fluide : pilote graphique chargé tôt, Plymouth NOOS sans simpledrm
+    # (initramfs régénéré seulement si ces réglages changent).
+    /usr/libexec/noos-boot-setup >/dev/null 2>&1 || true
+
+    # Thème GRUB : fichiers mis à jour à chaque fois ; grub.cfg régénéré à la première installation.
+    if [ -d /boot/grub ]; then
+        if grep -q '^GRUB_THEME=' /etc/default/grub 2>/dev/null; then
+            /usr/share/noos-grub/install.sh >/dev/null 2>&1 || true
+        else
+            /usr/share/noos-grub/install.sh --mkconfig >/dev/null 2>&1 || true
+        fi
+    fi
+fi
+
+#DEBHELPER#
+
+exit 0

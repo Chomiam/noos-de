@@ -510,7 +510,8 @@ impl NoosState {
     }
 }
 
-/// Disposition clavier : config NOOS, sinon `XKB_DEFAULT_*`, sinon `/etc/vconsole.conf`.
+/// Disposition clavier : config NOOS, sinon `XKB_DEFAULT_*`, sinon `/etc/default/keyboard`
+/// (Debian) ou `/etc/vconsole.conf`.
 fn keyboard_config(config: &NoosConfig) -> (String, String, String) {
     let kb = &config.keyboard;
     if !kb.layout.is_empty() {
@@ -525,8 +526,8 @@ fn keyboard_config(config: &NoosConfig) -> (String, String, String) {
     }
     let mut layout = String::from("us");
     let mut variant = String::new();
-    // Dans un toolbox, le fichier de l'hôte est monté sous /run/host.
-    for path in ["/etc/vconsole.conf", "/run/host/etc/vconsole.conf"] {
+    // Dans un conteneur (distrobox), le fichier de l'hôte est monté sous /run/host.
+    for path in ["/etc/default/keyboard", "/etc/vconsole.conf", "/run/host/etc/default/keyboard", "/run/host/etc/vconsole.conf"] {
         if let Ok(text) = std::fs::read_to_string(path) {
             for line in text.lines() {
                 if let Some(v) = line.strip_prefix("XKBLAYOUT=") {

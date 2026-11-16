@@ -1,0 +1,125 @@
+# Compilation, tests et paquet .deb de NOOS sur Debian sid, à chaque envoi.
+# Sur « main », le paquet est ensuite publié dans le dépôt APT (branche gh-pages, GitHub Pages)
+# si le secret APT_SIGNING_KEY (clé GPG privée, voir packaging/apt/generate-key.sh) existe.
+name: Debian sid
+
+on:
+  push:
+    branches: ["**"]
+    paths-ignore: ["docs/**", "**.md"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Compilation, tests et paquet
+    runs-on: ubuntu-latest
+    container: debian:sid
+    env:
+      CARGO_TERM_COLOR: always
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - name: Outils de base
+        run: apt-get update -qq && apt-get install -y -qq --no-install-recommends git ca-certificates curl
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Dépôt sûr pour git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Dépendances de compilation (+ Rust par rustup)
+        run: ./scripts/install-build-deps.sh
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-sid-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-sid-
+      - name: Clé publique du dépôt APT
+        env:
+          APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
+        run: |
+          if [ ! -s packaging/apt/noos-archive-keyring.asc ] && [ -n "$APT_SIGNING_KEY" ]; then
+            printf '%s\n' "$APT_SIGNING_KEY" | gpg --batch --import
+            gpg --armor --export >packaging/apt/noos-archive-keyring.asc
+          fi
+          if [ -s packaging/apt/noos-archive-keyring.asc ]; then echo "clé présente"; else echo "pas de clé : paquet sans dépôt APT"; fi
+      - name: Paquet .deb (libAdapta + binaires release)
+        run: packaging/apt/build-deb.sh out
+      - name: Tests
+        run: |
+          . "$HOME/.cargo/env"
+          LD_LIBRARY_PATH="$PWD/target/libadapta-build/src" cargo test --release --locked --workspace
+      - name: Vérification du paquet
+        run: |
+          dpkg-deb --info out/*.deb
+          dpkg-deb --contents out/*.deb | head -n 80
+      - uses: actions/upload-artifact@v4
+        with:
+          name: noos-deb
+          path: out/*.deb
+          retention-days: 14
+
+  publish:
+    name: Publication du dépôt APT (GitHub Pages)
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    container: debian:sid
+    permissions:
+      contents: write
+    env:
+      APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
+    steps:
+      - name: Clé de signature présente ?
+        id: key
+        run: |
+          if [ -n "$APT_SIGNING_KEY" ]; then
+            echo "ok=1" >>"$GITHUB_OUTPUT"
+          else
+            echo "::warning::Secret APT_SIGNING_KEY absent : dépôt APT non publié (voir packaging/apt/generate-key.sh)"
+          fi
+      - name: Outils
+        if: steps.key.outputs.ok == '1'
+        run: apt-get update -qq && apt-get install -y -qq --no-install-recommends git ca-certificates gnupg apt-utils xz-utils
+      - uses: actions/checkout@v4
+        if: steps.key.outputs.ok == '1'
+      - name: Branche gh-pages
+        if: steps.key.outputs.ok == '1'
+        run: |
+          git config --global --add safe.directory '*'
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null; then
+            git fetch --depth=1 origin gh-pages
+            git worktree add -B gh-pages pages origin/gh-pages
+          else
+            git worktree add --detach pages
+            git -C pages switch --orphan gh-pages
+          fi
+      - uses: actions/download-artifact@v4
+        if: steps.key.outputs.ok == '1'
+        with:
+          name: noos-deb
+          path: debs
+      - name: Signature et index du dépôt
+        if: steps.key.outputs.ok == '1'
+        run: |
+          printf '%s\n' "$APT_SIGNING_KEY" | gpg --batch --import
+          packaging/apt/update-repo.sh pages debs/*.deb
+      - name: Envoi
+        if: steps.key.outputs.ok == '1'
+        run: |
+          cd pages
+          git add -A
+          git commit -m "Dépôt APT : $(ls ../debs | tr '\n' ' ')" || exit 0
+          git push origin gh-pages

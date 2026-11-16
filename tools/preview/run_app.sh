@@ -1,7 +1,7 @@
 #!/bin/bash
 # run_app.sh CAPTURE.png ATTENTE "commande" — aperçu imbriqué en kiosque (une appli seule),
 # capture, puis arrêt. Lancer sur l'hôte si l'appli a besoin du bus système (udisks,
-# NetworkManager), sinon dans le toolbox.
+# NetworkManager), sinon dans le conteneur noos-dev.
 OUT="$1"; WAIT="$2"; CMD="$3"
 cd "$(dirname "$0")/../.."
 LOG="${PREVIEW_LOG:-$(dirname "$OUT")/comp.log}"

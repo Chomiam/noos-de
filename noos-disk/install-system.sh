@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Fichiers système de « Disques » : ./install-system.sh [RACINE] [PRÉFIXE]
-# (RACINE = / ; PRÉFIXE = /opt/noos). Utilisé par le paquet RPM et la construction de l'ISO.
+# (RACINE = / ; PRÉFIXE = /opt/noos). Utilisé par le paquet Debian et la construction de l'ISO.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="${1:-/}"

@@ -3,7 +3,7 @@
 //! | Backend   | Lecture sans droits | Ouverture de ports         | Distributions typiques  |
 //! |-----------|---------------------|----------------------------|-------------------------|
 //! | firewalld | oui (D-Bus)         | runtime + permanent (zone) | Fedora, RHEL, openSUSE  |
-//! | ufw       | état seulement      | `ufw allow` (persistant)   | Ubuntu, Debian, Mint    |
+//! | ufw       | état seulement      | `ufw allow` (persistant)   | Debian (NOOS), Ubuntu   |
 //! | nftables  | non                 | non (règles manuelles)     | Arch (config perso)     |
 //! | iptables  | non                 | non (règles manuelles)     | anciens systèmes        |
 
@@ -329,11 +329,17 @@ pub fn remove_service(backend: FwBackend, service: &str, zone: Option<&str>) -> 
     }
 }
 
-/// Pare-feu de NOOS (firewalld, comme Fedora), et plan d'installation.
+/// Pare-feu de NOOS (ufw, l'outil habituel de Debian), et plan d'installation : entrées
+/// refusées, sorties autorisées, actif au démarrage.
 pub fn install_plan(_sys: &SystemInfo) -> Option<(&'static str, Plan)> {
     Some((
-        "firewalld",
-        Plan::new().root(&["dnf", "install", "-y", "firewalld"]).root(&["systemctl", "enable", "--now", "firewalld"]),
+        "ufw",
+        Plan::new()
+            .root(&["env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "install", "-y", "ufw"])
+            .root(&["ufw", "default", "deny", "incoming"])
+            .root(&["ufw", "default", "allow", "outgoing"])
+            .root(&["ufw", "--force", "enable"])
+            .root(&["systemctl", "enable", "ufw.service"]),
     ))
 }
 
@@ -364,10 +370,10 @@ mod tests {
 
     #[test]
     fn plans() {
-        let p = open_port(FwBackend::Firewalld, "25565", Proto::Both, Some("FedoraWorkstation")).unwrap();
+        let p = open_port(FwBackend::Firewalld, "25565", Proto::Both, Some("public")).unwrap();
         let d = p.describe();
         assert_eq!(d.len(), 4);
-        assert_eq!(d[1], "# firewall-cmd --permanent --zone=FedoraWorkstation --add-port=25565/tcp");
+        assert_eq!(d[1], "# firewall-cmd --permanent --zone=public --add-port=25565/tcp");
         let p = open_port(FwBackend::Ufw, "6000-6010", Proto::Udp, None).unwrap();
         assert_eq!(p.describe(), ["# ufw allow 6000:6010/udp"]);
     }

@@ -1,0 +1,9 @@
+#!/bin/sh
+set -e
+if [ "$1" = remove ]; then
+    systemctl disable --now noos-snapshots-grub.path >/dev/null 2>&1 || true
+    systemctl disable noos-snapshot-boot.service >/dev/null 2>&1 || true
+    systemctl --global disable noos-update-check.timer >/dev/null 2>&1 || true
+fi
+#DEBHELPER#
+exit 0

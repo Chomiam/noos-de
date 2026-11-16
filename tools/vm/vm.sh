@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# VM de test NOOS (QEMU/KVM sans affichage), à lancer dans le toolbox noos-dev.
+# VM de test NOOS (QEMU/KVM sans affichage), sur l'hôte Debian ou dans le conteneur noos-dev
+# (paquets qemu-system-x86, ovmf, qemu-utils).
 #
 #   tools/vm/vm.sh start [ISO] [uefi|bios]   démarre la VM (sans ISO : démarre sur le disque)
 #   tools/vm/vm.sh install                    parcours complet de l'installateur (écran d'accueil)
@@ -28,8 +29,10 @@ start)
     [ -f "$DIR/disk.qcow2" ] || qemu-img create -f qcow2 "$DIR/disk.qcow2" 40G >/dev/null
     FW=()
     if [ "$MODE" = uefi ]; then
-        [ -f "$DIR/VARS.fd" ] || cp /usr/share/edk2/ovmf/OVMF_VARS.fd "$DIR/VARS.fd"
-        FW=(-drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/ovmf/OVMF_CODE.fd
+        # Debian (paquet ovmf) : OVMF_CODE_4M.fd / OVMF_VARS_4M.fd.
+        OVMF=/usr/share/OVMF
+        [ -f "$DIR/VARS.fd" ] || cp "$OVMF/OVMF_VARS_4M.fd" "$DIR/VARS.fd"
+        FW=(-drive "if=pflash,format=raw,readonly=on,file=$OVMF/OVMF_CODE_4M.fd"
             -drive "if=pflash,format=raw,file=$DIR/VARS.fd")
     fi
     rm -f "$QMP" "$SER"

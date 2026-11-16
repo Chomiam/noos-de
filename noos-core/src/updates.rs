@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 #[serde(default)]
 pub struct Item {
     pub name: String,
-    /// `dnf`, `flatpak`…
+    /// `apt`, `flatpak`…
     pub backend: String,
     pub old: String,
     pub new: String,
@@ -23,7 +23,7 @@ pub struct State {
     /// Dernière vérification (secondes depuis 1970).
     pub checked_at: u64,
     pub total: usize,
-    /// Nombre de mises à jour par source (« Fedora », « Flatpak »…).
+    /// Nombre de mises à jour par source (« Paquets Debian (apt) », « Applications Flatpak »…).
     pub by_backend: Vec<(String, usize)>,
     pub items: Vec<Item>,
     /// Erreurs éventuelles (source injoignable…).

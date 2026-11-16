@@ -2,7 +2,8 @@
 
 NOOS est un environnement de bureau Wayland en Rust : compositeur Smithay maison, interface
 façon Windows 11, applications GTK4 + **libAdapta**, pensé pour le jeu (VRR, HDR) et la
-personnalisation du thème. Dépôt : https://github.com/Chomiam/noos-de (public, GPL-3.0).
+personnalisation du thème. **Base : Debian sid (unstable)** depuis novembre 2026 (avant :
+Fedora 45 + COPR, abandonnés). Dépôt : https://github.com/Chomiam/noos-de (public, GPL-3.0).
 Le `README.md` est la vitrine (grand public, captures `docs/captures/*.webp`) ; le détail de
 chaque composant est dans `docs/GUIDE.md` (à compléter à chaque nouvelle fonction) ; ce fichier
 donne le contexte de travail.
@@ -15,11 +16,14 @@ donne le contexte de travail.
   libadwaita 1.5 uniquement. Thèmes dans `~/.local/share/themes/<nom>/libadapta-1.5/`.
 - Apparence et comportement inspirés de **Windows 11** (barre centrée, menu Démarrer, Mica,
   contrôle de compte, écran de verrouillage…), boutons de fenêtre façon macOS à droite.
+- Pensé pour le jeu : l'architecture **i386 est activée par défaut** (Steam, Wine) —
+  installateur, postinst du paquet, préréglage « Applications 32 bits » de Logiciels.
 - Un dossier par composant ; tester visuellement (captures) avant d'annoncer « c'est fait ».
 - Ne jamais demander ni réutiliser de mot de passe ou de jeton : l'utilisateur fait lui-même
-  les étapes root et les connexions (GitHub `gh auth login`, COPR `~/.config/copr`). S'il en
+  les étapes root et les connexions (GitHub, secrets du dépôt comme `APT_SIGNING_KEY`). S'il en
   colle un dans la conversation, ne pas l'utiliser, lui conseiller de le régénérer.
-- Pousser sur GitHub uniquement quand il le demande.
+- Pousser sur GitHub uniquement quand il le demande (il a autorisé la compilation par la CI
+  GitHub : pousser une branche de travail pour la faire tourner, `main` seulement sur accord).
 
 ## Organisation
 
@@ -28,12 +32,15 @@ donne le contexte de travail.
 | `noos-comp/` | Compositeur Smithay (DRM/KMS + libinput, ou imbriqué winit), tiling, Mica (flou), capture d'écran, IPC, mode kiosque (`--kiosk "<cmd>"`) |
 | `noos-shell/` | Barre des tâches, menu Démarrer, réglages rapides, notifications, zone de notification, fond d'écran, **agent polkit** (`src/polkit.rs`) |
 | `noos-settings/`, `noos-file/`, `noos-term/`, `noos-snip/`, `noos-keys/`, `noos-software/` + `noos-pkg/` | Applications |
+| `noos-pkg/` | Paquets : backend **apt** (`backends/apt.rs` : `apt-cache`, `dpkg-query`, `apt-get -s`, DEP-11) + **sources APT** (`backends/aptsources.rs` : une ligne et deb822, activer / supprimer / composants) + Flatpak ; `sources.rs` regroupe (Debian sid, NOOS, experimental, contrib/non-free manquants) ; pare-feu ufw |
 | `noos-photoview/` | « Photos » : visionneuse d'images (zoom centré sur le pointeur, ambilight, bande de miniatures, diaporama, EXIF) ; appli par défaut des images (`/etc/xdg/noos-mimeapps.list`) |
-| `noos-login/` | Écran de connexion (greeter greetd), lancé par `noos-greeter` = `noos-comp --kiosk noos-login` |
-| `noos-installer/` | Installateur plein écran (installation réseau Fedora 45, Btrfs @/@home, GRUB) |
+| `noos-login/` | Écran de connexion (greeter greetd, compte `_greetd`), lancé par `noos-greeter` = `noos-comp --kiosk noos-login` |
+| `noos-installer/` | Installateur plein écran : Btrfs @/@home, **debootstrap sid** puis apt dans le chroot (avancement `APT::Status-Fd`), contrib/non-free au choix, i386, paquet `noos` du dépôt APT (sinon copie de l'ISO), GRUB (shim signé en UEFI, `EFI/debian`, entrée NVRAM « NOOS ») |
 | `noos-plymouth/` | Thème Plymouth (`generate.py` produit les PNG, déjà générés dans le dépôt) |
-| `noos-iso/` | Construction de l'ISO live (`build.sh` → `noos-iso/out/noos-45-x86_64.iso`) |
-| `packaging/rpm/` + `.copr/` | Paquet RPM `noos` et construction COPR |
+| `noos-iso/` | ISO live Debian sid : `build.sh` (podman/docker) ou CI `iso.yml` → `noos-sid-amd64.iso` ; live-boot, GRUB signé `gcdx64.efi` + `/.disk/info` |
+| `debian/` | Paquet Debian `noos` (debhelper 13, `rules`, `postinst` « une seule fois » via `/var/lib/noos/*`) |
+| `packaging/apt/` | `build-deb.sh` (version `0.1.0~git<date>.<commit>-1`), `update-repo.sh` (dépôt signé), `generate-key.sh`, `noos.sources`, `index.html` de Pages |
+| `.github/workflows/` | `build.yml` (debian:sid : `.deb` + tests ; publication `gh-pages` sur `main`), `iso.yml` (à la demande) |
 | `tools/vm/` | VM de test QEMU pilotée par QMP (voir plus bas) |
 | `noos-core/` | Configuration `~/.config/noos/noos.toml`, `/etc/noos/login.toml`, protocole IPC |
 | `noos-theme/` | Palettes, génération du thème libAdapta « NOOS » |
@@ -41,46 +48,61 @@ donne le contexte de travail.
 | `noos-session/` | Lanceur de session, fichiers .desktop, portails |
 | `noos-core/src/disk_image.rs` | Images disque : montage / démontage par udisks (sans mot de passe), détection (`losetup -J`) ; Explorateur : bandeau « Démonter », alerte avant suppression |
 | `noos-texteditor/` | Éditeur de texte et de code (GtkSourceView 5 : 160+ langages, recherche / remplacement, onglets, dossier, mini-carte, thèmes NOOS `data/sourceview/`) |
-| `noos-lock/` | Écran de verrouillage (ext-session-lock via gtk4-session-lock, PAM service `noos-lock`) : animation, horloge, mot de passe ; `--preview [animation]` sans verrouiller |
-| `noos-shader/` | Animations GLSL format Shadertoy `mainImage` (GLArea, libepoxy chargée à l'exécution) : intégrées, bibliothèque `~/.local/share/noos/shaders` (`library:<id>`), catalogue NOOS = `data/shaders/catalog/*.frag` → `build-index.py` → `index.json` téléchargé depuis GitHub (repli : copie du paquet), import de fichiers / code collé (GLSL Sandbox converti par `adapt`). Plus d'API Shadertoy (abandonnée : clé personnelle, licences NC) |
-| `noos-archive/` | « Archives » : parcourir, extraire, créer, tester, convertir (7-Zip, bsdtar, unar, xorriso) ; modes `--extract-here`, `--extract-to`, `--compress`, `--quick zip\|7z` pour le menu de l'Explorateur |
-| `noos-widget-vitals/` | Widget « Ressources » de la barre (coin gauche) : processeur, carte graphique (AMD `gpu_busy_percent`, Intel fréquence réelle / max, NVIDIA `nvidia-smi`), mémoire, disque (temps occupé), réseau ; détail avec historique 2 min. Bibliothèque utilisée par `noos-shell` ; `[taskbar] show_vitals` ; `NOOS_VITALS_OPEN=1` ouvre le détail (captures) |
-| `noos-disk/` | « Disques » (udisks2 par gio, bus système) : carte des partitions, formatage (exFAT, NTFS, FAT32, ext4, Btrfs, XFS, F2FS), créer / supprimer des partitions, initialiser (GPT / MBR), renommer, vérifier / réparer, LUKS, SMART (ATA / NVMe) + autotest, test de vitesse, images disque, éjection. Bibliothèque `noos_disk` (`udisks.rs` modèle, `ops.rs` opérations, `rawio.rs` accès brut) partagée avec le shell (`drives.rs` : icône d'éjection, « Lecture automatique ») et l'Explorateur (volumes dans la barre latérale et l'accueil). `noos-disk-helper` (pkexec, `org.noos.disk.helper`) : montage permanent dans `/mnt/<nom>` (fstab par UUID, `nofail`, uid/gid pour NTFS/exFAT/FAT) et « M'en donner la propriété » (chown). `noos-disk --selftest /dev/loopN` teste les opérations destructives sur une image |
-| `noos-core/src/updates.rs` | Mises à jour en arrière-plan : timer utilisateur `noos-update-check.timer` → `noos-pkg check --auto` (sans root : `dnf makecache` dans le cache utilisateur, `flatpak remote-ls --updates`) → `~/.local/state/noos/updates.json`, lu par l'icône de la barre (`noos-shell/src/updates.rs`, deux flèches + pastille orange → `noos-software --updates`), Logiciels et Paramètres › Mises à jour (`[updates]` : `auto_check`, `interval_hours` écrit dans `~/.config/systemd/user/noos-update-check.timer.d/`, `tray_icon`) |
-| `noos-comp/src/desktops.rs` + `outputs.rs` | Bureaux virtuels (fenêtres garées hors du bureau actif, glissement animé, `[desktops]` écrit par le compositeur seul, IPC `switch-desktop`, `add-desktop`, `move-window-to-desktop`…) et plusieurs écrans (positions / écran principal `[[output]] position, primary`, `apply_output_layout`, Super+Maj+←/→). Shell : `taskview.rs` (Super+Tab, miniatures des bureaux, indicateur), `editmode.rs` (dock `[taskbar] position = bottom\|top\|left\|right`, zones `zone_left/center/right` + barre fine `[topbar] enabled, zone_*` = 6 zones via `NoosConfig::bar_zones()` / `set_bar_zones()`, éléments retirés `taskbar.hidden`, coin des notifications `[notifications] position`, widgets du bureau `[[desktop_widget]]` déplacés par un geste posé sur le `gtk::Fixed` — jamais sur l'élément qui bouge, sinon clignotement). Le shell reconstruit les barres (`rebuild_bars`) quand le bord ou la barre fine change |
-| `noos-save/` | « Sauvegarder et Restaurer » : instantanés Btrfs (snapper), restauration au redémarrage ; `noos-save-helper` (root, pkexec + actions dnf5) |
-| `noos-grub/` | Thème GRUB (`generate.py` produit images et polices .pf2, déjà générées) ; `install.sh` le copie dans /boot |
-| `noos-system/` | Réglages système livrés par le paquet : Wi-Fi/Ethernet sans économie d'énergie, WirePlumber sans mise en veille, sudo `pwfeedback`, profil fastfetch (`/etc/xdg/fastfetch`), fish (`vendor_conf.d` : pas de message d'accueil, fastfetch à l'ouverture) |
+| `noos-lock/` | Écran de verrouillage (ext-session-lock via gtk4-session-lock, PAM `noos-lock` = `@include common-auth`) : animation, horloge, mot de passe ; `--preview [animation]` sans verrouiller |
+| `noos-shader/` | Animations GLSL format Shadertoy `mainImage` (GLArea, libepoxy chargée à l'exécution) : intégrées, bibliothèque `~/.local/share/noos/shaders` (`library:<id>`), catalogue NOOS = `data/shaders/catalog/*.frag` → `build-index.py` → `index.json` téléchargé depuis GitHub (repli : copie du paquet), import de fichiers / code collé (GLSL Sandbox converti par `adapt`) |
+| `noos-archive/` | « Archives » : parcourir, extraire, créer, tester, convertir (7-Zip `7zip`, bsdtar `libarchive-tools`, unar, xorriso) ; modes `--extract-here`, `--extract-to`, `--compress`, `--quick zip\|7z` pour le menu de l'Explorateur |
+| `noos-widget-vitals/` | Widget « Ressources » de la barre : processeur, carte graphique (AMD `gpu_busy_percent`, Intel fréquence, NVIDIA `nvidia-smi`), mémoire, disque, réseau ; noms PCI `/usr/share/misc/pci.ids` ; `[taskbar] show_vitals` ; `NOOS_VITALS_OPEN=1` ouvre le détail |
+| `noos-disk/` | « Disques » (udisks2 par gio, bus système) : partitions, formatage (exFAT, NTFS, FAT32, ext4, Btrfs, XFS, F2FS), LUKS, SMART, test de vitesse, images, éjection. Bibliothèque `noos_disk` partagée avec le shell et l'Explorateur. `noos-disk-helper` (pkexec, `org.noos.disk.helper`) : montage permanent `/mnt/<nom>`, « M'en donner la propriété ». `noos-disk --selftest /dev/loopN` teste les opérations destructives sur une image |
+| `noos-core/src/updates.rs` | Mises à jour en arrière-plan : timer utilisateur `noos-update-check.timer` → `noos-pkg check --auto` (sans root : `apt-get update` dans `~/.cache/noos/apt` au plus toutes les 6 h, puis `apt-get -s full-upgrade` sur les listes les plus récentes ; `flatpak remote-ls --updates`) → `~/.local/state/noos/updates.json`, lu par l'icône de la barre, Logiciels et Paramètres › Mises à jour |
+| `noos-comp/src/desktops.rs` + `outputs.rs` | Bureaux virtuels et plusieurs écrans (`[[output]] position, primary`, Super+Maj+←/→). Shell : `taskview.rs` (Super+Tab), `editmode.rs` (dock sur les 4 bords, 6 zones via `NoosConfig::bar_zones()`, widgets du bureau `[[desktop_widget]]` déplacés par un geste posé sur le `gtk::Fixed` — jamais sur l'élément qui bouge, sinon clignotement). Le shell reconstruit les barres (`rebuild_bars`) quand le bord ou la barre fine change |
+| `noos-save/` | « Sauvegarder et Restaurer » : instantanés Btrfs (snapper, `ALLOW_GROUPS=sudo`), avant / après chaque opération apt (`/etc/apt/apt.conf.d/80noos-save` → `noos-save-helper apt-pre/apt-post`, numéro « avant » dans `/run/noos-save/apt-pre`), restauration au redémarrage ; comparaison des paquets par `dpkg-query --admindir` |
+| `noos-grub/` | Thème GRUB (`generate.py` produit images et polices .pf2, déjà générées) ; `install.sh` le copie dans `/boot/grub/themes/noos` |
+| `noos-system/` | Réglages système livrés par le paquet : Wi-Fi/Ethernet sans économie d'énergie, WirePlumber sans mise en veille, sudo `pwfeedback`, PAM `noos-lock`, `GRUB_DISTRIBUTOR=NOOS` (`/etc/default/grub.d/90-noos.cfg`), `noos-boot-setup` (initramfs-tools), fastfetch, fish |
 
-## Environnement de développement
+## Environnement de travail
 
-- Hôte : Fedora 45 Silverblue (GNOME/GDM), Intel UHD 630, **8 Go de RAM** (attention aux VM).
-- On compile dans le **toolbox `noos-dev`** (Fedora 45), pour que les binaires correspondent
-  aux bibliothèques de l'hôte :
+- Poste actuel d'Axel : **Windows 11** (application Claude, dépôt dans
+  `C:\Users\Chomiam\Documents\Projets\noos-de`, Git Bash). Pas de WSL ni de conteneur :
+  **les compilations se font sur GitHub Actions** (`build.yml`, conteneur `debian:sid`).
+  En local sous Windows, seule la logique pure se teste : `noos-pkg` compile avec un
+  `noos-core` réduit (paths + updates), car `noos-core` utilise des sockets Unix.
+- Fins de ligne : `.gitattributes` impose LF (`core.autocrlf=false` dans le dépôt) ; ne jamais
+  committer de CRLF dans les scripts shell, `debian/rules` ou les fichiers système.
+- Cible : **Debian sid**. Rust vient de **rustup** (`scripts/install-build-deps.sh`), pas des
+  paquets Debian (édition 2024, crates récentes) ; d'où `dpkg-buildpackage -d`.
+- Sur une machine Debian sid (ou conteneur distrobox `noos-dev`) :
   ```bash
-  toolbox create -c noos-dev --distro fedora --release 45
-  toolbox run -c noos-dev sudo dnf builddep packaging/rpm/noos.spec   # dépendances de compilation
-  toolbox run -c noos-dev sudo dnf install grim xdg-desktop-portal-wlr xwayland-satellite \
-      qemu-system-x86-core edk2-ovmf qemu-img guestfs-tools libtimezonemap copr-cli gh rpm-build
+  ./scripts/install-build-deps.sh        # bibliothèques -dev, debhelper, rustup
+  ./scripts/build-libadapta.sh           # libAdapta dans target/libadapta-build
+  cargo build --release -p <crate>
+  LD_LIBRARY_PATH=target/libadapta-build/src cargo test -p noos-login
+  packaging/apt/build-deb.sh             # → packaging/apt/out/noos_<version>_amd64.deb
   ```
-  Si Claude tourne dans une sandbox Flatpak : `flatpak-spawn --host toolbox run -c noos-dev bash -c '…'`,
-  et pour installer en root dans le toolbox : `flatpak-spawn --host podman exec -u root noos-dev dnf install …`.
-- libAdapta est compilée (pas installée) dans `target/libadapta-build` par
-  `scripts/build-libadapta.sh` ; `.cargo/config.toml` y pointe `PKG_CONFIG_PATH`.
-  Les tests (`cargo test -p noos-login`…) ont besoin de
-  `LD_LIBRARY_PATH=target/libadapta-build/src`.
-- Construire : `cargo build --release -p <crate>` (profil release, LTO thin).
+- libAdapta est compilée (pas installée) dans `target/libadapta-build` ; `.cargo/config.toml`
+  y pointe `PKG_CONFIG_PATH` (debian/rules l'exporte aussi, sinon ignoré).
 - Installer dans la vraie session de l'utilisateur (préfixe `~/.local/opt/noos`, sans sudo) :
-  `toolbox run -c noos-dev ./scripts/install-user.sh` (remplacement atomique des binaires).
-  Puis : `pkill -x noos-shell` (le chien de garde du compositeur le relance) ; un changement
-  du compositeur demande une déconnexion/reconnexion.
+  `./scripts/install-user.sh`, puis `pkill -x noos-shell` (le chien de garde du compositeur le
+  relance) ; un changement du compositeur demande une déconnexion/reconnexion.
 - Journal de la session NOOS : `~/.local/state/noos/session.log`.
 
-### Aperçu imbriqué (sans toucher à la vraie session)
+### Dépôt APT (remplace COPR)
+
+- https://chomiam.github.io/noos-de/ = branche `gh-pages` (GitHub Pages, source « Deploy from
+  a branch », `gh-pages` / racine). Suite `sid`, composant `main`, `binary-amd64` + `binary-i386`
+  (vide, évite l'avertissement apt quand i386 est activée), 5 dernières versions.
+- `build.yml` publie à chaque envoi sur `main` si le secret **`APT_SIGNING_KEY`** (clé GPG
+  privée sans phrase de passe) existe ; sinon avertissement et rien n'est publié.
+- Clé : `packaging/apt/generate-key.sh` (à lancer par Axel), clé publique à committer dans
+  `packaging/apt/noos-archive-keyring.asc` (à défaut, la CI la tire du secret). Le paquet
+  n'installe `noos.sources` + la clé que si elle est présente au moment de la construction.
+- L'installateur ajoute le dépôt (clé copiée depuis l'ISO) et installe `noos` ; sinon copie de
+  `/opt/noos` de l'ISO.
+
+### Aperçu imbriqué (sans toucher à la vraie session) — sur une machine Linux
 
 ```bash
-toolbox run -c noos-dev bash -c 'WAYLAND_DISPLAY=wayland-1 NOOS_PROFILE=release ./scripts/dev.sh [--no-shell] [--kiosk noos-login]'
-toolbox run -c noos-dev bash -c 'WAYLAND_DISPLAY=wayland-2 grim capture.png'   # capture de l'aperçu
+WAYLAND_DISPLAY=wayland-1 NOOS_PROFILE=release ./scripts/dev.sh [--no-shell] [--kiosk noos-login]
+WAYLAND_DISPLAY=wayland-2 grim capture.png   # capture de l'aperçu
 ```
 On ne peut pas cliquer dans l'aperçu : utiliser les variables de test ci-dessous.
 Scripts prêts à l'emploi (capture puis arrêt) : `tools/preview/run_app.sh capture.png 5 "commande"`
@@ -102,7 +124,7 @@ compositeur y écrit (`[desktops] names`).
 | `NOOS_WINIT_OUTPUTS=2` (`3`) / `NOOS_WINIT_SIZE=2400x760` | compositeur imbriqué : fenêtre découpée en plusieurs écrans simulés / taille de la fenêtre |
 | `NOOS_TASKVIEW_DEMO=1` / `NOOS_EDIT_DEMO=1` | noos-shell : vue des tâches / mode édition ouverts après 2,5 s |
 | `NOOS_LOGIN_PAGE=login` | noos-login ouvre directement le formulaire |
-| `NOOS_LOGIN_SESSION_DIRS=…` | dossiers de sessions supplémentaires (le toolbox n'en a pas) |
+| `NOOS_LOGIN_SESSION_DIRS=…` | dossiers de sessions supplémentaires (un conteneur n'en a pas) |
 | `NOOS_LOGIN_STATE=…` | fichier d'état du greeter (au lieu de /var/lib/noos-login) |
 | `NOOS_INSTALLER_PAGE=n` / `install` | page n de l'installateur / installation simulée de bout en bout |
 | `NOOS_INSTALL_DRYRUN=1` | installateur en simulation (commandes affichées, rien d'exécuté) |
@@ -116,9 +138,9 @@ compositeur y écrit (`[desktops] names`).
 | `NOOS_SAVE_PAGE=settings` / `NOOS_SAVE_EXPAND=n` / `NOOS_SAVE_COMPARE=n` / `NOOS_SAVE_SCROLL=px` | noos-save : page Réglages, instantané n déplié, fenêtre « Comparer » de n, défilement |
 | `NOOS_NET_DEMO=1` (+ `NOOS_NET_MEASURE=1`) | noos-settings › Réseau : connexions, Wi-Fi, DNS, VPN fictifs, sans NetworkManager (+ mesure DNS lancée) ; pages directes `noos-settings network\|wifi\|dns\|vpn\|ip\|hotspot\|network-diagnostics` |
 | `NOOS_VPN_DEMO=1` | noos-shell : profils VPN fictifs, bouclier VPN dans la barre et son menu ouvert |
-| `NOOS_EDITOR_DEMO=1` (+ `NOOS_EDITOR_SEARCH=mot`) | noos-texteditor : dossier et fichiers d'exemple (Rust, Python, CSS, Markdown), recherche lancée ; lancer depuis le conteneur (gtksourceview5) |
+| `NOOS_EDITOR_DEMO=1` (+ `NOOS_EDITOR_SEARCH=mot`) | noos-texteditor : dossier et fichiers d'exemple, recherche lancée |
 | `NOOS_LOCK_DEMO_CARD=1` | noos-lock : carte de connexion affichée d'emblée (avec `--preview`) ; `noos-lock --preview --screensaver` : écran de veille |
-| `NOOS_DISK_DIALOG=format\|free-format\|init\|bench\|bench-run\|smart` | noos-disk : ouvre ce dialogue (avec `noos-disk /dev/sdX`) ; lancer l'aperçu sur l'**hôte** (bus système / udisks absents du conteneur) |
+| `NOOS_DISK_DIALOG=format\|free-format\|init\|bench\|bench-run\|smart` | noos-disk : ouvre ce dialogue (avec `noos-disk /dev/sdX`) ; lancer l'aperçu sur l'**hôte** (bus système / udisks absents d'un conteneur) |
 | `NOOS_DRIVES_OPEN=1` / `NOOS_AUTOPLAY_DEMO=1` | noos-shell : menu « Retirer en toute sécurité » ouvert / fenêtre « Lecture automatique » du premier disque externe |
 | `NOOS_SHADER_CATALOG=<fichier ou URL>` | catalogue d'animations à utiliser (ex. `data/shaders/catalog/index.json` avant de pousser) |
 | `NOOS_DEMO_NAME="Alex Martin"` | nom affiché (menu Démarrer, Paramètres) à la place du vrai : captures publiques |
@@ -128,6 +150,7 @@ compositeur y écrit (`[desktops] names`).
 | `NOOS_PHOTOVIEW_DEMO=<image>;info;zoom=2.5;next;hide;slideshow` | noos-photoview : ouvre une image, panneau d'infos, zoom, suivante, commandes masquées, diaporama |
 | `NOOS_ARCHIVE_DEMO=<archive>\|create` | noos-archive : ouvre une archive / la page de création préremplie |
 | `NOOS_FILE_DEMO=<dossier>;details;list;select=0,2;look;zoom=3;sort=size;copy=<source>;menu;mount;trash` | noos-file : ouvre un dossier, volet de détails, vue Détails, sélection, aperçu rapide, zoom, tri, copie suivie |
+| `NOOS_PKG_ELEVATE=sudo\|none` | noos-pkg : élévation par `sudo -n` ou aucune (tests), au lieu de pkexec |
 
 ### Règles de sécurité (erreurs déjà commises)
 
@@ -141,108 +164,105 @@ compositeur y écrit (`[desktops] names`).
   mettre l'argument entre apostrophes (sinon le reste est exécuté comme des commandes).
 - Ne jamais mettre de gros fichiers (disque de VM, ISO) dans `/tmp` : c'est de la RAM.
 
-## ISO, VM de test, COPR
+## ISO, VM de test
 
-- **ISO** : `./noos-iso/build.sh` (≈ 15 min, sans sudo : compilation dans le toolbox, système
-  live dans un conteneur podman `--privileged` rootless). Sortie : `noos-iso/out/`.
-  `--no-stage` réutilise la compilation précédente.
-- **VM** (dans le toolbox) : `tools/vm/vm.sh start noos-iso/out/noos-45-x86_64.iso uefi`, puis
-  `tools/vm/vm.sh install`, `tools/vm/qmp.py shot x.png`, `tools/vm/vm.sh stop`,
-  `tools/vm/vm.sh start "" uefi` (démarrer sur le disque installé), `tools/vm/vm.sh login`.
+- **ISO** : `./noos-iso/build.sh` (podman ou docker ; compilation dans `noos-dev` ou un
+  conteneur `debian:sid` via `noos-iso/ci-stage.sh`, système live dans un conteneur
+  `--privileged`). Sortie : `noos-iso/out/noos-sid-amd64.iso`. `--no-stage` réutilise la
+  compilation. Sans Linux : GitHub › Actions › **ISO** › Run workflow (artefact `noos-iso`).
+- **VM** (Linux, paquets `qemu-system-x86 ovmf qemu-utils`) : `tools/vm/vm.sh start
+  noos-iso/out/noos-sid-amd64.iso uefi`, puis `tools/vm/vm.sh install`, `tools/vm/qmp.py shot
+  x.png`, `tools/vm/vm.sh stop`, `tools/vm/vm.sh start "" uefi` (démarrer sur le disque
+  installé), `tools/vm/vm.sh login`. OVMF Debian : `/usr/share/OVMF/OVMF_CODE_4M.fd`.
   Lire/modifier le disque de la VM éteinte : `guestfish` (`LIBGUESTFS_BACKEND=direct`,
-  `mount-options subvol=@ /dev/sda3 /`) ; après `upload`, remettre l'étiquette SELinux
-  (`setxattr security.selinux system_u:object_r:bin_t:s0 26 <fichier>`).
-- **COPR** : projet https://copr.fedorainfracloud.org/coprs/chomiam/noos/ (Fedora 45 x86_64),
-  paquet `noos` construit depuis GitHub (`main`) par `.copr/Makefile` →
-  `packaging/rpm/make-srpm.sh` (dépendances Rust « vendored », version `0.1.0-0.<date>.git<commit>`).
-  Relancer : `copr-cli build-package noos --name noos`. Tester un SRPM comme COPR :
-  conteneur `fedora:45` + `dnf builddep` + `rpmbuild --rebuild`.
-  Le paquet installe NOOS dans `/opt/noos` (+ `/usr/bin/noos-session`, `/usr/bin/noos-greeter`).
-  L'installateur l'installe depuis COPR (`noos-iso/copr.txt`), sinon copie la version de l'ISO.
+  `mount-options subvol=@ /dev/sda3 /`).
 
-## Pièges de Fedora 45 et leçons apprises
+## Debian sid : pièges et leçons apprises
 
-- **kmscon** remplace la console texte et fournit `autovt@` : on l'exclut (`--exclude=kmscon`)
-  et on remet agetty (`autovt@.service` → `getty@.service`, `getty@tty1` activé).
-- Système live construit **sans dépendances faibles** : penser aux paquets chargés
-  dynamiquement (invisibles pour `ldd`) : `systemd-pam` (sinon pas de session logind → libseat
-  échoue), `libglvnd-gles`/`mesa-libEGL` (GTK), `glycin-loaders` (images).
-- Les dépendances de libAdapta (appstream…) : `ldd` avec `LD_LIBRARY_PATH` vers libAdapta.
-- **SELinux** : le live tourne avec `selinux=0` ; l'installateur étiquette le système installé
-  avec `setfiles` (sinon systemd ne démarre pas en enforcing).
-- **greetd** (paquet Fedora) : compte `greetd` (pas `greeter`) ; greetd lance lui-même
-  `sh -c "… exec <commande>"` : passer la ligne Exec telle quelle, jamais un `sh -c` imbriqué.
+- **À revalider depuis le passage à Debian** : installation complète en VM (UEFI + BIOS),
+  live-boot + Plymouth, GRUB signé de l'ISO (`gcdx64.efi` cherche `/.disk/info` puis
+  `/boot/grub/grub.cfg` ; les modules non signés ne se chargent pas avec Secure Boot), noms
+  de paquets des listes `noos-iso/packages-*.txt` et de `debian/control` (sid bouge : un
+  paquet absent est signalé et ignoré par l'installateur et l'ISO, mais pas par `Depends`).
+- **Comptes et groupes** : administrateurs = groupe **`sudo`** (pas `wheel`) : installateur,
+  snapper `ALLOW_GROUPS`, `/etc/noos` (groupe en écriture), polkit (règle Debian par défaut).
+  greetd tourne sous **`_greetd`**.
+- **Langue et clavier** : `/etc/locale.gen` + `locale-gen`, `/etc/default/locale` ; clavier
+  dans `/etc/default/keyboard` (console-setup), lu par le compositeur et noos-login
+  (`/etc/vconsole.conf` en repli, écrit aussi).
+- **Démarrage** : initramfs-tools (`update-initramfs -u -k all`, modules précoces dans
+  `/etc/initramfs-tools/modules`, bloc « >>> NOOS »), noyau `/boot/vmlinuz-*` +
+  `/boot/initrd.img-*`, `quiet splash`. GRUB : `/boot/grub`, `grub-mkconfig` / `update-grub` ;
+  Debian ajoute lui-même `rootflags=subvol=@` ; pas de BLS ni de grubby : noyau par défaut =
+  `grub-set-default gnulinux-<version>-advanced-<uuid>` (lu dans grub.cfg, `GRUB_DEFAULT=saved`).
+- **UEFI** : GRUB signé exige le dossier `EFI/debian` (`--bootloader-id=debian --no-nvram`),
+  copie de secours `--removable`, entrée NVRAM « NOOS » → `\EFI\debian\shimx64.efi`.
+- **Chroot d'installation** : `/usr/sbin/policy-rc.d` (exit 101) pendant l'installation, montages
+  proc/sys/dev **après** debootstrap (il gère les siens), `DEBIAN_FRONTEND=noninteractive`,
+  `--force-confold`, pas de recommandations (`90noos-install`), retirés à la fin. Les crochets
+  apt de noos-save ne font rien dans un chroot (`systemd-detect-virt --chroot`).
+- **i386** : `dpkg --add-architecture i386` avant le premier `apt-get update` ; Mesa 32 bits
+  (`libgl1-mesa-dri:i386`, `mesa-vulkan-drivers:i386`) et `nvidia-driver-libs:i386` si NVIDIA.
+- **NVIDIA** : `nvidia-driver` (non-free) compilé par DKMS pendant son installation
+  (`linux-headers-amd64`) ; `nvidia-drm.modeset=1`. Codecs : tout est dans `main` (ffmpeg,
+  GStreamer ugly/bad/libav, libde265) ; contrib / non-free = firmwares + NVIDIA.
+- **apt sans root** : `apt-get update -o Dir::State::Lists=~/.cache/noos/apt/lists -o
+  Dir::Cache=… -o Debug::NoLocking=1` fonctionne ; `apt-get -s` aussi. Sortie analysée en
+  `LC_ALL=C.UTF-8` (exec.rs l'impose).
+- **AppStream** : les identifiants des paquets viennent des fichiers DEP-11 de
+  `/var/lib/apt/lists/*_dep11_Components-amd64.yml.gz`, téléchargés seulement si le paquet
+  `appstream` est installé (`Depends`).
+- **Paquet Debian** : unités systemd activées par postinst (pas par dh_installsystemd) ;
+  libAdapta privée dans `/opt/noos/lib` (`dh_shlibdeps -l`, pas de shlibs publics) ; fichiers
+  de `/etc` = conffiles automatiques ; sudoers.d mis en 0440 par dh_fixperms.
+- **Live** : live-boot (`boot=live components`), squashfs dans `/live/filesystem.squashfs`,
+  autologin root sur tty1 → `noos-live-installer`.
+- **greetd** lance lui-même `sh -c "… exec <commande>"` : passer la ligne Exec telle quelle,
+  jamais un `sh -c` imbriqué. Trousseau : gnome-keyring + `libpam-gnome-keyring`.
 - **polkit** : gio ne garde qu'une référence faible sur la connexion au bus système → la
   conserver, sinon polkitd oublie l'agent (« No authentication agent found »). Dans un
   terminal, `pkexec` garde son invite texte ; `--disable-internal-agent` pour tester la fenêtre.
+  Assistant Debian : `/usr/lib/polkit-1/polkit-agent-helper-1`.
 - **Rendu logiciel (llvmpipe, VM sans 3D)** : attendre la fin du dessin (`glFinish`) avant
   d'afficher, sinon tuiles noires / restes d'images.
-- **rpmbuild** exporte son propre `PKG_CONFIG_PATH` (prioritaire sur `.cargo/config.toml`) ;
-  libAdapta a besoin de `sassc` et meson doit être en `--wrap-mode=nodownload`.
-- dnf dans `--installroot` : télécharger dans le disque cible (`--setopt=cachedir=…`), pas en RAM.
 - **Verrouillage** (`noos-comp/src/lock.rs`) : tant que le verrou est actif, seules les surfaces
   de verrouillage sont rendues et reçoivent les entrées (aucun raccourci sauf VT). Plus de
-  surface vivante → noos-lock relancé (testé : tué pendant le verrou, l'écran reste noir puis
-  se reverrouille). Déclencheurs : Super+L, IPC `lock` / `suspend`, `[lock] idle_minutes`.
-  Inactivité (`noos-comp/src/idle.rs`, minuterie 1 s) : voile noir progressif pendant
-  `[lock] dim_seconds` (rendu par le compositeur, annulé par toute entrée), puis `noos-lock`
-  (mode `lock`) ou `noos-lock --screensaver` (mode `screensaver` : même protocole, se retire à
-  la première entrée). Super+L / mise en veille pendant l'écran de veille : on le tue et
-  `check_lock_client` relance le vrai verrouillage (`lock.command`).
+  surface vivante → noos-lock relancé. Déclencheurs : Super+L, IPC `lock` / `suspend`,
+  `[lock] idle_minutes`. Inactivité (`noos-comp/src/idle.rs`) : voile noir progressif pendant
+  `[lock] dim_seconds`, puis `noos-lock` (mode `lock`) ou `noos-lock --screensaver`.
 - **Abonnements D-Bus sur le bus système** : garder la connexion (`udisks::watch` la retient),
   sinon GIO la ferme et les signaux n'arrivent plus, sans erreur (Explorateur non rafraîchi).
 - **udisks2 depuis Rust (gio)** : construire les arguments avec `Variant::tuple_from_iter`
-  (`noos_disk::ops::tup`) — `(opts,).to_variant()` emballe un `a{sv}` dans un `v` et udisks
-  répond « Type of message (v) does not match (a{sv}) ». Ne jamais tester formatage /
-  partitionnement sur un vrai disque : image + `udisksctl loop-setup` puis
-  `noos-disk --selftest /dev/loopN`. `OpenForBenchmark` / `OpenForBackup` demandent un
-  mot de passe administrateur (polkit) : une fenêtre s'ouvre dans la vraie session.
-- Tester l'inactivité dans l'aperçu : `XDG_CONFIG_HOME=<dossier>` avec un `noos/noos.toml` de
-  test (`idle_minutes = 1`) pour ne pas toucher la configuration réelle.
-- **Restauration Btrfs** : la racine est montée par son nom (`subvol=@`, fstab + rootflags), donc
-  `snapper rollback` (qui change le sous-volume par défaut) est sans effet. `noos-save-helper
-  rollback` renomme `@` en `@.avant-restauration-…`, crée `@` depuis l'instantané, déplace
-  `.snapshots`, et choisit avec grubby le noyau le plus récent dont les modules existent dans
-  l'instantané (/boot est hors instantanés). Premier instantané **après** `setfiles` (SELinux).
-- **Démarrage sur un instantané** (GRUB) : `rootflags=subvol=@/.snapshots/N/snapshot
-  systemd.volatile=overlay enforcing=0 noos.snapshot=N`. `/.snapshots` y est vide (sous-volume
-  imbriqué) : `noos-snapshot-boot.service` monte `@/.snapshots` ; la racine est un overlay, donc
-  le périphérique Btrfs se lit via `/home`.
-- **Démarrage fluide** (`noos-system/root/usr/libexec/noos-boot-setup`, paquet %post +
-  installateur) : Fedora règle Plymouth sur `UseSimpledrmNoLuks=1` → animation sur
-  l'affichage du micrologiciel puis saut au chargement d'i915 (≈ 3 s) ; on met
-  `UseSimpledrmNoLuks=0` dans /etc/plymouth/plymouthd.conf et on force le pilote de la carte
-  (`force_drivers` dracut). `plymouth-quit` garde la dernière image (`--retain-splash`)
-  jusqu'au greeter. Entrées BLS renommées « NOOS (noyau x.y.z) » par
-  `/usr/lib/kernel/install.d/94-noos-title.install` (titre issu de PRETTY_NAME sinon).
-- **GRUB : rectangle noir au lancement d'une entrée** = la console gfxterm (taille minimale
-  imposée, fond noir) ; corrigé par une console plein écran sans cadre (theme.txt) et
-  `background_image` du fond du thème (`/etc/grub.d/05_noos_background`). GRUB affiche
-  toujours la ligne « Booting `…' ».
-- **Thème GRUB** : tester avec `grub2-mkrescue` + `qemu-system-x86_64 -display none` et
-  `screendump` sur le moniteur ; les .pf2 doivent être chargés (`loadfont`) avant `set theme`.
-- **CSS du shell** : le style de la barre est chargé en `STYLE_PROVIDER_PRIORITY_USER + 10`
-  (`.noos-taskbar button { background: none }`) ; une feuille ajoutée en plus doit être
-  au-dessus (`USER + 20`, cas de `editmode::CSS`), sinon ses couleurs sont ignorées.
+  (`noos_disk::ops::tup`). Ne jamais tester formatage / partitionnement sur un vrai disque :
+  image + `udisksctl loop-setup` puis `noos-disk --selftest /dev/loopN`.
+- **Restauration Btrfs** : la racine est montée par son nom (`subvol=@`), donc `snapper
+  rollback` est sans effet. `noos-save-helper rollback` renomme `@` en
+  `@.avant-restauration-…`, crée `@` depuis l'instantané, déplace `.snapshots`, et choisit le
+  noyau le plus récent dont les modules existent dans l'instantané (/boot est séparé).
+- **Démarrage sur un instantané** (GRUB, `42_noos_snapshots`) : `rootflags=subvol=@/.snapshots/N/snapshot
+  systemd.volatile=overlay noos.snapshot=N` ; `noos-snapshot-boot.service` monte `@/.snapshots`.
+- **Démarrage fluide** (`noos-boot-setup`, postinst + installateur) : pilote graphique dans
+  l'initramfs, `UseSimpledrm=0` dans `/etc/plymouth/plymouthd.conf`, thème `noos` ;
+  `plymouth-quit` garde la dernière image (`--retain-splash`) jusqu'au greeter.
+- **GRUB : rectangle noir au lancement d'une entrée** = la console gfxterm ; corrigé par une
+  console plein écran sans cadre (theme.txt) et `background_image` (`/etc/grub.d/05_noos_background`).
+  Les .pf2 doivent être chargés (`loadfont`) avant `set theme`.
+- **CSS du shell** : le style de la barre est chargé en `STYLE_PROVIDER_PRIORITY_USER + 10` ;
+  une feuille ajoutée en plus doit être au-dessus (`USER + 20`), sinon ses couleurs sont ignorées.
 - **Flou Mica** (`noos-comp/src/blur.rs`) : tout commit d'une surface de la couche
   « background » fait recalculer le flou de tout l'écran sur le processeur (≈ 170 ms sur
-  l'UHD 630, souris figée). Rien qui se rafraîchit ne doit donc vivre dans le fond d'écran :
-  les widgets du bureau sont dans leur propre surface (`noos-desktop-widgets`, couche
-  « bottom », zone de clic limitée aux widgets, toute la surface en mode édition).
-  `RUST_LOG=info,noos_comp::blur=debug` trace chaque recalcul (« flou du fond recalculé »).
-- **Applis externes** (`noos-theme/src/thirdparty.rs`) : Fedora règle `button-layout` sur
-  `appmenu:close` → GTK3/GTK4/libadwaita/Qt sans réduire ni agrandir ; NOOS y écrit
-  `[appearance] button_layout`. Couleurs Qt : qt5ct / qt6ct (leurs modules répondent aux deux
-  noms, donc `QT_QPA_PLATFORMTHEME=qt6ct` sert Qt 5 et 6), barre de titre Qt
-  `QT_WAYLAND_DECORATION=adwaita` (`qt6-qtwayland-adwaita-decoration`). Tester une appli
-  dans l'aperçu : étape `run <commande>` de `tools/preview/scenario.sh` (bus D-Bus et dconf
-  isolés) ; `qt6ct` et `gtk3-widget-factory` sont installés dans `noos-dev`.
+  l'UHD 630). Rien qui se rafraîchit ne doit vivre dans le fond d'écran : les widgets du bureau
+  sont dans leur propre surface (`noos-desktop-widgets`, couche « bottom »).
+- **Applis externes** (`noos-theme/src/thirdparty.rs`) : GNOME règle `button-layout` sur
+  `appmenu:close` → NOOS y écrit `[appearance] button_layout`. Couleurs Qt : qt5ct / qt6ct
+  (`QT_QPA_PLATFORMTHEME=qt6ct`), barre de titre Qt `QT_WAYLAND_DECORATION=adwaita`.
 - **Configuration illisible** : `NoosConfig::save()` garde une copie `noos.toml.illisible`
-  avant d'écraser un fichier qui ne se lit plus ; le compositeur n'enregistre pas les noms de
-  bureaux dans ce cas (il écrasait tout avec les valeurs par défaut).
+  avant d'écraser un fichier qui ne se lit plus.
 
 ## Reste à faire / idées
 
+- Valider sur une vraie Debian sid : installateur, ISO (Secure Boot), dépôt APT, Logiciels (apt).
+- Créer la clé du dépôt APT (`packaging/apt/generate-key.sh`) et le secret `APT_SIGNING_KEY`,
+  vérifier que GitHub Pages sert la branche `gh-pages`.
 - Plymouth : thème NOOS non vérifié sur vrai matériel (en VM, mode texte faute de 3D).
-- Webhook GitHub → COPR pour reconstruire à chaque push (URL dans COPR → Settings → Integrations).
 - Sélecteur d'écran pour le partage d'écran, VRR/HDR sur matériel réel.

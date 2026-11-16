@@ -250,10 +250,10 @@ mod tests {
 
     #[test]
     fn plan_describe() {
-        let p = Plan::new().root(&["dnf", "install", "-y", "htop"]).write("/etc/x.repo", "a\nb");
+        let p = Plan::new().root(&["apt-get", "install", "-y", "htop"]).write("/etc/apt/sources.list.d/x.sources", "a\nb");
         let d = p.describe();
-        assert_eq!(d[0], "# dnf install -y htop");
-        assert!(d[1].contains("/etc/x.repo"));
+        assert_eq!(d[0], "# apt-get install -y htop");
+        assert!(d[1].contains("/etc/apt/sources.list.d/x.sources"));
     }
 
     #[test]

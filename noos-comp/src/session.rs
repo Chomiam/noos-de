@@ -35,7 +35,9 @@ fn xdpw_binary() -> Option<PathBuf> {
     if let Some(home) = std::env::var_os("HOME") {
         candidates.push(Path::new(&home).join(".local/opt/noos/libexec/xdg-desktop-portal-wlr"));
     }
+    // Debian : /usr/libexec (paquet récent) ou /usr/lib/xdg-desktop-portal-wlr (anciens).
     candidates.push("/usr/libexec/xdg-desktop-portal-wlr".into());
+    candidates.push("/usr/lib/xdg-desktop-portal-wlr/xdg-desktop-portal-wlr".into());
     candidates.into_iter().find(|p| p.is_file())
 }
 
@@ -131,13 +133,14 @@ pub fn start(vars: &mut Vec<&'static str>) {
 
     // ── Cible de session ──
     // Service de secrets (mots de passe des applis, porte-clés) : GNOME le démarre
-    // explicitement (oo7 n'est pas activable par D-Bus) ; sans lui, Chrome, l'app Claude…
+    // explicitement (gnome-keyring et oo7 ne sont pas activables par D-Bus seuls) ; sans lui, Chrome, l'app Claude…
     // ne retrouvent plus leurs secrets. Démarré tôt, il reçoit le mot de passe de connexion
     // (module PAM) et déverrouille le trousseau « Login » automatiquement.
-    let secrets = if Path::new("/usr/lib/systemd/user/oo7-daemon.service").exists() {
-        "Wants=oo7-daemon.service\n"
-    } else if Path::new("/usr/lib/systemd/user/gnome-keyring-daemon.service").exists() {
+    // Debian : gnome-keyring (déverrouillé par pam_gnome_keyring dans /etc/pam.d/greetd).
+    let secrets = if Path::new("/usr/lib/systemd/user/gnome-keyring-daemon.service").exists() {
         "Wants=gnome-keyring-daemon.service\n"
+    } else if Path::new("/usr/lib/systemd/user/oo7-daemon.service").exists() {
+        "Wants=oo7-daemon.service\n"
     } else {
         ""
     };

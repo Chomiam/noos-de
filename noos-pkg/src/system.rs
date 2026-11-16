@@ -1,4 +1,6 @@
-//! Système : NOOS est basé sur Fedora ; on ne lit que le nom et la version (`/etc/os-release`).
+//! Système : NOOS est basé sur Debian sid ; on ne lit que le nom et la version
+//! (`/etc/os-release`). Debian sid n'a pas de `VERSION_ID` : la suite vient de
+//! `VERSION_CODENAME` (« forky ») et du nom (« forky/sid »).
 
 use serde::{Deserialize, Serialize};
 
@@ -7,6 +9,8 @@ pub struct SystemInfo {
     pub id: String,
     pub name: String,
     pub version_id: String,
+    #[serde(default)]
+    pub codename: String,
 }
 
 impl SystemInfo {
@@ -25,12 +29,28 @@ impl SystemInfo {
                 .map(|v| v.trim().trim_matches('"').to_string())
                 .unwrap_or_default()
         };
-        Self { id: get("ID"), name: get("PRETTY_NAME"), version_id: get("VERSION_ID") }
+        Self { id: get("ID"), name: get("PRETTY_NAME"), version_id: get("VERSION_ID"), codename: get("VERSION_CODENAME") }
     }
 
-    /// Version majeure de Fedora (« 45 »).
+    /// Version majeure (« 13 ») ; vide sur Debian sid.
     pub fn major(&self) -> String {
         self.version_id.split('.').next().unwrap_or("").to_string()
+    }
+
+    /// Debian unstable (sid) : pas de numéro de version, « …/sid » dans le nom.
+    pub fn is_sid(&self) -> bool {
+        self.version_id.is_empty() && (self.name.contains("sid") || self.codename == "sid" || self.id == "debian")
+    }
+
+    /// Version lisible : « sid », « 13 (trixie) »…
+    pub fn release_label(&self) -> String {
+        if self.is_sid() {
+            "sid".into()
+        } else if self.codename.is_empty() {
+            self.major()
+        } else {
+            format!("{} ({})", self.major(), self.codename)
+        }
     }
 }
 
@@ -39,10 +59,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_fedora() {
-        let s = SystemInfo::parse("NAME=\"Fedora Linux\"\nID=fedora\nVERSION_ID=45\nPRETTY_NAME=\"Fedora Linux 45\"\n");
-        assert_eq!(s.id, "fedora");
-        assert_eq!(s.major(), "45");
-        assert_eq!(s.name, "Fedora Linux 45");
+    fn parse_debian_sid() {
+        let s = SystemInfo::parse("PRETTY_NAME=\"Debian GNU/Linux forky/sid\"
+NAME=\"Debian GNU/Linux\"
+VERSION_CODENAME=forky
+ID=debian
+");
+        assert_eq!(s.id, "debian");
+        assert!(s.is_sid());
+        assert_eq!(s.release_label(), "sid");
+        assert_eq!(s.name, "Debian GNU/Linux forky/sid");
+    }
+
+    #[test]
+    fn parse_debian_stable() {
+        let s = SystemInfo::parse("PRETTY_NAME=\"Debian GNU/Linux 13 (trixie)\"
+VERSION_ID=\"13\"
+VERSION_CODENAME=trixie
+ID=debian
+");
+        assert!(!s.is_sid());
+        assert_eq!(s.release_label(), "13 (trixie)");
     }
 }

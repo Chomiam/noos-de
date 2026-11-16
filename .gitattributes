@@ -1,0 +1,7 @@
+# Projet Linux : fins de ligne LF partout (scripts shell, fichiers système), même sous Windows.
+* text=auto eol=lf
+*.png binary
+*.webp binary
+*.pf2 binary
+*.jpg binary
+*.ico binary

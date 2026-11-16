@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pilotage de la VM de test NOOS par QMP (à lancer dans le toolbox noos-dev).
+"""Pilotage de la VM de test NOOS par QMP (sur l'hôte ou dans le conteneur noos-dev).
 
     qmp.py shot SORTIE.png        capture d'écran (PPM → PNG, nécessite pycairo)
     qmp.py click X Y [L H]        clic gauche absolu (tablette USB), écran 1280×800 par défaut

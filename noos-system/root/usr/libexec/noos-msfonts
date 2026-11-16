@@ -34,7 +34,6 @@ install)
     [ "$n" -ge 20 ] || die "archives incomplètes ($n polices)"
     install -d "$DEST"
     install -m644 "$tmp/ttf"/*.ttf "$DEST/"
-    restorecon -R "$DEST" 2>/dev/null || true
     fc-cache -f "$DEST" >/dev/null 2>&1 || true
     echo "$n polices Microsoft installées dans $DEST"
     ;;

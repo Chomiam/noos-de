@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
 # Compile NOOS en release et l'installe dans ~/.local/opt/noos (sans sudo).
-# À lancer dans le toolbox de développement (mêmes bibliothèques que l'hôte Fedora) :
+# À lancer sur Debian sid (hôte, ou conteneur distrobox noos-dev aux mêmes bibliothèques) :
 #
-#     toolbox run -c noos-dev ./scripts/install-user.sh
+#     ./scripts/install-user.sh
 #
-# Les bibliothèques absentes de Silverblue (libAdapta, libseat, gtk4-layer-shell) et
-# xwayland-satellite sont copiées depuis le toolbox dans le préfixe.
+# libAdapta (absente de Debian) est copiée dans le préfixe ; le reste (libseat,
+# gtk4-layer-shell, xdg-desktop-portal-wlr, xwayland-satellite) vient des paquets Debian :
+#     sudo apt install libseat1 libgtk4-layer-shell0 xdg-desktop-portal-wlr xwayland-satellite grim
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PREFIX="${NOOS_PREFIX:-$HOME/.local/opt/noos}"
 
-if [ ! -f /run/.containerenv ]; then
-    echo "Attention : ce script est prévu pour le toolbox noos-dev (toolbox run -c noos-dev …)." >&2
+if ! grep -q '^ID=debian' /etc/os-release 2>/dev/null; then
+    echo "Attention : ce script est prévu pour Debian sid (hôte ou conteneur noos-dev)." >&2
 fi
 
 "$ROOT/scripts/build-libadapta.sh"
@@ -41,24 +42,24 @@ rm -rf "$PREFIX/lib/libadapta-1.so.0.p"
 for f in target/libadapta-build/src/libadapta-1.so*; do
     [ -d "$f" ] || put "$f" "$PREFIX/lib/$(basename "$f")" 755
 done
+# Hôte sans libseat / gtk4-layer-shell (session lancée hors du conteneur) : copie depuis ici.
+MULTIARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null || echo x86_64-linux-gnu)"
 for lib in libseat.so.1 libgtk4-layer-shell.so.0; do
-    src="$(readlink -f "/usr/lib64/$lib")"
+    [ -n "${NOOS_COPY_SYSTEM_LIBS:-}" ] || break
+    src="$(readlink -f "/usr/lib/$MULTIARCH/$lib")"
+    [ -f "$src" ] || continue
     real="$(basename "$src")"
     rm -f "$PREFIX/lib/$lib"          # ancien lien éventuellement cassé
     put "$src" "$PREFIX/lib/$real" 755
-    # Sur Fedora, libseat.so.1 est le fichier lui-même : pas de lien à créer.
     [ "$real" = "$lib" ] || ln -sf "$real" "$PREFIX/lib/$lib"
 done
 for lib in "$PREFIX"/lib/*.so*; do
     [ -e "$lib" ] || { echo "ERREUR : lien cassé $lib" >&2; exit 1; }
 done
 
-# Partage d'écran : xdg-desktop-portal-wlr (absent de Silverblue), lancé par NOOS lui-même.
-mkdir -p "$PREFIX/libexec"
-if [ -x /usr/libexec/xdg-desktop-portal-wlr ]; then
-    put /usr/libexec/xdg-desktop-portal-wlr "$PREFIX/libexec/xdg-desktop-portal-wlr" 755
-else
-    echo "Attention : xdg-desktop-portal-wlr absent du toolbox (dnf install xdg-desktop-portal-wlr) :" >&2
+# Partage d'écran : xdg-desktop-portal-wlr (paquet Debian), lancé par NOOS lui-même.
+if [ ! -x /usr/libexec/xdg-desktop-portal-wlr ] && [ ! -x /usr/lib/xdg-desktop-portal-wlr/xdg-desktop-portal-wlr ]; then
+    echo "Attention : xdg-desktop-portal-wlr absent (sudo apt install xdg-desktop-portal-wlr) :" >&2
     echo "            pas de partage d'écran dans la session NOOS." >&2
 fi
 if command -v grim >/dev/null; then

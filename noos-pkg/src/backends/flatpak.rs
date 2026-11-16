@@ -1,4 +1,4 @@
-//! Flatpak — installations système (Flathub et Fedora Flatpaks, actifs par défaut sur NOOS)
+//! Flatpak — installations système (Flathub, actif par défaut sur NOOS)
 //! et utilisateur (`--user`, sans mot de passe).
 
 use std::collections::{HashMap, HashSet};
@@ -82,7 +82,7 @@ impl Backend for Flatpak {
             if c.len() < 6 {
                 continue;
             }
-            // Une proposition par remote actif (Flathub, Fedora Flatpaks…) : l'utilisateur choisit.
+            // Une proposition par remote actif (Flathub, autres remotes…) : l'utilisateur choisit.
             for r in c[4].split(',').map(str::trim) {
                 for (name, scope, ..) in remotes.iter().filter(|x| x.0 == r && !x.4.contains("disabled")) {
                     if !seen.insert((c[0].to_string(), name.clone(), *scope)) {
@@ -231,6 +231,8 @@ impl Backend for Flatpak {
                 scope: Some(scope),
                 file: name.clone(),
                 builtin: opts.contains("oci") && scope == Scope::System,
+                suites: vec![],
+                components: vec![],
             })
             .collect())
     }
@@ -280,8 +282,8 @@ impl Backend for Flatpak {
             p.insert(0, Preset {
                 id: "flathub-unfilter",
                 backend: BackendKind::Flatpak,
-                name: "Flathub complet (retirer le filtre Fedora)",
-                description: "Fedora limite Flathub système à une sélection : ce réglage donne accès à tout le catalogue",
+                name: "Flathub complet (retirer le filtre)",
+                description: "Flathub système est limité à une sélection : ce réglage donne accès à tout le catalogue",
                 argument: None,
             });
         }

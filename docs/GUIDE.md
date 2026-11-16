@@ -13,32 +13,40 @@
 | `noos-file/` | Explorateur de fichiers : accueil, miniatures, volet de détails, aperçu rapide, glisser-déposer, copies suivies, corbeille |
 | `noos-settings/` | Paramètres : personnalisation, barre des tâches, écrans (HDR/VRR), jeux, entrées |
 | `noos-software/` | **Logiciels** : vitrine Flathub, recherche multi-sources, mises à jour, dépôts |
-| `noos-pkg/` | Bibliothèque + CLI `noos-pkg` : dnf et Flatpak, sources regroupées, rapprochement AppStream |
-| `noos-keys/` | **Porte-clés** : mots de passe du Secret Service (oo7, gnome-keyring), trousseaux, clés SSH |
+| `noos-pkg/` | Bibliothèque + CLI `noos-pkg` : apt et Flatpak, sources APT regroupées, rapprochement AppStream (DEP-11) |
+| `noos-keys/` | **Porte-clés** : mots de passe du Secret Service (gnome-keyring, oo7), trousseaux, clés SSH |
 | `noos-term/` | **Terminal** (VTE) : onglets, menu clic droit, thèmes, taille du texte, barre latérale d'alias (ex. `claude`) |
 | `noos-snip/` | **Outil Capture d'écran** (Win+Maj+S) : rectangle, fenêtre, plein écran, forme libre, annotation |
 | `noos-login/` | **Écran de connexion** (greeter greetd) façon Windows 11 : verrouillage avec horloge, sessions en cartes, comptes, accessibilité (grand texte, contraste, clavier visuel, Orca) |
-| `noos-installer/` | **Installateur** plein écran : carte des fuseaux, clavier, compte (mot de passe fort), disque Btrfs (@, @home, swap), installation réseau Fedora 45 + RPM Fusion, GRUB |
+| `noos-installer/` | **Installateur** plein écran : carte des fuseaux, clavier, compte (mot de passe fort), disque Btrfs (@, @home, swap), installation réseau Debian sid (debootstrap) + contrib / non-free, i386, GRUB |
 | `noos-plymouth/` | Thème de démarrage Plymouth (logo NOOS, faisceau animé sur le ∞) |
-| `noos-iso/` | Construction de l'ISO live d'installation (BIOS + UEFI/Secure Boot) |
+| `noos-iso/` | Construction de l'ISO live d'installation Debian sid (BIOS + UEFI/Secure Boot) |
+| `debian/` | Paquet Debian `noos` (dpkg-buildpackage, debhelper) |
+| `packaging/apt/` | Construction du `.deb` et du dépôt APT signé (GitHub Pages, branche `gh-pages`) |
+| `.github/workflows/` | CI : compilation + tests + `.deb` sur Debian sid, publication APT, ISO à la demande |
 | `noos-theme/` | Moteur de thème : palettes, accent, génération du thème libAdapta, rechargement à chaud |
 | `noos-core/` | Configuration (`~/.config/noos/noos.toml`) et protocole IPC partagés |
 | `noos-adapta/` | Bindings Rust de libAdapta (`libadapta-sys` + `libadapta`) |
 | `noos-session/` | Entrée GDM, lanceur de session, portails XDG, fichiers .desktop |
 | `third_party/libadapta/` | Sources de libAdapta 1.5 (commit dans `.noos-upstream-commit`) |
 | `data/` | Logo, bouton Démarrer, fond d'écran |
-| `scripts/` | `dev.sh`, `install-user.sh`, `build-libadapta.sh`, `noos-ipc.py` |
+| `scripts/` | `install-build-deps.sh`, `dev.sh`, `install-user.sh`, `build-libadapta.sh`, `noos-ipc.py` |
 
-## Environnement de développement (Fedora Silverblue)
+## Environnement de développement (Debian sid)
 
-Tout se compile dans le toolbox **`noos-dev`** (Fedora 45, mêmes bibliothèques que l'hôte) :
+Sur une Debian sid (ou dans un conteneur distrobox **`noos-dev`** Debian sid si l'hôte est
+une autre distribution) :
 
 ```bash
-toolbox enter noos-dev
+distrobox create -n noos-dev -i docker.io/library/debian:sid   # facultatif
+./scripts/install-build-deps.sh   # bibliothèques de compilation + Rust (rustup)
 ./scripts/build-libadapta.sh      # une fois : compile libAdapta dans target/
 cargo build
-./scripts/dev.sh                  # NOOS dans une fenêtre de votre session GNOME
+./scripts/dev.sh                  # NOOS dans une fenêtre de votre session actuelle
 ```
+
+La CI GitHub (`.github/workflows/build.yml`) compile tout, lance les tests et construit le
+paquet `.deb` dans un conteneur `debian:sid` à chaque envoi.
 
 Dans la fenêtre imbriquée, la touche Super est souvent interceptée par GNOME. Pour piloter NOOS :
 
@@ -52,14 +60,15 @@ Dans la fenêtre imbriquée, la touche Super est souvent interceptée par GNOME.
 
 1. Compiler et installer dans `~/.local/opt/noos`, sans sudo :
    ```bash
-   toolbox run -c noos-dev ./scripts/install-user.sh
+   ./scripts/install-user.sh
    ```
-2. Ajouter « NOOS » à l'écran de connexion. À faire une seule fois, **sur l'hôte** (pas dans le toolbox) :
+2. Ajouter « NOOS » à l'écran de connexion. À faire une seule fois, **sur l'hôte** (pas dans un conteneur) :
    ```bash
    sudo ./noos-session/install-session.sh
    ```
-   Le script écrit uniquement dans `/usr/local`, qui est modifiable sur Silverblue : pas de couche rpm-ostree, pas de redémarrage.
-3. Se déconnecter, choisir **NOOS** via l'engrenage de GDM, puis se connecter.
+   Le script écrit uniquement dans `/usr/local` (rien n'est mélangé aux paquets Debian). Inutile
+   si le paquet `noos` est installé.
+3. Se déconnecter, choisir **NOOS** dans l'écran de connexion, puis se connecter.
 
 - **Quitter :** Ctrl+Alt+Retour arrière (retour à GDM).
 - **Journal :** `~/.local/state/noos/session.log`.
@@ -73,30 +82,34 @@ fichiers et l'ouverture de liens entre applications.
 
 Tout est écrit dans `$XDG_RUNTIME_DIR`, donc effacé à la déconnexion. La session GNOME n'est pas touchée.
 
-- **Portails :** `gtk` pour presque tout, `wlr` pour le partage d'écran. `xdg-desktop-portal-wlr` est
-  fourni dans `~/.local/opt/noos/libexec` : pas de couche rpm-ostree.
+- **Portails :** `gtk` pour presque tout, `wlr` pour le partage d'écran (paquet Debian
+  `xdg-desktop-portal-wlr`, lancé par NOOS lui-même).
 - **Capture :** le compositeur implémente `ext-image-copy-capture-v1` (shm et dmabuf).
 - **Accès :** les Flatpak n'ont pas d'accès direct à la capture. Ils passent par le portail, qui
   demande l'accord de l'utilisateur.
 
 ## ISO d'installation (noos-iso)
 
-Construit une ISO live Fedora 45 qui démarre sur l'installateur NOOS (rien n'est installé
-sur l'hôte : compilation dans le toolbox, système live dans un conteneur podman rootless) :
+Construit une ISO live Debian sid qui démarre sur l'installateur NOOS (rien n'est installé
+sur l'hôte : compilation dans le conteneur noos-dev ou un conteneur `debian:sid`, système live
+dans un conteneur privilégié podman / docker) :
 
 ```bash
-./noos-iso/build.sh          # → noos-iso/out/noos-45-x86_64.iso (~780 Mo)
+./noos-iso/build.sh          # → noos-iso/out/noos-sid-amd64.iso
 ```
 
-- **Démarrage** : GRUB en BIOS (El Torito) et UEFI (shim + GRUB signés de Fedora, Secure
-  Boot), ISO hybride (graver sur clé USB avec `dd` ou Fedora Media Writer). Entrée « journal
-  sur port série » pour le dépannage.
+Sans machine Linux : onglet **Actions › ISO › Run workflow** sur GitHub (artefact `noos-iso`).
+
+- **Démarrage** : GRUB en BIOS (El Torito) et UEFI (shim + GRUB « CD » signés de Debian,
+  Secure Boot ; repère `/.disk/info`), ISO hybride (graver sur clé USB avec `dd`). Live monté
+  par live-boot (`boot=live`). Entrée « journal sur port série » pour le dépannage.
 - **Live** : connexion automatique de root sur tty1 → `noos-comp --drm --kiosk noos-installer`.
   Journaux : `/tmp/noos-live.log`, `/tmp/noos-install.log`.
-- **Système installé** : `@core` Fedora 45 + paquets de `noos-iso/packages-*.txt`, NOOS dans
-  `/opt/noos`, greetd + noos-login, Plymouth NOOS, SELinux étiqueté à l'installation, journal
-  copié dans `/var/log/noos-install.log`.
-- Testé dans QEMU (UEFI et BIOS) : installation complète, connexion, bureau.
+- **Système installé** : debootstrap de Debian sid + paquets de `noos-iso/packages-*.txt`
+  (contrib / non-free au choix, architecture i386 activée pour Steam et Wine), paquet `noos`
+  depuis le dépôt APT de NOOS (sinon copie de l'ISO), greetd (compte `_greetd`) + noos-login,
+  Plymouth NOOS (initramfs-tools), journal copié dans `/var/log/noos-install.log`.
+- À revalider dans QEMU (UEFI et BIOS) depuis le passage à Debian.
 
 ## Explorateur de fichiers (noos-file)
 
@@ -140,19 +153,20 @@ type de fichier avec recherche, et réinitialisation. Les choix vont dans `~/.co
 
 Instantanés Btrfs du système (snapper, configuration `root`) :
 
-- **avant et après chaque transaction dnf** (greffon actions de dnf5 : `noos-save.actions`) ;
+- **avant et après chaque opération apt** (crochets `DPkg::Pre-Invoke` / `Post-Invoke` de
+  `/etc/apt/apt.conf.d/80noos-save`) ;
 - **manuels**, jamais supprimés automatiquement, et **réguliers** (horaires, désactivés par
   défaut) avec un nombre conservé par période ;
 - **restauration au prochain redémarrage** : l'état actuel est gardé (`@.avant-restauration-…`)
   et la restauration s'annule tant qu'on n'a pas redémarré ; le noyau par défaut est choisi
-  pour correspondre à l'instantané (/boot est séparé) ;
+  pour correspondre à l'instantané (/boot est séparé ; `grub-set-default`, `GRUB_DEFAULT=saved`) ;
 - **menu de démarrage « Restaurer depuis un instantané »** (`/etc/grub.d/42_noos_snapshots`,
   régénéré par `noos-snapshots-grub.path` à chaque instantané) : date, heure, nom et origine de
   chaque instantané ; il démarre en lecture seule avec une couche en mémoire
   (`systemd.volatile=overlay`, `noos.snapshot=N`), et l'application propose ensuite de le garder ;
-- l'application sépare **manuels** et **automatiques** (dnf, réguliers) par des badges et filtres,
+- l'application sépare **manuels** et **automatiques** (apt, réguliers) par des badges et filtres,
   groupe par jour, détaille chaque instantané (noyau, paquets, nettoyage, présence au démarrage),
-  compare paquets et fichiers (`rpm`, `snapper status`), ouvre ses fichiers, renomme et marque
+  compare paquets et fichiers (`dpkg-query --admindir`, `snapper status`), ouvre ses fichiers, renomme et marque
   « à conserver ».
 
 Les dossiers personnels (`@home`) ne sont jamais concernés. Les opérations privilégiées passent
@@ -233,6 +247,19 @@ de ce qui est disponible). Quand il y en a, une icône à deux flèches avec une
 orange** apparaît dans la barre des tâches et ouvre directement la page Mises à jour de
 Logiciels, qui a son bouton « Rechercher des mises à jour ». Rien n'est installé sans accord.
 
+Les paquets Debian sont comparés sans droits root : `apt-get update` dans
+`~/.cache/noos/apt` (toutes les 6 heures au plus, ou sur demande), puis simulation
+`apt-get -s full-upgrade`. Le paquet `noos` lui-même vient du **dépôt APT de NOOS** :
+
+- `.github/workflows/build.yml` construit le `.deb` (`packaging/apt/build-deb.sh`, version
+  `0.1.0~git<date>.<commit>-1`) à chaque envoi ; sur `main`, `packaging/apt/update-repo.sh`
+  l'ajoute à la branche `gh-pages` (5 dernières versions, index `apt-ftparchive`, `InRelease`
+  signé par la clé du secret `APT_SIGNING_KEY`) ;
+- GitHub Pages sert https://chomiam.github.io/noos-de/ ; le paquet installe
+  `/etc/apt/sources.list.d/noos.sources` et `/usr/share/keyrings/noos-archive-keyring.asc` ;
+- clé de signature : `packaging/apt/generate-key.sh` (une fois), clé publique committée dans
+  `packaging/apt/noos-archive-keyring.asc`.
+
 ## Disques (`noos-disk`)
 
 Gestionnaire de disques façon Windows, sur udisks2 : disques internes, clés USB, cartes mémoire
@@ -273,20 +300,24 @@ d'éjection.
 
 ## Logiciels (noos-software / noos-pkg)
 
-NOOS est basé sur Fedora : Logiciels gère les **paquets Fedora (dnf)** et les **applications
-Flatpak**. Flathub et Fedora Flatpaks sont actifs par défaut.
+NOOS est basé sur Debian sid : Logiciels gère les **paquets Debian (apt)** et les
+**applications Flatpak**. Flathub est actif par défaut.
 
-- **Un logiciel, plusieurs façons de l'installer** : les paquets dnf et les applis Flatpak sont
-  rapprochés par leur identifiant AppStream (`metainfo(org.gimp.GIMP…)` côté RPM, `org.gimp.GIMP`
-  côté Flatpak). Une seule ligne « GIMP » propose alors Flatpak · Flathub, Flatpak · Fedora ou
-  dnf · Fedora.
-- **Sources lisibles** : les dépôts bruts sont regroupés (Fedora = `fedora` + `updates`, RPM Fusion
-  libre = `rpmfusion-free` + `rpmfusion-free-updates`…) avec un état clair (Active, Inactive,
-  Partielle, Non installée). Les **sources de test** (`*-updates-testing`, `flathub-beta`,
-  `fedora-testing`) sont séparées et leur activation demande confirmation. Les dépôts de
-  débogage et de sources sont masqués.
-- Ajout de sources : RPM Fusion (libre / non libre), COPR, fichier .repo, Flathub (système ou
-  votre compte), Flathub bêta, .flatpakrepo, retrait du filtre Fedora sur Flathub.
+- **Un logiciel, plusieurs façons de l'installer** : les paquets apt et les applis Flatpak sont
+  rapprochés par leur identifiant AppStream (données DEP-11 de `/var/lib/apt/lists`, paquet
+  `appstream`, côté Debian ; `org.gimp.GIMP` côté Flatpak). Une seule ligne « GIMP » propose
+  alors Flatpak · Flathub ou apt · Debian.
+- **Sources lisibles** : les entrées de `sources.list` et `sources.list.d/*.{list,sources}`
+  (formats une ligne et deb822) sont regroupées (Debian sid, NOOS, dépôts tiers) avec un état
+  clair (Active, Inactive, Partielle, Non installée). Les **sources de test** (Debian
+  experimental, `flathub-beta`) sont séparées et leur activation demande confirmation. Les
+  entrées `deb-src` sont masquées.
+- Ajout de sources : composants contrib / non-free / non-free-firmware, Debian experimental,
+  dépôt NOOS, architecture i386 (Steam, Wine), dépôt APT (adresse, suite, composants, clé),
+  fichier .sources, Flathub (système ou votre compte), Flathub bêta, .flatpakrepo.
+- **Mises à jour sans mot de passe** : le timer `noos-update-check` télécharge les listes de
+  paquets dans `~/.cache/noos/apt` (`apt-get update` sans root) puis simule `apt-get -s
+  full-upgrade`.
 - Les opérations admin passent par **un seul** `pkexec` par opération ; Flatpak passe par polkit.
 - La page Explorer affiche la vitrine Flathub (API publique v2, en cache dans `~/.cache/noos-software`) : bannière, catégories, populaires, tendances, nouveautés et fiches détaillées.
 
@@ -297,12 +328,14 @@ noos-pkg info
 noos-pkg search firefox
 noos-pkg updates
 noos-pkg presets
-noos-pkg repo-add -b dnf copr atim/starship --dry-run
+noos-pkg repo-add -b apt apt-repo https://repo.example.org/apt stable main clé=https://repo.example.org/key.asc --dry-run
 ```
 
 **Testé :**
-- dans des conteneurs Fedora 45, Debian 13, Ubuntu 24.04 et Arch : installation et suppression, mises à jour, ajout, activation et suppression de dépôts ;
-- sur l'hôte Silverblue : rpm-ostree en lecture seule et en simulation.
+- tests unitaires (analyse des sources une ligne / deb822, `apt-cache policy`, simulations
+  `apt-get -s`, DEP-11, regroupement des sources) dans la CI Debian sid ;
+- à revalider sur une vraie Debian sid : installation et suppression, mises à jour, ajout,
+  activation et suppression de dépôts.
 
 **À faire :**
 - un **agent polkit** propre à NOOS : dans la vraie session, il n'y en a pas encore pour afficher la demande de mot de passe ;
@@ -424,7 +457,7 @@ la plus proche (seule couleur visible des applis Flatpak). La disposition des bo
 (`button_layout`) est aussi écrite dans `org.gnome.desktop.wm.preferences button-layout` :
 les applis GTK3, GTK4, libadwaita et Qt (barre de titre « Adwaita »,
 `QT_WAYLAND_DECORATION=adwaita`) ont alors réduire / agrandir / fermer, et pas seulement
-fermer comme le veut Fedora. Attention : ces réglages sont également lus par vos autres
+fermer comme le veut le réglage par défaut de GNOME. Attention : ces réglages sont également lus par vos autres
 sessions (GNOME…).
 
 ## État du prototype : ce qui marche, ce qui manque
@@ -442,7 +475,7 @@ sessions (GNOME…).
 - Outil Capture d'écran ;
 - capture `ext-image-copy-capture` et partage d'écran PipeWire (portail wlr).
 
-**Écrit mais pas encore testé sur du vrai matériel :** le backend DRM (session GDM), le VRR
+**Écrit mais pas encore testé sur du vrai matériel :** le backend DRM (session greetd / GDM), le VRR
 (`VRR_ENABLED`), le scanout direct en plein écran et le framebuffer 10 bits.
 
 > Votre GPU actuel (Intel UHD 630, gen 9.5) n'expose pas le VRR dans le pilote i915 : la page

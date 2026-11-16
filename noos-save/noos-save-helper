@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # noos-save-helper — partie privilégiée de « Sauvegarder et Restaurer » (noos-save).
-# Lancé en root : par pkexec depuis l'application (polkit org.noos.save.helper), par dnf5 (greffon
-# actions, avant / après chaque transaction), par l'installateur et par le paquet RPM.
+# Lancé en root : par pkexec depuis l'application (polkit org.noos.save.helper), par apt
+# (crochets DPkg::Pre-Invoke / Post-Invoke de /etc/apt/apt.conf.d/80noos-save), par
+# l'installateur et par le paquet Debian.
 #
 #   setup                     configure snapper pour / (Btrfs) : config « root », nettoyage
 #   create <description>      instantané manuel (jamais supprimé automatiquement)
 #   delete <n>…               supprime des instantanés
 #   set <CLÉ> <valeur>        réglage snapper (liste blanche ci-dessous)
-#   dnf on|off                instantanés avant / après chaque transaction dnf
+#   apt on|off                instantanés avant / après chaque opération apt
 #   rollback <n>              restaure l'instantané n au prochain redémarrage
 #   cancel                    annule la restauration en attente
 #   delete-old <nom>          supprime une ancienne racine (@.avant-restauration-…)
@@ -16,7 +17,7 @@
 #   grub on|off|refresh       sous-menu « Restaurer depuis un instantané » du démarrage
 #   grub-max <n>              nombre d'instantanés dans ce sous-menu
 #   snapshot-boot             (service au démarrage sur un instantané) monte /.snapshots
-#   dnf-pre <pid> / dnf-post <n> <pid>   appelés par dnf5 (noos-save.actions)
+#   apt-pre / apt-post        appelés par apt (80noos-save), jamais en échec
 #
 # Disposition attendue (installateur NOOS) : racine = sous-volume @ monté par son nom
 # (fstab et rootflags=subvol=@), /home = @home, /boot séparé. `snapper rollback` change le
@@ -57,14 +58,33 @@ mount_top() {
     trap 'umount "$TOP" 2>/dev/null; rmdir "$TOP" 2>/dev/null' EXIT
 }
 
+GRUB_CFG=/boot/grub/grub.cfg
+
+# Entrée GRUB (identifiant « gnulinux-<version>-advanced-<uuid> » de 10_linux, Debian) d'un noyau.
+grub_entry_for() {
+    grep -o "gnulinux-$1-advanced-[0-9a-fA-F-]*" "$GRUB_CFG" 2>/dev/null | head -1
+}
+
+# Entrée de démarrage par défaut (GRUB_DEFAULT=saved, réglé par l'installateur).
+set_default_kernel() {
+    local id
+    id=$(grub_entry_for "$1")
+    if [ -n "$id" ] && command -v grub-set-default >/dev/null; then
+        grub-set-default "$id"
+    else
+        # Pas d'entrée nommée (GRUB_DEFAULT ≠ saved, grub.cfg ancien) : première entrée.
+        command -v grub-set-default >/dev/null && grub-set-default 0 || true
+    fi
+}
+
 # Noyau par défaut : le plus récent dont les modules existent dans la racine $1.
 set_kernel_for() {
     local modules="$1/usr/lib/modules" best=""
-    for v in $(ls /boot | sed -n 's/^vmlinuz-\(.*\)$/\1/p' | grep -v rescue | sort -V); do
-        [ -d "$modules/$v" ] && best="$v"
+    for v in $(ls /boot | sed -n 's/^vmlinuz-\(.*\)$/\1/p' | sort -V); do
+        [ -d "$modules/$v" ] && [ -f "/boot/initrd.img-$v" ] && best="$v"
     done
     [ -n "$best" ] || return 1
-    grubby --set-default "/boot/vmlinuz-$best" >/dev/null
+    set_default_kernel "$best" >/dev/null
     echo "$best"
 }
 
@@ -72,8 +92,24 @@ conf_get() { [ -f "$CONF" ] && sed -n "s/^$1=//p" "$CONF" | tail -1; }
 grub_refresh() {
     in_chroot && return 0
     [ -n "$(snapshot_boot)" ] && return 0
-    command -v grub2-mkconfig >/dev/null || return 0
-    grub2-mkconfig -o /boot/grub2/grub.cfg >/dev/null 2>&1
+    command -v grub-mkconfig >/dev/null || return 0
+    grub-mkconfig -o "$GRUB_CFG" >/dev/null 2>&1
+}
+
+# Commande apt à l'origine de l'opération (ancêtre apt / apt-get / aptitude / noos-pkg du
+# crochet), pour décrire l'instantané : « apt-get -y install git ».
+apt_command() {
+    local pid=$PPID i cmd
+    for i in 1 2 3 4 5 6; do
+        [ -r "/proc/$pid/cmdline" ] || break
+        cmd=$(tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null | sed 's/ *$//')
+        case "$(basename "$(readlink "/proc/$pid/exe" 2>/dev/null)")" in
+        apt | apt-get | aptitude | unattended-upgrade | python3*) echo "${cmd:0:200}"; return ;;
+        esac
+        pid=$(awk '{print $4}' "/proc/$pid/stat" 2>/dev/null) || break
+        [ "$pid" -gt 1 ] 2>/dev/null || break
+    done
+    echo apt
 }
 
 conf_set() {
@@ -99,9 +135,9 @@ keep)
     case "${2:-}" in
     yes) "${SNAPPER[@]}" modify -c "" --userdata "important=yes" "$n" ;;
     no)
-        # Les instantanés dnf retrouvent leur nettoyage automatique ; les manuels n'en ont pas.
+        # Les instantanés apt retrouvent leur nettoyage automatique ; les manuels n'en ont pas.
         algo=""
-        grep -A1 '<key>noos</key>' "/.snapshots/$n/info.xml" 2>/dev/null | grep -q '>dnf<' && algo=number
+        grep -A1 '<key>noos</key>' "/.snapshots/$n/info.xml" 2>/dev/null | grep -q '>apt<' && algo=number
         "${SNAPPER[@]}" modify -c "$algo" --userdata "important=no" "$n"
         ;;
     *) die "yes ou no" ;;
@@ -115,13 +151,13 @@ grub)
     refresh) ;;
     *) die "on, off ou refresh" ;;
     esac
-    grub_refresh || die "grub2-mkconfig a échoué"
+    grub_refresh || die "grub-mkconfig a échoué"
     ;;
 grub-max)
     need_root
     is_number "${1:-}" && [ "$1" -ge 1 ] && [ "$1" -le 100 ] || die "valeur invalide"
     conf_set GRUB_SNAPSHOTS_MAX "$1"
-    grub_refresh || die "grub2-mkconfig a échoué"
+    grub_refresh || die "grub-mkconfig a échoué"
     ;;
 snapshot-boot)
     # Démarré sur un instantané : /.snapshots de l'instantané est vide (sous-volume imbriqué) ;
@@ -138,16 +174,17 @@ setup)
     if ! configured; then
         "${SNAPPER[@]}" create-config /
     fi
-    # Membres de « wheel » : lecture de la liste sans mot de passe (snapperd + ACL).
-    "${SNAPPER[@]}" set-config ALLOW_GROUPS=wheel SYNC_ACL=yes NUMBER_CLEANUP=yes TIMELINE_CLEANUP=yes
+    # Membres de « sudo » (administrateurs Debian) : lecture de la liste sans mot de passe
+    # (snapperd + ACL).
+    "${SNAPPER[@]}" set-config ALLOW_GROUPS=sudo SYNC_ACL=yes NUMBER_CLEANUP=yes TIMELINE_CLEANUP=yes
     # Valeurs par défaut à la première configuration seulement (ensuite : choix de l'utilisateur).
-    # Instantanés horaires désactivés : ceux de dnf et les manuels suffisent au quotidien.
+    # Instantanés horaires désactivés : ceux d'apt et les manuels suffisent au quotidien.
     if [ "$(conf_get SETUP_DONE)" != yes ]; then
         "${SNAPPER[@]}" set-config NUMBER_LIMIT=10 NUMBER_LIMIT_IMPORTANT=5 TIMELINE_CREATE=no \
             TIMELINE_LIMIT_HOURLY=5 TIMELINE_LIMIT_DAILY=7 TIMELINE_LIMIT_WEEKLY=2 TIMELINE_LIMIT_MONTHLY=1 \
             TIMELINE_LIMIT_YEARLY=0
     fi
-    [ -n "$(conf_get DNF_SNAPSHOTS)" ] || conf_set DNF_SNAPSHOTS yes
+    [ -n "$(conf_get APT_SNAPSHOTS)" ] || conf_set APT_SNAPSHOTS yes
     [ -n "$(conf_get GRUB_SNAPSHOTS)" ] || conf_set GRUB_SNAPSHOTS yes
     [ -n "$(conf_get GRUB_SNAPSHOTS_MAX)" ] || conf_set GRUB_SNAPSHOTS_MAX 20
     conf_set SETUP_DONE yes
@@ -185,24 +222,34 @@ set)
     esac
     "${SNAPPER[@]}" set-config "$key=$value"
     ;;
-dnf)
+apt)
     need_root
-    case "${1:-}" in on) conf_set DNF_SNAPSHOTS yes ;; off) conf_set DNF_SNAPSHOTS no ;; *) die "on ou off" ;; esac
+    case "${1:-}" in on) conf_set APT_SNAPSHOTS yes ;; off) conf_set APT_SNAPSHOTS no ;; *) die "on ou off" ;; esac
     ;;
-dnf-pre)
-    # Appelé par dnf5 : ne doit jamais faire échouer la transaction.
-    [ "$(conf_get DNF_SNAPSHOTS)" = no ] && exit 0
+apt-pre)
+    # Appelé par apt avant dpkg (DPkg::Pre-Invoke) : ne doit jamais faire échouer l'opération.
+    # Le numéro de l'instantané « avant » est gardé dans /run pour apt-post.
+    set +e
+    [ "$(conf_get APT_SNAPSHOTS)" = no ] && exit 0
     [ -z "$(snapshot_boot)" ] || exit 0
+    in_chroot && exit 0
     configured && ! [ -e "$STATE/pending" ] || exit 0
-    what=$(tr '\0' ' ' <"/proc/${1:-0}/cmdline" 2>/dev/null | sed 's/ *$//') || what=""
-    n=$("${SNAPPER[@]}" create -t pre -c number -p -d "${what:-dnf}" --userdata "noos=dnf" 2>/dev/null) || exit 0
-    echo "tmp.noos_save_pre=$n"
+    what=$(apt_command)
+    n=$("${SNAPPER[@]}" create -t pre -c number -p -d "${what:-apt}" --userdata "noos=apt" 2>/dev/null) || exit 0
+    mkdir -p /run/noos-save
+    printf '%s\n%s\n' "$n" "$what" >/run/noos-save/apt-pre
+    exit 0
     ;;
-dnf-post)
-    is_number "${1:-}" || exit 0
-    what=$(tr '\0' ' ' <"/proc/${2:-0}/cmdline" 2>/dev/null | sed 's/ *$//') || what=""
-    "${SNAPPER[@]}" create -t post --pre-number "$1" -c number -d "${what:-dnf}" --userdata "noos=dnf" >/dev/null 2>&1 || true
-    echo "tmp.noos_save_pre"
+apt-post)
+    # Appelé par apt après dpkg (DPkg::Post-Invoke).
+    set +e
+    [ -f /run/noos-save/apt-pre ] || exit 0
+    n=$(sed -n 1p /run/noos-save/apt-pre)
+    what=$(sed -n 2p /run/noos-save/apt-pre)
+    rm -f /run/noos-save/apt-pre
+    is_number "$n" || exit 0
+    "${SNAPPER[@]}" create -t post --pre-number "$n" -c number -d "${what:-apt}" --userdata "noos=apt" >/dev/null 2>&1
+    exit 0
     ;;
 rollback)
     need_root
@@ -244,7 +291,7 @@ cancel)
     mv "$TOP/@/.snapshots" "$TOP/$old/.snapshots"
     btrfs subvolume delete -R "$TOP/@" >/dev/null 2>&1 || btrfs subvolume delete "$TOP/@" >/dev/null
     mv "$TOP/$old" "$TOP/@"
-    grubby --set-default "/boot/vmlinuz-$(uname -r)" >/dev/null || true
+    set_default_kernel "$(uname -r)" >/dev/null 2>&1 || true
     rm -f "$STATE/pending"
     echo "restauration annulée"
     ;;

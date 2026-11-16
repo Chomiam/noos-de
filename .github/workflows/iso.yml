@@ -1,0 +1,33 @@
+# ISO d'installation de NOOS (Debian sid), à la demande (onglet Actions › ISO › Run workflow).
+# Résultat : artefact « noos-iso » (noos-sid-amd64.iso), gardé 7 jours.
+name: ISO
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  iso:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Place disque (système live + compilation ≈ 15 Go)
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Compilation et préparation de NOOS (conteneur Debian sid)
+        env:
+          APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
+        run: docker run --rm -e APT_SIGNING_KEY -v "$PWD:/src" -w /src debian:sid bash noos-iso/ci-stage.sh
+      - name: Système live et ISO (conteneur privilégié)
+        run: |
+          docker run --rm --privileged -v "$PWD:/src:ro" -v "$PWD/noos-iso/out:/out" debian:sid \
+            bash /src/noos-iso/build-inside.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: noos-iso
+          path: noos-iso/out/*.iso
+          retention-days: 7
+          compression-level: 0

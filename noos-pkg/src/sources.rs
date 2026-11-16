@@ -1,19 +1,22 @@
-//! Sources lisibles : les dépôts bruts (24 sections dnf pour Fedora + RPM Fusion…) sont
-//! regroupés par famille, avec un seul interrupteur, et séparés en **stables** et **tests**.
+//! Sources lisibles : les dépôts bruts (entrées de sources.list / *.sources, remotes Flatpak)
+//! sont regroupés par famille, avec un seul interrupteur, et séparés en **stables** et **tests**.
 //!
 //! | Dépôts bruts                                          | Source                          |
 //! |-------------------------------------------------------|---------------------------------|
-//! | `fedora`, `updates`                                   | Fedora (stable)                 |
-//! | `updates-testing`                                     | Fedora — tests                  |
-//! | `rpmfusion-free`, `rpmfusion-free-updates`            | RPM Fusion — libre (stable)     |
-//! | `rpmfusion-free-updates-testing`                      | RPM Fusion — libre — tests      |
-//! | `*-debuginfo`, `*-source`                             | masqués (outils de développeur) |
+//! | `deb.debian.org/debian sid …`                         | Debian sid                      |
+//! | `deb.debian.org/debian experimental …`                | Debian experimental — tests     |
+//! | `chomiam.github.io/noos-de sid main`                  | NOOS                            |
+//! | entrées `deb-src` seules                              | masquées (outils de développeur)|
 //! | remote Flatpak `flathub` / `flathub-beta`             | Flathub / Flathub — tests       |
 //!
-//! Les sources connues absentes (RPM Fusion, Flathub) apparaissent aussi, « non installées »,
-//! avec le préréglage qui les ajoute : on voit tout de suite ce qui est actif ou non.
+//! Les sources connues absentes (contrib / non-free de Debian, NOOS, experimental, Flathub)
+//! apparaissent aussi, « non installées », avec le préréglage qui les ajoute : on voit tout de
+//! suite ce qui est actif ou non.
 
-use crate::{BackendKind, Repo, Scope};
+use crate::{
+    BackendKind, Repo, Scope,
+    backends::aptsources::{is_debian_uri, is_noos_uri},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Channel {
@@ -35,17 +38,17 @@ pub enum State {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Source {
     pub backend: BackendKind,
-    /// Clé stable de la famille (`dnf:rpmfusion-free`, `flatpak:system:flathub`…).
+    /// Clé stable de la famille (`apt:debian:Stable`, `flatpak:system:flathub`…).
     pub key: String,
     pub name: String,
     pub description: String,
     pub channel: Channel,
     pub state: State,
-    /// Dépôts réels de la source (sans débogage ni sources).
+    /// Dépôts réels de la source (sans paquets sources).
     pub repos: Vec<Repo>,
-    /// Fournie par Fedora / NOOS : ne peut pas être supprimée (seulement désactivée).
+    /// Fournie par Debian / NOOS : ne peut pas être supprimée (seulement désactivée).
     pub builtin: bool,
-    /// Ne doit pas être désactivée (dépôts principaux de Fedora, NOOS).
+    /// Ne doit pas être désactivée (dépôt principal de Debian, NOOS).
     pub essential: bool,
     /// Préréglage à utiliser quand la source est absente.
     pub preset: Option<&'static str>,
@@ -62,70 +65,6 @@ pub fn is_technical(r: &Repo) -> bool {
     ["-debuginfo", "-source", "-debug"].iter().any(|s| r.id.ends_with(s))
 }
 
-/// (famille, canal) d'un dépôt dnf : `rpmfusion-free-updates-testing` → (`rpmfusion-free`, tests).
-fn dnf_family(id: &str) -> (String, Channel) {
-    let (base, channel) = if let Some(b) = id.strip_suffix("updates-testing") {
-        (b.trim_end_matches('-'), Channel::Testing)
-    } else if let Some(b) = id.strip_suffix("-testing") {
-        (b, Channel::Testing)
-    } else if let Some(b) = id.strip_suffix("updates") {
-        (b.trim_end_matches('-'), Channel::Stable)
-    } else {
-        (id, Channel::Stable)
-    };
-    // `updates` / `updates-testing` appartiennent à Fedora.
-    let base = if base.is_empty() { "fedora" } else { base };
-    (base.to_string(), channel)
-}
-
-/// (nom, description, essentielle, intégrée) d'une famille dnf connue.
-fn dnf_label(family: &str, sample: &Repo, version: &str) -> (String, String, bool, bool) {
-    let copr = family.strip_prefix("copr:copr.fedorainfracloud.org:").map(|rest| rest.replacen(':', "/", 1));
-    match (family, copr.as_deref()) {
-        ("fedora", _) => (
-            format!("Fedora {version}"),
-            "Dépôts officiels de Fedora : système, applications et mises à jour".into(),
-            true,
-            true,
-        ),
-        ("fedora-cisco-openh264", _) => (
-            "Codec OpenH264 (Cisco)".into(),
-            "Codec vidéo H.264 distribué par Cisco pour Fedora".into(),
-            false,
-            true,
-        ),
-        ("rpmfusion-free", _) => (
-            "RPM Fusion — libre".into(),
-            "Codecs et logiciels libres absents de Fedora (ffmpeg complet, VLC…)".into(),
-            false,
-            false,
-        ),
-        ("rpmfusion-nonfree", _) => (
-            "RPM Fusion — non libre".into(),
-            "Pilotes NVIDIA, Steam, firmwares et codecs propriétaires".into(),
-            false,
-            false,
-        ),
-        ("rpmfusion-free-tainted" | "rpmfusion-nonfree-tainted", _) => (
-            format!("RPM Fusion — {}", if family.contains("nonfree") { "non libre (tainted)" } else { "libre (tainted)" }),
-            "Paquets soumis à des restrictions légales selon les pays (libdvdcss…)".into(),
-            false,
-            false,
-        ),
-        (_, Some("chomiam/noos")) => ("NOOS".into(), "Bureau NOOS et ses applications (COPR chomiam/noos)".into(), true, true),
-        (_, Some(project)) => (format!("COPR {project}"), "Dépôt communautaire Fedora (COPR)".into(), false, false),
-        _ => {
-            let name = sample
-                .name
-                .replace("$releasever", version)
-                .replace("$basearch", std::env::consts::ARCH)
-                .replace(" - Test Updates", "")
-                .replace(" - Updates", "");
-            (if name.is_empty() { family.to_string() } else { name }, sample.url.clone(), false, false)
-        }
-    }
-}
-
 fn state_of(repos: &[Repo]) -> State {
     match (repos.iter().all(|r| r.enabled), repos.iter().any(|r| r.enabled)) {
         (true, _) => State::Enabled,
@@ -134,11 +73,89 @@ fn state_of(repos: &[Repo]) -> State {
     }
 }
 
-/// Regroupe les dépôts dnf en sources (stables puis tests), avec RPM Fusion même absent.
-pub fn group_dnf(repos: &[Repo], version: &str) -> Vec<Source> {
+/// (famille, canal) d'une entrée APT.
+fn apt_family(r: &Repo) -> (String, Channel) {
+    let testing = r.suites.iter().any(|s| s == "experimental" || s.ends_with("-proposed-updates"));
+    let channel = if testing { Channel::Testing } else { Channel::Stable };
+    if is_noos_uri(&r.url) {
+        ("noos".into(), Channel::Stable)
+    } else if r.url.contains("security.debian.org") || r.suites.iter().any(|s| s.ends_with("-security")) {
+        ("debian-security".into(), Channel::Stable)
+    } else if is_debian_uri(&r.url) {
+        (if testing { "debian-experimental".into() } else { "debian".into() }, channel)
+    } else {
+        let host = r.url.trim_start_matches("https://").trim_start_matches("http://").trim_end_matches('/').to_string();
+        (format!("{host} {}", r.suites.join(" ")), channel)
+    }
+}
+
+fn suite_label(repos: &[Repo]) -> String {
+    let suites: Vec<&str> = repos.iter().flat_map(|r| r.suites.iter().map(String::as_str)).collect();
+    if suites.iter().any(|s| *s == "sid" || *s == "unstable") {
+        "sid".into()
+    } else {
+        suites.first().copied().unwrap_or("").to_string()
+    }
+}
+
+fn components_label(repos: &[Repo]) -> String {
+    let mut comps: Vec<&str> = Vec::new();
+    for c in repos.iter().flat_map(|r| r.components.iter()) {
+        if !comps.contains(&c.as_str()) {
+            comps.push(c);
+        }
+    }
+    comps.join(", ")
+}
+
+/// (nom, description, essentielle, intégrée) d'une famille APT.
+fn apt_label(family: &str, members: &[Repo]) -> (String, String, bool, bool) {
+    let comps = components_label(members);
+    match family {
+        "debian" => (
+            format!("Debian {}", suite_label(members)),
+            format!("Dépôts officiels de Debian : système, applications et mises à jour (composants : {comps})"),
+            true,
+            true,
+        ),
+        "debian-security" => ("Debian — sécurité".into(), "Correctifs de sécurité de Debian".into(), false, true),
+        "debian-experimental" => (
+            "Debian experimental".into(),
+            "Versions en préparation, installées seulement si vous les demandez".into(),
+            false,
+            false,
+        ),
+        "noos" => ("NOOS".into(), "Bureau NOOS et ses applications (dépôt APT sur GitHub Pages)".into(), true, true),
+        _ => {
+            let m = &members[0];
+            let host = m.url.trim_start_matches("https://").trim_start_matches("http://").split('/').next().unwrap_or("").to_string();
+            let desc = format!("{} — {} {}", m.url, m.suites.join(" "), comps).trim().to_string();
+            (if host.is_empty() { family.to_string() } else { host }, desc, false, false)
+        }
+    }
+}
+
+fn missing(family: &str, name: &str, description: &str, channel: Channel, preset: &'static str) -> Source {
+    Source {
+        backend: BackendKind::Apt,
+        key: format!("apt:{family}:{channel:?}"),
+        name: name.into(),
+        description: description.into(),
+        channel,
+        state: State::Missing,
+        repos: vec![],
+        builtin: false,
+        essential: false,
+        preset: Some(preset),
+    }
+}
+
+/// Regroupe les dépôts APT en sources (stables puis tests), avec contrib / non-free, NOOS et
+/// experimental même absents.
+pub fn group_apt(repos: &[Repo]) -> Vec<Source> {
     let mut families: Vec<(String, Channel, Vec<Repo>)> = Vec::new();
     for r in repos.iter().filter(|r| !is_technical(r)) {
-        let (family, channel) = dnf_family(&r.id);
+        let (family, channel) = apt_family(r);
         match families.iter_mut().find(|(f, c, _)| *f == family && *c == channel) {
             Some(e) => e.2.push(r.clone()),
             None => families.push((family, channel, vec![r.clone()])),
@@ -147,14 +164,13 @@ pub fn group_dnf(repos: &[Repo], version: &str) -> Vec<Source> {
     let mut out: Vec<Source> = families
         .into_iter()
         .map(|(family, channel, members)| {
-            let (mut name, mut description, essential, builtin) = dnf_label(&family, &members[0], version);
+            let (mut name, description, essential, builtin) = apt_label(&family, &members);
             if channel == Channel::Testing {
                 name = format!("{name} — tests");
-                description = "Mises à jour en cours de validation : plus récentes, mais peuvent casser le système".into();
             }
             Source {
-                backend: BackendKind::Dnf,
-                key: format!("dnf:{family}:{channel:?}"),
+                backend: BackendKind::Apt,
+                key: format!("apt:{family}:{channel:?}"),
                 name,
                 description,
                 channel,
@@ -166,35 +182,28 @@ pub fn group_dnf(repos: &[Repo], version: &str) -> Vec<Source> {
             }
         })
         .collect();
-    for (family, preset, label) in [
-        ("rpmfusion-free", "rpmfusion-free", "RPM Fusion — libre"),
-        ("rpmfusion-nonfree", "rpmfusion-nonfree", "RPM Fusion — non libre"),
-    ] {
-        if !out.iter().any(|s| s.key == format!("dnf:{family}:Stable")) {
-            let sample = Repo {
-                backend: BackendKind::Dnf,
-                id: family.into(),
-                name: label.into(),
-                url: String::new(),
-                enabled: false,
-                scope: None,
-                file: String::new(),
-                builtin: false,
-            };
-            let (name, description, _, _) = dnf_label(family, &sample, version);
-            out.push(Source {
-                backend: BackendKind::Dnf,
-                key: format!("dnf:{family}:Stable"),
-                name,
-                description,
-                channel: Channel::Stable,
-                state: State::Missing,
-                repos: vec![],
-                builtin: false,
-                essential: false,
-                preset: Some(preset),
-            });
-        }
+    let debian: Vec<&Repo> = repos.iter().filter(|r| !is_technical(r) && apt_family(r).0 == "debian").collect();
+    let has_nonfree = debian.iter().any(|r| r.components.iter().any(|c| c == "contrib" || c == "non-free"));
+    if !debian.is_empty() && !has_nonfree {
+        out.push(missing(
+            "debian-nonfree",
+            "Debian — contrib et non-free",
+            "Pilotes NVIDIA, firmwares (Wi-Fi, cartes graphiques), Steam et logiciels non libres",
+            Channel::Stable,
+            "debian-nonfree",
+        ));
+    }
+    if !out.iter().any(|s| s.key == "apt:noos:Stable") {
+        out.push(missing("noos", "NOOS", "Bureau NOOS et ses applications : mises à jour de NOOS", Channel::Stable, "noos"));
+    }
+    if !out.iter().any(|s| s.key == "apt:debian-experimental:Testing") {
+        out.push(missing(
+            "debian-experimental",
+            "Debian experimental — tests",
+            "Versions en préparation, installées seulement si vous les demandez",
+            Channel::Testing,
+            "debian-experimental",
+        ));
     }
     sort(&mut out);
     out
@@ -217,11 +226,6 @@ pub fn group_flatpak(repos: &[Repo]) -> Vec<Source> {
                     "Le principal magasin d'applications Flatpak (navigateurs, jeux, créativité…)".to_string(),
                     false,
                 ),
-                "fedora" => (
-                    "Fedora Flatpaks".to_string(),
-                    "Applications Flatpak construites par Fedora à partir de ses paquets".to_string(),
-                    true,
-                ),
                 _ => (r.name.clone(), r.url.clone(), false),
             };
             if scope == Scope::User {
@@ -238,7 +242,7 @@ pub fn group_flatpak(repos: &[Repo]) -> Vec<Source> {
                 backend: BackendKind::Flatpak,
                 key: format!("flatpak:{}:{remote}", if scope == Scope::User { "user" } else { "system" }),
                 name,
-                description: if filtered { format!("{description} — limité à une sélection par Fedora") } else { description },
+                description: if filtered { format!("{description} — limité à une sélection par la distribution") } else { description },
                 channel,
                 state: if r.enabled { State::Enabled } else { State::Disabled },
                 repos: vec![r.clone()],
@@ -275,62 +279,66 @@ fn sort(v: &mut [Source]) {
 mod tests {
     use super::*;
 
-    fn repo(id: &str, enabled: bool) -> Repo {
+    fn repo(id: &str, url: &str, suites: &[&str], comps: &[&str], enabled: bool, builtin: bool) -> Repo {
         Repo {
-            backend: BackendKind::Dnf,
+            backend: BackendKind::Apt,
             id: id.into(),
             name: id.into(),
-            url: String::new(),
+            url: url.into(),
             enabled,
             scope: None,
-            file: format!("/usr/share/dnf5/repos.d/{id}.repo"),
-            builtin: id.starts_with("fedora") || id.starts_with("updates"),
+            file: "/etc/apt/sources.list.d/x.sources".into(),
+            builtin,
+            suites: suites.iter().map(|s| s.to_string()).collect(),
+            components: comps.iter().map(|s| s.to_string()).collect(),
         }
     }
 
     #[test]
-    fn families() {
-        assert_eq!(dnf_family("updates"), ("fedora".into(), Channel::Stable));
-        assert_eq!(dnf_family("updates-testing"), ("fedora".into(), Channel::Testing));
-        assert_eq!(dnf_family("rpmfusion-free-updates-testing"), ("rpmfusion-free".into(), Channel::Testing));
-        assert_eq!(dnf_family("rpmfusion-nonfree-updates"), ("rpmfusion-nonfree".into(), Channel::Stable));
-        assert_eq!(dnf_family("fedora-cisco-openh264"), ("fedora-cisco-openh264".into(), Channel::Stable));
-    }
-
-    #[test]
-    fn fedora_with_rpmfusion() {
-        let repos: Vec<Repo> = [
-            ("fedora", true),
-            ("fedora-debuginfo", false),
-            ("updates", true),
-            ("updates-testing", false),
-            ("updates-testing-source", false),
-            ("rpmfusion-free", true),
-            ("rpmfusion-free-updates", true),
-            ("rpmfusion-free-updates-testing", false),
-            ("copr:copr.fedorainfracloud.org:chomiam:noos", true),
-        ]
-        .iter()
-        .map(|(id, e)| repo(id, *e))
-        .collect();
-        let s = group_dnf(&repos, "45");
+    fn debian_sid() {
+        let repos = vec![
+            repo("debian:0", "http://deb.debian.org/debian", &["sid"], &["main"], true, true),
+            repo("debian:1-source", "http://deb.debian.org/debian", &["sid"], &["main"], false, true),
+            repo("noos:0", "https://chomiam.github.io/noos-de", &["sid"], &["main"], true, true),
+            repo("vscode:0", "https://packages.microsoft.com/repos/code", &["stable"], &["main"], false, false),
+        ];
+        let s = group_apt(&repos);
         let names: Vec<_> = s.iter().map(|s| (s.name.as_str(), s.channel, s.state)).collect();
-        assert_eq!(names[0], ("Fedora 45", Channel::Stable, State::Enabled));
-        assert!(s[0].essential && s[0].repos.len() == 2);
+        assert!(names[0] == ("Debian sid", Channel::Stable, State::Enabled) || names[0].0 == "NOOS");
+        let debian = s.iter().find(|s| s.key == "apt:debian:Stable").unwrap();
+        assert!(debian.essential && debian.repos.len() == 1);
         assert!(names.contains(&("NOOS", Channel::Stable, State::Enabled)));
-        assert!(names.contains(&("RPM Fusion — libre", Channel::Stable, State::Enabled)));
-        // Non libre absent : proposé.
-        let nonfree = s.iter().find(|s| s.key == "dnf:rpmfusion-nonfree:Stable").unwrap();
-        assert_eq!((nonfree.state, nonfree.preset), (State::Missing, Some("rpmfusion-nonfree")));
-        let testing: Vec<_> = s.iter().filter(|s| s.channel == Channel::Testing).map(|s| s.name.as_str()).collect();
-        assert_eq!(testing, ["Fedora 45 — tests", "RPM Fusion — libre — tests"]);
+        assert!(names.contains(&("packages.microsoft.com", Channel::Stable, State::Disabled)));
+        let nonfree = s.iter().find(|s| s.key == "apt:debian-nonfree:Stable").unwrap();
+        assert_eq!((nonfree.state, nonfree.preset), (State::Missing, Some("debian-nonfree")));
+        let exp = s.iter().find(|s| s.channel == Channel::Testing).unwrap();
+        assert_eq!((exp.state, exp.preset), (State::Missing, Some("debian-experimental")));
         assert!(s.iter().all(|s| s.repos.iter().all(|r| !is_technical(r))));
     }
 
     #[test]
+    fn nonfree_present_and_experimental() {
+        let repos = vec![
+            repo("debian:0", "http://deb.debian.org/debian", &["sid"], &["main", "contrib", "non-free", "non-free-firmware"], true, true),
+            repo("debian-experimental:0", "http://deb.debian.org/debian", &["experimental"], &["main"], false, false),
+        ];
+        let s = group_apt(&repos);
+        assert!(s.iter().all(|s| s.key != "apt:debian-nonfree:Stable"));
+        let debian = s.iter().find(|s| s.key == "apt:debian:Stable").unwrap();
+        assert!(debian.description.contains("non-free"));
+        let exp = s.iter().find(|s| s.key == "apt:debian-experimental:Testing").unwrap();
+        assert_eq!((exp.name.as_str(), exp.state), ("Debian experimental — tests", State::Disabled));
+        // NOOS absent : proposé.
+        assert_eq!(s.iter().find(|s| s.key == "apt:noos:Stable").unwrap().state, State::Missing);
+    }
+
+    #[test]
     fn partial() {
-        let s = group_dnf(&[repo("rpmfusion-free", true), repo("rpmfusion-free-updates", false)], "45");
-        assert_eq!(s.iter().find(|s| s.key == "dnf:rpmfusion-free:Stable").unwrap().state, State::Partial);
+        let s = group_apt(&[
+            repo("debian:0", "http://deb.debian.org/debian", &["sid"], &["main"], true, true),
+            repo("sources:3", "http://ftp.fr.debian.org/debian", &["sid"], &["main"], false, true),
+        ]);
+        assert_eq!(s.iter().find(|s| s.key == "apt:debian:Stable").unwrap().state, State::Partial);
     }
 
     #[test]
@@ -344,10 +352,12 @@ mod tests {
             scope: Some(Scope::System),
             file: name.into(),
             builtin: false,
+            suites: vec![],
+            components: vec![],
         };
-        let s = group_flatpak(&[r("fedora", true), r("fedora-testing", false)]);
-        assert_eq!(s.len(), 3);
+        let s = group_flatpak(&[r("flathub-beta", false)]);
+        assert_eq!(s.len(), 2);
         assert_eq!(s.iter().find(|s| s.name == "Flathub").unwrap().state, State::Missing);
-        assert_eq!(s.iter().find(|s| s.name == "Fedora Flatpaks — tests").unwrap().channel, Channel::Testing);
+        assert_eq!(s.iter().find(|s| s.name == "Flathub — tests").unwrap().channel, Channel::Testing);
     }
 }

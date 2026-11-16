@@ -1,20 +1,21 @@
 #!/usr/bin/env bash
-# Installe l'entrée « NOOS » dans l'écran de connexion (GDM). À faire UNE seule fois,
-# sur l'hôte (pas dans un toolbox) :
+# Installe l'entrée « NOOS » dans l'écran de connexion existant (GDM, SDDM, LightDM) d'une
+# Debian de développement, sans le paquet noos. À faire UNE seule fois, sur l'hôte (pas dans
+# un conteneur distrobox) :
 #
 #     sudo ./noos-session/install-session.sh
 #
-# Sur Fedora Silverblue, /usr est en lecture seule mais /usr/local (= /var/usrlocal) est
-# modifiable : rien n'est superposé à l'image système, aucun redémarrage n'est nécessaire.
+# Tout va dans /usr/local : rien n'est mélangé aux fichiers des paquets Debian.
 # Désinstallation : sudo ./noos-session/install-session.sh --uninstall
+# (Avec le paquet noos installé, cette étape est inutile : la session est déjà fournie.)
 set -euo pipefail
 
 if [ "$(id -u)" -ne 0 ]; then
     echo "À lancer avec sudo : sudo $0" >&2
     exit 1
 fi
-if [ -f /run/.containerenv ]; then
-    echo "Ce script doit tourner sur l'hôte, pas dans un toolbox." >&2
+if [ -f /run/.containerenv ] || [ -f /.dockerenv ]; then
+    echo "Ce script doit tourner sur l'hôte, pas dans un conteneur." >&2
     exit 1
 fi
 
@@ -38,5 +39,5 @@ echo "  $BIN"
 echo "  $SESSION"
 echo "  $PORTALS"
 echo
-echo "Déconnectez-vous, cliquez sur votre nom puis sur l'engrenage en bas à droite de GDM"
-echo "et choisissez « NOOS ». Journal de session : ~/.local/state/noos/session.log"
+echo "Déconnectez-vous et choisissez la session « NOOS » dans l'écran de connexion."
+echo "Journal de session : ~/.local/state/noos/session.log"

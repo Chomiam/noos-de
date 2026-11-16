@@ -4,7 +4,7 @@
 //! - sélections : apps-of-the-week, app-of-the-day
 //! - fiche : appstream/<app_id> (description, captures, couleurs de marque)
 //!
-//! Les requêtes passent par `curl` (présent partout, y compris sur Silverblue) et sont mises
+//! Les requêtes passent par `curl` (présent partout) et sont mises
 //! en cache dans `~/.cache/noos-software` (6 h pour les listes, 30 jours pour les images).
 
 use std::{

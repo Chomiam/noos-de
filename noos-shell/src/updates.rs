@@ -90,7 +90,7 @@ impl UpdateIcon {
     pub fn refresh(&self) {
         let st = noos_core::updates::load();
         let show = st.total > 0 && self.shell.upgrade().is_none_or(|s| s.config().updates.tray_icon) || std::env::var_os("NOOS_UPDATES_DEMO").is_some();
-        let tip = if std::env::var_os("NOOS_UPDATES_DEMO").is_some() && st.total == 0 { "12 mises à jour disponibles\nFedora : 9\nApplications Flatpak : 3".to_string() } else { summary(&st) };
+        let tip = if std::env::var_os("NOOS_UPDATES_DEMO").is_some() && st.total == 0 { "12 mises à jour disponibles\nPaquets Debian (apt) : 9\nApplications Flatpak : 3".to_string() } else { summary(&st) };
         for b in self.buttons.borrow().iter() {
             b.set_visible(show);
             b.set_tooltip_text(Some(&tip));

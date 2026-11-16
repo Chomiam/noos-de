@@ -3,7 +3,7 @@
 //!
 //! - **Boutons** : `org.gnome.desktop.wm.preferences button-layout`, lu par GTK3, GTK4,
 //!   libadwaita (aussi en Flatpak, via le portail Settings) et par la barre de titre Qt
-//!   « Adwaita » (`QT_WAYLAND_DECORATION=adwaita`). Fedora y met `appmenu:close` : sans cela
+//!   « Adwaita » (`QT_WAYLAND_DECORATION=adwaita`). GNOME y met `appmenu:close` par défaut : sans cela
 //!   les applis tierces n'ont que le bouton Fermer.
 //! - **Accent libadwaita** : `org.gnome.desktop.interface accent-color` (couleur GNOME la
 //!   plus proche de l'accent NOOS) ; c'est la seule couleur que voient les applis Flatpak.

@@ -1,0 +1,146 @@
+Source: noos
+Section: x11
+Priority: optional
+Maintainer: Axel Valens <axel.valens@gmail.com>
+# Rust (cargo, rustc) : fourni par rustup (scripts/install-build-deps.sh), plus récent que
+# celui de Debian ; d'où l'absence de cargo / rustc ci-dessous.
+Build-Depends: debhelper-compat (= 13),
+               pkgconf,
+               meson,
+               ninja-build,
+               python3,
+               sassc,
+               libgtk-4-dev,
+               libappstream-dev,
+               libfribidi-dev,
+               libseat-dev,
+               libinput-dev,
+               libudev-dev,
+               libgbm-dev,
+               libdrm-dev,
+               libegl-dev,
+               libxkbcommon-dev,
+               libdisplay-info-dev,
+               libwayland-dev,
+               libgtk4-layer-shell-dev,
+               libvte-2.91-gtk4-dev,
+               libgtksourceview-5-dev,
+               libpam0g-dev
+Standards-Version: 4.7.0
+Homepage: https://github.com/Chomiam/noos-de
+Vcs-Git: https://github.com/Chomiam/noos-de.git
+Vcs-Browser: https://github.com/Chomiam/noos-de
+Rules-Requires-Root: no
+
+Package: noos
+Architecture: amd64
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+# Session, écran de connexion, démarrage
+         greetd,
+         dbus-user-session,
+         dbus-bin,
+         plymouth,
+# Image.Text du script Plymouth : sans ce greffon, plymouthd plante (SIGSEGV).
+         plymouth-label,
+         initramfs-tools,
+         polkitd,
+         pkexec,
+         sudo,
+         xdg-desktop-portal,
+         xdg-desktop-portal-gtk,
+         xdg-desktop-portal-wlr,
+         pipewire,
+         pipewire-pulse,
+         pipewire-bin,
+         wireplumber,
+         network-manager,
+         papirus-icon-theme,
+         curl,
+         ca-certificates,
+# Logiciels : applications Flatpak (Flathub) et paquets apt (données AppStream DEP-11)
+         flatpak,
+         appstream,
+# Trousseau déverrouillé à la connexion (greetd + pam_gnome_keyring)
+         gnome-keyring,
+         libpam-gnome-keyring,
+# Sauvegarder et Restaurer : instantanés Btrfs (snapper) avant / après chaque opération apt
+         snapper,
+         btrfs-progs,
+# Thème GRUB NOOS (grub-mkconfig)
+         grub-common,
+# Shell par défaut des comptes NOOS (fastfetch à l'ouverture d'un terminal)
+         fish,
+         fastfetch,
+# Profils d'énergie (Économie / Équilibré / Performances)
+         power-profiles-daemon,
+# Archives : 7-Zip, libarchive (bsdtar), unar, xorriso, compresseurs ; images disque (udisks)
+         7zip,
+         libarchive-tools,
+         unar,
+         xorriso,
+         zstd,
+         lz4,
+         lzip,
+         xz-utils,
+         udisks2,
+# Disques : formatage et réparation (NTFS, exFAT, FAT32, Btrfs, XFS, F2FS)
+         ntfs-3g,
+         exfatprogs,
+         dosfstools,
+         xfsprogs,
+         f2fs-tools,
+# Polices courantes et équivalentes métriques des polices Microsoft ; cabextract : polices
+# Microsoft d'origine à la demande (noos-msfonts)
+         fonts-dejavu,
+         fonts-liberation2,
+         fonts-crosextra-carlito,
+         fonts-crosextra-caladea,
+         fonts-noto-core,
+         fonts-noto-mono,
+         fonts-noto-cjk,
+         fonts-noto-color-emoji,
+         cabextract,
+# VPN WireGuard (NetworkManager le gère nativement ; wg pour l'état des tunnels)
+         wireguard-tools
+Recommends: xwayland,
+            xwayland-satellite,
+            grim,
+            bluez,
+            gcr,
+            gvfs,
+            xdg-user-dirs,
+            firefox | firefox-esr,
+# Thème GTK3 qui suit les couleurs de la palette NOOS
+            adw-gtk3 | gnome-themes-extra,
+# Applis Qt : palette NOOS (qt6ct / qt5ct) et barre de titre « Adwaita »
+            qt6ct,
+            qt5ct,
+            qt6-wayland,
+# Polices supplémentaires (interface, code, icônes, symboles)
+            fonts-noto-extra,
+            fonts-noto-ui-core,
+            fonts-symbola,
+            fonts-roboto,
+            fonts-open-sans,
+            fonts-lato,
+            fonts-inter,
+            fonts-firacode,
+            fonts-jetbrains-mono,
+            fonts-cascadia-code,
+            fonts-ibm-plex,
+            fonts-font-awesome,
+# Visionneuse : photos RAW et HEIC d'iPhone ; images (GTK 4)
+            libopenraw-pixbuf-loader,
+            heif-gdk-pixbuf,
+            libheif-plugin-libde265,
+            glycin-loaders,
+# Drapeaux des pays (Paramètres › Réseau › DNS) ; noms des cartes graphiques
+            libtimezonemap1,
+            pci.ids
+Description: Bureau Wayland NOOS (Smithay, GTK4 + libAdapta), façon Windows 11
+ NOOS est un environnement de bureau Wayland écrit en Rust : compositeur Smithay,
+ barre des tâches et menu Démarrer façon Windows 11, Paramètres, explorateur de
+ fichiers, terminal, outil de capture, porte-clés, logithèque (apt et Flatpak),
+ écran de connexion (greetd) et installateur, tous en GTK4 + libAdapta. Pensé pour
+ le jeu (VRR, HDR) et entièrement personnalisable.

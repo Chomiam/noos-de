@@ -140,7 +140,7 @@ fn keyboard(app: &Rc<App>) -> adap::NavigationPage {
     let (p, content) = page(app, &["Bluetooth et appareils"], "Clavier");
     let cfg = app.cfg();
     let g = group("Disposition");
-    g.set_description(Some("Vide = disposition du système (/etc/vconsole.conf). Appliqué au prochain démarrage de session."));
+    g.set_description(Some("Vide = disposition du système (/etc/default/keyboard). Appliqué au prochain démarrage de session."));
     for (title, value, set) in [
         ("Disposition (fr, us, be…)", cfg.keyboard.layout.clone(), (|c: &mut noos_core::NoosConfig, v: String| c.keyboard.layout = v) as fn(&mut noos_core::NoosConfig, String)),
         ("Variante (oss, azerty, bepo…)", cfg.keyboard.variant.clone(), |c, v| c.keyboard.variant = v),
@@ -196,7 +196,7 @@ fn fill_updates(app: &Rc<App>, content: &gtk::Box) {
     let img = gtk::Image::from_icon_name(if st.total > 0 { "software-update-urgent-symbolic" } else { "software-update-available-symbolic" });
     img.set_pixel_size(72);
     let (title, sub) = match st.total {
-        0 if st.checked_at == 0 => ("Mises à jour du système et des applications".to_string(), "Paquets Fedora et applications Flatpak, gérés par l'application Logiciels.".to_string()),
+        0 if st.checked_at == 0 => ("Mises à jour du système et des applications".to_string(), "Paquets Debian et applications Flatpak, gérés par l'application Logiciels.".to_string()),
         0 => ("Votre système est à jour".to_string(), format!("Dernière vérification : {}", upd::ago(st.checked_at))),
         n => (
             if n == 1 { "1 mise à jour disponible".to_string() } else { format!("{n} mises à jour disponibles") },

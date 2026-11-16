@@ -101,11 +101,11 @@ fn detect_gpu() -> (Gpu, String) {
     (Gpu::None, String::new())
 }
 
-/// Nom lisible depuis la base PCI (`/usr/share/hwdata/pci.ids`), sinon le fabricant.
+/// Nom lisible depuis la base PCI (`/usr/share/misc/pci.ids` sur Debian, ou hwdata), sinon le fabricant.
 fn gpu_name(card: &Path) -> Option<String> {
     let vendor = read(card.join("device/vendor"))?.trim().trim_start_matches("0x").to_lowercase();
     let device = read(card.join("device/device"))?.trim().trim_start_matches("0x").to_lowercase();
-    let ids = read("/usr/share/hwdata/pci.ids")?;
+    let ids = read("/usr/share/misc/pci.ids").or_else(|| read("/usr/share/hwdata/pci.ids"))?;
     let mut in_vendor = false;
     let mut vname = String::new();
     for line in ids.lines() {

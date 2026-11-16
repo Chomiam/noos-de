@@ -1,6 +1,6 @@
 //! noos-keys — Porte-clés de NOOS (GTK 4 + libAdapta).
 //!
-//! - **Mots de passe** : trousseaux du Secret Service (oo7 sur Fedora, gnome-keyring,
+//! - **Mots de passe** : trousseaux du Secret Service (gnome-keyring sur NOOS / Debian, oo7,
 //!   KeePassXC…) : recherche, affichage, copie (effacée du presse-papiers après 30 s),
 //!   ajout, modification, suppression, verrouillage / déverrouillage, nouveaux trousseaux.
 //! - **Clés SSH** : `~/.ssh`, empreintes, copie de la clé publique, génération.
@@ -253,7 +253,7 @@ impl App {
                 }
                 Err(e) => {
                     a.error_page.set_description(Some(&format!(
-                        "{e:#}\n\nLes mots de passe sont gérés par le service de secrets de la session (oo7 ou gnome-keyring). Les clés SSH restent accessibles."
+                        "{e:#}\n\nLes mots de passe sont gérés par le service de secrets de la session (gnome-keyring ou oo7). Les clés SSH restent accessibles."
                     )));
                     a.fill_sidebar();
                     a.content.set_visible_child_name("error");

@@ -1,7 +1,7 @@
 #!/usr/bin/sh
 # NOOS — sous-menu GRUB « Restaurer depuis un instantané » (instantanés snapper de /).
 #
-# Appelé par grub2-mkconfig (fichier du paquet noos, dans /etc/grub.d). Chaque entrée démarre
+# Appelé par grub-mkconfig / update-grub (fichier du paquet noos, dans /etc/grub.d). Chaque entrée démarre
 # l'instantané en LECTURE SEULE avec une couche modifiable en mémoire (systemd.volatile=overlay) :
 # rien n'est écrit dans l'instantané, tout est oublié au redémarrage. Pour revenir
 # définitivement à cet état : « Sauvegarder et Restaurer » › Restaurer (proposé au démarrage).
@@ -30,7 +30,7 @@ uuid=$(findmnt -no UUID -T "$mnt")
 [ -n "$uuid" ] || uuid=$(blkid -s UUID -o value "$(findmnt -no SOURCE -T "$mnt" | sed 's/\[.*//')" 2>/dev/null)
 [ -n "$uuid" ] || exit 0
 
-# Arguments du noyau du système (exportés par grub2-mkconfig, sinon /etc/kernel/cmdline), sans
+# Arguments du noyau du système (exportés par grub-mkconfig depuis /etc/default/grub), sans
 # ce qui désigne la racine.
 base="${GRUB_CMDLINE_LINUX:-} ${GRUB_CMDLINE_LINUX_DEFAULT:-}"
 [ -n "${base# }" ] || base=$(cat /etc/kernel/cmdline 2>/dev/null || true)
@@ -58,7 +58,7 @@ for dir in $(ls -1d /.snapshots/[0-9]* 2>/dev/null | sort -t/ -k3 -n -r); do
     utc=$(field "$info" date)
     when=$(date -d "$utc UTC" "+%d/%m/%Y %H:%M" 2>/dev/null || echo "$utc")
     kind="manuel"
-    grep -q '<key>noos</key>' "$info" && grep -A1 '<key>noos</key>' "$info" | grep -q '>dnf<' && kind="dnf"
+    grep -q '<key>noos</key>' "$info" && grep -A1 '<key>noos</key>' "$info" | grep -q '>apt<' && kind="apt"
     [ "$(field "$info" cleanup)" = "timeline" ] && kind="régulier"
     case "$type" in
     pre) label="avant : $desc" ;;
@@ -69,21 +69,21 @@ for dir in $(ls -1d /.snapshots/[0-9]* 2>/dev/null | sort -t/ -k3 -n -r); do
 
     # Noyau compatible : le plus récent de /boot dont les modules sont dans l'instantané.
     kver=""
-    for k in $(ls -1 /boot/vmlinuz-* 2>/dev/null | grep -v rescue | sed 's|/boot/vmlinuz-||' | sort -V -r); do
+    for k in $(ls -1 /boot/vmlinuz-* 2>/dev/null | sed 's|/boot/vmlinuz-||' | sort -V -r); do
         if [ -d "$snap/usr/lib/modules/$k" ]; then
             kver="$k"
             break
         fi
     done
-    [ -n "$kver" ] && [ -f "/boot/initramfs-$kver.img" ] || continue
+    [ -n "$kver" ] && [ -f "/boot/initrd.img-$kver" ] || continue
 
     linux_rel=$(make_system_path_relative_to_its_root "/boot/vmlinuz-$kver")
-    initrd_rel=$(make_system_path_relative_to_its_root "/boot/initramfs-$kver.img")
+    initrd_rel=$(make_system_path_relative_to_its_root "/boot/initrd.img-$kver")
     entries="$entries
   menuentry 'n° $num — $when — $label ($kind)' --class noos --class snapshot {
 $(prepare_grub_to_access_device "${GRUB_DEVICE_BOOT}" | sed 's/^/    /')
     echo 'Démarrage de l’instantané n° $num (lecture seule, changements oubliés au redémarrage)…'
-    linux $linux_rel root=UUID=$uuid rootflags=subvol=@/.snapshots/$num/snapshot ro systemd.volatile=overlay systemd.mask=systemd-remount-fs.service enforcing=0 noos.snapshot=$num$args
+    linux $linux_rel root=UUID=$uuid rootflags=subvol=@/.snapshots/$num/snapshot ro systemd.volatile=overlay systemd.mask=systemd-remount-fs.service noos.snapshot=$num$args
     initrd $initrd_rel
   }"
     count=$((count + 1))

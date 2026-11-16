@@ -1,0 +1,5 @@
+// NOOS « Sauvegarder et Restaurer » : instantané Btrfs (snapper) avant et après chaque
+// opération apt / dpkg lancée par apt (Logiciels, terminal, mises à jour). Désactivable dans
+// l'application (APT_SNAPSHOTS dans /etc/noos/save.conf). Le script ne fait jamais échouer apt.
+DPkg::Pre-Invoke { "if [ -x /opt/noos/libexec/noos-save-helper ]; then /opt/noos/libexec/noos-save-helper apt-pre || true; fi"; };
+DPkg::Post-Invoke { "if [ -x /opt/noos/libexec/noos-save-helper ]; then /opt/noos/libexec/noos-save-helper apt-post || true; fi"; };

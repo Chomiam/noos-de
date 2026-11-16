@@ -297,7 +297,7 @@ impl Default for Gaming {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct Keyboard {
-    /// Disposition XKB (vide = celle du système, lue dans /etc/vconsole.conf).
+    /// Disposition XKB (vide = celle du système, lue dans /etc/default/keyboard).
     pub layout: String,
     pub variant: String,
     pub options: String,

@@ -1,7 +1,7 @@
 //! Personnalisation → Écran de connexion : thème de noos-login (`/etc/noos/login.toml`).
 //!
 //! Les modifications sont rassemblées puis enregistrées d'un coup (« Appliquer ») : le
-//! fichier est système. Écriture directe si `/etc/noos` est modifiable (groupe `wheel`,
+//! fichier est système. Écriture directe si `/etc/noos` est modifiable (groupe `sudo`,
 //! préparé par l'installateur), sinon via pkexec.
 
 use std::{cell::RefCell, path::{Path, PathBuf}, rc::Rc};
@@ -325,7 +325,7 @@ fn save(mut cfg: LoginConfig, image: Option<PathBuf>) -> Result<LoginConfig, Str
     // Sinon : pkexec (demande le mot de passe administrateur).
     let tmp = std::env::temp_dir().join(format!("noos-login-{}.toml", std::process::id()));
     std::fs::write(&tmp, cfg.to_toml().map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
-    let mut script = format!("install -d -m 2775 -g wheel {0} && install -m 664 -g wheel '{1}' {0}/login.toml", login::DIR, tmp.display());
+    let mut script = format!("install -d -m 2775 -g sudo {0} && install -m 664 -g sudo '{1}' {0}/login.toml", login::DIR, tmp.display());
     if let (Some(img), Some(t)) = (&image, &target) {
         script.push_str(&format!(
             " && rm -f {0}/{1}.* && install -m 644 '{2}' '{3}'",

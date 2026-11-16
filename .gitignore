@@ -1,4 +1,6 @@
 /target
 *.swp
 noos-iso/out/
-packaging/rpm/out/
+packaging/apt/out/
+/out/
+noos-apt-private.asc

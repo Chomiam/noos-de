@@ -1,6 +1,6 @@
 //! noos-software — « Logiciels » de NOOS.
 //!
-//! Applications Flatpak (Flathub, Fedora Flatpaks) et paquets Fedora (dnf). Quand un logiciel
+//! Applications Flatpak (Flathub) et paquets Debian (apt). Quand un logiciel
 //! existe des deux façons, on choisit au moment d'installer.
 //! Toute la logique de paquets est dans la bibliothèque `noos-pkg` ; ce fichier n'est que
 //! l'interface GTK4 + libAdapta.
@@ -39,7 +39,7 @@ struct App {
     explore_stack: gtk::Stack,
     search_gen: Cell<u64>,
     found: RefCell<Vec<(usize, Package)>>,
-    /// Paquet dnf → identifiant AppStream (rapprochement avec les Flatpak).
+    /// Paquet apt → identifiant AppStream (rapprochement avec les Flatpak).
     appstream: RefCell<HashMap<String, String>>,
     explore_home: gtk::Box,
     collection_box: gtk::Box,
@@ -79,7 +79,7 @@ fn badge(text: &str, kind: BackendKind) -> gtk::Label {
     l.add_css_class("noos-badge");
     l.add_css_class(match kind {
         BackendKind::Flatpak => "flatpak",
-        BackendKind::Dnf => "system",
+        BackendKind::Apt => "system",
     });
     l.set_valign(gtk::Align::Center);
     l
@@ -89,31 +89,30 @@ fn badge(text: &str, kind: BackendKind) -> gtk::Label {
 fn origin_label(p: &Package) -> String {
     match (p.backend, p.origin.as_str()) {
         (Some(BackendKind::Flatpak), "flathub") => "Flathub".into(),
-        (Some(BackendKind::Flatpak), "fedora") => "Fedora".into(),
-        (_, o) if o.starts_with("rpmfusion") => "RPM Fusion".into(),
-        (_, "fedora" | "updates" | "updates-testing") => "Fedora".into(),
-        (_, o) if o.starts_with("copr:") => format!("COPR {}", o.rsplit(':').take(2).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("/")),
-        (_, "@System" | "") => String::new(),
+        (_, "debian") => "Debian".into(),
+        (_, "debian-experimental") => "Debian experimental".into(),
+        (_, "noos") => "NOOS".into(),
+        (_, "") => String::new(),
         (_, o) => o.to_string(),
     }
 }
 
-/// Texte court de la source d'un paquet : « Flatpak · Flathub », « dnf · RPM Fusion ».
+/// Texte court de la source d'un paquet : « Flatpak · Flathub », « apt · Debian ».
 fn source_text(p: &Package) -> String {
     let base = match p.backend.unwrap_or(BackendKind::Flatpak) {
         BackendKind::Flatpak => "Flatpak",
-        BackendKind::Dnf => "dnf",
+        BackendKind::Apt => "apt",
     };
     let origin = origin_label(p);
     let scope = if p.scope == Some(Scope::User) { " · votre compte" } else { "" };
     if origin.is_empty() { format!("{base}{scope}") } else { format!("{base} · {origin}{scope}") }
 }
 
-/// Description d'une façon d'installer, pour le choix dnf / Flatpak.
+/// Description d'une façon d'installer, pour le choix apt / Flatpak.
 fn offer_explanation(p: &Package) -> &'static str {
     match p.backend {
         Some(BackendKind::Flatpak) => "Application isolée (bac à sable), mise à jour par son éditeur",
-        _ => "Paquet du système, intégré et mis à jour avec Fedora",
+        _ => "Paquet du système, intégré et mis à jour avec Debian",
     }
 }
 
@@ -257,7 +256,7 @@ impl App {
     }
 
     /// Bouton d'action d'un logiciel : « Supprimer » s'il est installé ; sinon « Installer »,
-    /// avec un menu de choix (Flatpak Flathub, Flatpak Fedora, paquet dnf…) s'il y a plusieurs
+    /// avec un menu de choix (Flatpak Flathub, paquet Debian…) s'il y a plusieurs
     /// façons de l'installer.
     pub(crate) fn action_button(self: &Rc<Self>, sw: &Software) -> gtk::Widget {
         let installed: Vec<Package> = sw.installed().cloned().collect();
@@ -394,10 +393,10 @@ impl App {
         for idx in targets {
             let backends = self.backends.clone();
             let q = query.clone();
-            // dnf : on récupère aussi la table AppStream (une fois, mise en cache par le backend).
+            // apt : on récupère aussi la table AppStream (une fois, mise en cache par le backend).
             let task = background(move || {
                 let res = backends[idx].search(&q);
-                let ids = (backends[idx].kind() == BackendKind::Dnf).then(|| backends[idx].appstream_ids());
+                let ids = (backends[idx].kind() == BackendKind::Apt).then(|| backends[idx].appstream_ids());
                 (res, ids)
             });
             let (app, pending, query) = (self.clone(), pending.clone(), query.clone());
@@ -414,8 +413,8 @@ impl App {
                     Ok(pkgs) => app.found.borrow_mut().extend(pkgs.into_iter().map(|p| (idx, p))),
                     Err(e) => app.toasts.add_toast(adap::Toast::new(&format!("{} : {e}", app.kind(idx).label()))),
                 }
-                // On attend les deux sources : sinon une ligne « dnf » se transformerait en
-                // ligne « dnf + Flatpak » sous les yeux de l'utilisateur.
+                // On attend les deux sources : sinon une ligne « apt » se transformerait en
+                // ligne « apt + Flatpak » sous les yeux de l'utilisateur.
                 if pending.get() == 0 {
                     app.render_results(&query);
                 }
@@ -429,7 +428,7 @@ impl App {
             self.explore_stack.set_visible_child_name("none");
             return;
         }
-        // Classement global : pertinence, puis Flatpak avant les paquets dnf à égalité.
+        // Classement global : pertinence, puis Flatpak avant les paquets apt à égalité.
         pkgs.sort_by_key(|p| p.backend != Some(BackendKind::Flatpak));
         noos_pkg::rank(query, &mut pkgs);
         let software = catalog::merge(pkgs, &self.appstream.borrow());
@@ -478,8 +477,8 @@ impl App {
             let g = adap::PreferencesGroup::new();
             g.set_title(&format!("{} — {}", kind.label(), list.len()));
             g.set_description(Some(match kind {
-                BackendKind::Flatpak => "Applications isolées (Flathub, Fedora Flatpaks)",
-                BackendKind::Dnf => "Paquets installés explicitement (hors dépendances)",
+                BackendKind::Flatpak => "Applications isolées (Flathub)",
+                BackendKind::Apt => "Paquets installés explicitement (hors dépendances)",
             }));
             if let Some(e) = err {
                 g.add(&row("Erreur", e));
@@ -552,7 +551,7 @@ impl App {
         ch.append(&gtk::Image::from_icon_name("view-refresh-symbolic"));
         ch.append(&gtk::Label::new(Some("Rechercher des mises à jour")));
         check.set_child(Some(&ch));
-        check.set_tooltip_text(Some("Interroge les dépôts (Fedora, Flatpak) maintenant, sans mot de passe"));
+        check.set_tooltip_text(Some("Interroge les dépôts (Debian, NOOS, Flatpak) maintenant, sans mot de passe"));
         check.set_valign(gtk::Align::Center);
         {
             let app = self.clone();
@@ -623,13 +622,12 @@ impl App {
         clear(&self.repos_box);
         self.repos_box.append(&loading("Lecture des sources…"));
         let backends = self.backends.clone();
-        let version = self.sys.major();
         let task = background(move || {
             (0..backends.len())
                 .map(|i| {
                     let b = &backends[i];
                     let sources = b.repos().map_err(|e| format!("{e:#}")).map(|repos| match b.kind() {
-                        BackendKind::Dnf => sources::group_dnf(&repos, &version),
+                        BackendKind::Apt => sources::group_apt(&repos),
                         BackendKind::Flatpak => sources::group_flatpak(&repos),
                     });
                     (i, sources, b.presets())
@@ -665,9 +663,9 @@ impl App {
             let kind = self.kind(idx);
             let g = adap::PreferencesGroup::new();
             g.set_title(kind.label());
-            g.set_description(Some(match kind {
-                BackendKind::Dnf => "Paquets RPM installés avec le système (dnf)",
-                BackendKind::Flatpak => "Applications isolées, indépendantes du système",
+            g.set_description(Some(&match kind {
+                BackendKind::Apt => format!("Paquets .deb installés avec le système (Debian {}, apt)", self.sys.release_label()),
+                BackendKind::Flatpak => "Applications isolées, indépendantes du système".to_string(),
             }));
             match res {
                 Err(e) => g.add(&row("Lecture impossible", &e)),
@@ -682,11 +680,11 @@ impl App {
                 }
             }
             self.repos_box.append(&g);
-            // Préréglages qui ne sont pas déjà des lignes « non installée » (COPR, URL…).
+            // Préréglages qui ne sont pas déjà des lignes « non installée » (dépôt, URL, i386…).
             extra.extend(
                 presets
                     .into_iter()
-                    .filter(|p| p.argument.is_some() || matches!(p.id, "flathub" | "flathub-beta" | "flathub-unfilter"))
+                    .filter(|p| p.argument.is_some() || matches!(p.id, "flathub" | "flathub-beta" | "flathub-unfilter" | "i386"))
                     .map(|p| (idx, p)),
             );
         }
@@ -712,7 +710,7 @@ impl App {
                 let r = row(p.name, p.description);
                 r.add_prefix(&gtk::Image::from_icon_name(match p.backend {
                     BackendKind::Flatpak => "application-x-addon-symbolic",
-                    BackendKind::Dnf => "package-x-generic-symbolic",
+                    BackendKind::Apt => "package-x-generic-symbolic",
                 }));
                 let b = gtk::Button::with_label(if p.argument.is_some() { "Ajouter…" } else { "Ajouter" });
                 b.set_valign(gtk::Align::Center);
@@ -926,7 +924,7 @@ fn build(gapp: &adap::Application) {
     search.set_placeholder_text(Some("Applications, outils, jeux, paquets…"));
     search.add_css_class("noos-search");
     search.set_hexpand(true);
-    let mut labels = vec!["Flatpak et dnf".to_string()];
+    let mut labels = vec!["Flatpak et apt".to_string()];
     labels.extend(backends.iter().map(|b| b.kind().label().to_string()));
     let refs: Vec<&str> = labels.iter().map(|s| s.as_str()).collect();
     let source = gtk::DropDown::from_strings(&refs);
@@ -941,7 +939,7 @@ fn build(gapp: &adap::Application) {
     let collection_box = gtk::Box::new(gtk::Orientation::Vertical, 18);
     let home = explore_home.clone();
     explore_stack.add_named(&home, Some("home"));
-    explore_stack.add_named(&loading("Recherche dans les applications Flatpak et les paquets Fedora…"), Some("loading"));
+    explore_stack.add_named(&loading("Recherche dans les applications Flatpak et les paquets Debian…"), Some("loading"));
     let results = gtk::ListBox::new();
     results.add_css_class("boxed-list");
     results.set_selection_mode(gtk::SelectionMode::None);
@@ -1079,12 +1077,12 @@ fn build(gapp: &adap::Application) {
     }
 
     if app.backends.is_empty() {
-        app.toasts.add_toast(adap::Toast::new("Ni dnf ni Flatpak ne sont disponibles sur ce système"));
+        app.toasts.add_toast(adap::Toast::new("Ni apt ni Flatpak ne sont disponibles sur ce système"));
     }
     app.load_installed();
     app.load_updates();
-    // Table AppStream dnf (≈ 1 s) : rapproche paquets Fedora et applis Flathub dès la vitrine.
-    if let Some(idx) = app.backend_index(BackendKind::Dnf) {
+    // Table AppStream apt (DEP-11, ≈ 1 s) : rapproche paquets Debian et applis Flathub dès la vitrine.
+    if let Some(idx) = app.backend_index(BackendKind::Apt) {
         let backends = app.backends.clone();
         let task = background(move || backends[idx].appstream_ids());
         let app2 = app.clone();

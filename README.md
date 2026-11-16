@@ -7,7 +7,7 @@
 [![Rust 2024](https://img.shields.io/badge/Rust-2024-dea584?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![Wayland · Smithay](https://img.shields.io/badge/Wayland-Smithay-89b4fa)](https://github.com/Smithay/smithay)
 [![GTK4 · libAdapta](https://img.shields.io/badge/GTK4-libAdapta-cba6f7)](https://github.com/xapp-project/libadapta)
-[![Fedora 45](https://img.shields.io/badge/Fedora-45-51a2da?logo=fedora&logoColor=white)](https://copr.fedorainfracloud.org/coprs/chomiam/noos/)
+[![Debian sid](https://img.shields.io/badge/Debian-sid-a80030?logo=debian&logoColor=white)](https://chomiam.github.io/noos-de/)
 [![Licence GPL-3.0](https://img.shields.io/badge/licence-GPL--3.0-a6e3a1)](LICENSE)
 [![Vibe codé avec Claude Opus 5.5](https://img.shields.io/badge/vibe%20cod%C3%A9%20avec-Claude%20Opus%205.5-d97757)](#-vibe-codé-et-fier-de-lêtre)
 
@@ -47,7 +47,7 @@ Tout est écrit en **Rust**, de la première ligne du compositeur jusqu'à la de
 <td><img src="docs/captures/07-verrouillage.webp" alt="Écran de verrouillage animé"><br><b>Écran de verrouillage animé</b> (shaders GLSL) : un catalogue d'animations, avec des clins d'œil aux écrans de veille de Windows 95 / 98.</td>
 </tr>
 <tr>
-<td><img src="docs/captures/08-logiciels.webp" alt="Logiciels"><br><b>Logiciels</b> : la vitrine Flathub et les paquets Fedora au même endroit, avec les mises à jour signalées dans la barre.</td>
+<td><img src="docs/captures/08-logiciels.webp" alt="Logiciels"><br><b>Logiciels</b> : la vitrine Flathub et les paquets Debian au même endroit, avec les mises à jour signalées dans la barre.</td>
 <td><img src="docs/captures/09-disques.webp" alt="Disques"><br><b>Disques</b> : carte des partitions, santé SMART, formatage (NTFS compris), test de vitesse et montage sans galère de permissions.</td>
 </tr>
 </table>
@@ -73,7 +73,7 @@ Tout est écrit en **Rust**, de la première ligne du compositeur jusqu'à la de
   (instantanés Btrfs avant chaque mise à jour, restauration depuis le menu de démarrage).
 - 🔒 **Du démarrage à la session** : thème GRUB, Plymouth, écran de connexion, écran de
   verrouillage animé, fenêtre « Contrôle de compte » pour les mots de passe administrateur.
-- 💿 **Un installateur** : ISO live Fedora 45, partitionnement Btrfs, compte, fuseau horaire,
+- 💿 **Un installateur** : ISO live Debian sid, partitionnement Btrfs, compte, fuseau horaire,
   le tout en plein écran.
 
 Le détail de chaque appli est dans le [guide détaillé](docs/GUIDE.md).
@@ -124,23 +124,29 @@ GNOME arrivent un peu plus tard.
 
 ## 🚀 Essayer NOOS
 
-Sur **Fedora 45** (Workstation ou autre variante dnf) :
+Sur **Debian sid** (unstable), ajoutez le dépôt APT de NOOS, hébergé sur
+[GitHub Pages](https://chomiam.github.io/noos-de/) :
 
 ```bash
-sudo dnf copr enable chomiam/noos
+sudo curl -fsSL -o /usr/share/keyrings/noos-archive-keyring.asc https://chomiam.github.io/noos-de/noos-archive-keyring.asc
 ```
 
 ```bash
-sudo dnf install noos
+printf 'Types: deb\nURIs: https://chomiam.github.io/noos-de\nSuites: sid\nComponents: main\nSigned-By: /usr/share/keyrings/noos-archive-keyring.asc\n' | sudo tee /etc/apt/sources.list.d/noos.sources
+```
+
+```bash
+sudo apt update && sudo apt install noos
 ```
 
 Déconnectez-vous, choisissez **NOOS** dans la liste des sessions, et c'est parti. Le paquet
-est reconstruit sur [COPR](https://copr.fedorainfracloud.org/coprs/chomiam/noos/) à chaque
-nouveauté, et Logiciels vous prévient des mises à jour.
+est reconstruit par GitHub Actions à chaque nouveauté sur `main` et publié dans le dépôt
+APT ; Logiciels vous prévient des mises à jour. L'architecture 32 bits (i386) est activée
+pour Steam et Wine.
 
 Pour une installation complète (écran de connexion, Plymouth, GRUB, Btrfs + instantanés),
 construisez l'**ISO** avec `./noos-iso/build.sh`. Pour développer, voyez le
-[guide détaillé](docs/GUIDE.md#environnement-de-développement-fedora-silverblue).
+[guide détaillé](docs/GUIDE.md#environnement-de-développement-debian-sid).
 
 > ⚠️ **NOOS est un prototype.** On l'utilise au quotidien, mais attendez-vous à des bugs, et
 > testez d'abord dans une machine virtuelle si vous tenez à votre configuration.
@@ -162,7 +168,8 @@ NOOS est **entièrement vibe codé** : le code est écrit par **Claude (Opus 5.5
 **l'application Claude pour ordinateur**, au fil d'une conversation en français avec Axel. Axel
 décrit ce qu'il veut (« une appli de disques qui m'impressionne », « le dock sur les côtés »,
 « la souris freeze toutes les 3 secondes »…). Claude écrit le code, compile, teste dans un
-aperçu imbriqué, fait des captures pour vérifier, publie sur GitHub et lance le paquet COPR.
+aperçu imbriqué, fait des captures pour vérifier et publie sur GitHub, où la CI construit le
+paquet Debian et met à jour le dépôt APT.
 
 Ce que ça donne :
 

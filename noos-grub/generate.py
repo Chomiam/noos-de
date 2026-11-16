@@ -5,9 +5,9 @@
 - logo.png       : logo NOOS (repris du thème Plymouth) ;
 - menu_*.png     : panneau du menu (9 morceaux, coins arrondis, translucide) ;
 - select_*.png   : pastille de l'entrée sélectionnée (accent #89b4fa) ;
-- *.pf2          : polices Noto Sans converties par grub2-mkfont (« NOOS Regular 20 »…).
+- *.pf2          : polices Noto Sans converties par grub-mkfont (« NOOS Regular 20 »…).
 
-Les fichiers produits sont versionnés : seul ce script a besoin de cairo et grub2-mkfont.
+Les fichiers produits sont versionnés : seul ce script a besoin de cairo et grub-mkfont.
 
     python3 noos-grub/generate.py
 """
@@ -130,8 +130,8 @@ def nine_slice(prefix, fill, radius, border=None):
 def fonts():
     mkfont = shutil.which("grub2-mkfont") or shutil.which("grub-mkfont")
     if not mkfont:
-        raise SystemExit("grub2-mkfont introuvable (paquet grub2-tools-extra)")
-    # grub2-mkfont ajoute le style du fichier (« Regular ») au nom : « NOOS Regular 20 »,
+        raise SystemExit("grub-mkfont introuvable (paquet grub-common)")
+    # grub-mkfont ajoute le style du fichier (« Regular ») au nom : « NOOS Regular 20 »,
     # « NOOS SemiBold Regular 20 » (noms utilisés dans theme.txt).
     for family, file, sizes in [("NOOS", "NotoSans-Regular.ttf", [16, 20]), ("NOOS SemiBold", "NotoSans-SemiBold.ttf", [20, 28])]:
         for size in sizes:

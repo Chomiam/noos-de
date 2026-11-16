@@ -1,4 +1,4 @@
-//! Client du Secret Service (`org.freedesktop.secrets`) : oo7, gnome-keyring, KeePassXC…
+//! Client du Secret Service (`org.freedesktop.secrets`) : gnome-keyring, oo7, KeePassXC…
 //!
 //! Session « plain » : les secrets transitent en clair sur le bus D-Bus de session (local à
 //! l'utilisateur, comme pour la plupart des clients libsecret qui n'imposent pas le
@@ -53,7 +53,7 @@ impl Secrets {
         let reply = s
             .call(SERVICE, I_SERVICE, "OpenSession", ("plain", "".to_variant()).to_variant(), "(vo)")
             .await
-            .context("aucun service de secrets (oo7, gnome-keyring…) ne répond")?;
+            .context("aucun service de secrets (gnome-keyring, oo7…) ne répond")?;
         s.session = reply.child_value(1).str().unwrap_or("/").to_string();
         Ok(s)
     }

@@ -555,11 +555,11 @@ fn diag_steps() -> Vec<Box<dyn FnOnce() -> Check + Send>> {
         }),
         Box::new(|| {
             let t = std::time::Instant::now();
-            let ok = nm::demo() || std::net::ToSocketAddrs::to_socket_addrs(&("fedoraproject.org", 443)).is_ok_and(|mut a| a.next().is_some());
+            let ok = nm::demo() || std::net::ToSocketAddrs::to_socket_addrs(&("deb.debian.org", 443)).is_ok_and(|mut a| a.next().is_some());
             Check {
                 ok,
                 title: "Résolution des noms (DNS)",
-                detail: if ok { format!("fedoraproject.org résolu en {} ms", t.elapsed().as_millis().max(if nm::demo() { 18 } else { 0 })) } else { "échec".into() },
+                detail: if ok { format!("deb.debian.org résolu en {} ms", t.elapsed().as_millis().max(if nm::demo() { 18 } else { 0 })) } else { "échec".into() },
                 advice: "Les noms de sites ne sont pas traduits en adresses : essayez un autre DNS (Réseau › DNS), ou « Automatique ».",
             }
         }),

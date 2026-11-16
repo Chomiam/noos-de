@@ -1,91 +1,96 @@
-# Paquets communs au système live et au système installé (un par ligne, « # » = commentaire).
-@core
-kernel
-linux-firmware
-NetworkManager-wifi
-NetworkManager-bluetooth
-wpa_supplicant
+# Paquets Debian communs au système live et au système installé (un par ligne, « # » = commentaire).
+# Noms Debian sid ; un paquet absent du miroir n'empêche pas l'installation des autres.
+linux-image-amd64
+systemd-sysv
+systemd-resolved
+dbus-user-session
+libpam-systemd
+udev
+kmod
+sudo
+locales
+console-setup
+keyboard-configuration
+network-manager
+wpasupplicant
+iw
 bluez
 btrfs-progs
 dosfstools
 e2fsprogs
 plymouth
-plymouth-plugin-script
 # Texte du thème Plymouth (Image.Text) : sans lui, plymouthd plante.
-plymouth-plugin-label
-mesa-dri-drivers
-# Chargés dynamiquement par GTK (invisibles pour ldd) : OpenGL ES / EGL, images.
-mesa-libEGL
-mesa-libGL
-libglvnd-gles
-libglvnd-egl
+plymouth-label
+initramfs-tools
+# Pilotes graphiques libres (Mesa) et bibliothèques chargées dynamiquement par GTK
+# (invisibles pour ldd) : OpenGL / GLES / EGL, Vulkan, images.
+libgl1-mesa-dri
+libegl1
+libgles2
+libglx-mesa0
+mesa-vulkan-drivers
+libvulkan1
 glycin-loaders
-gdk-pixbuf2-modules-extra
-# Photos RAW des appareils (visionneuse, miniatures)
+librsvg2-common
+# Photos RAW des appareils (visionneuse, miniatures) ; HEIC d'iPhone
 libopenraw-pixbuf-loader
+heif-gdk-pixbuf
 # VPN WireGuard (Paramètres › Réseau › VPN)
 wireguard-tools
-mesa-vulkan-drivers
-vulkan-loader
-libinput
-libseat
-gtk4
-gtk4-layer-shell
-librsvg2
-glib2
-dbus-daemon
-dbus-tools
-# pam_systemd : session logind (indispensable à libseat pour prendre l'écran)
-systemd-pam
-xkeyboard-config
+libinput10
+libseat1
+seatd
+libgtk-4-1
+libgtk4-layer-shell0
+libglib2.0-0t64
+libglib2.0-bin
+dbus
+dbus-bin
+xkb-data
 papirus-icon-theme
-adw-gtk3-theme
 adwaita-icon-theme
-adwaita-cursor-theme
-google-noto-sans-fonts
-google-noto-sans-mono-fonts
-google-noto-emoji-fonts
-glibc-langpack-fr
-glibc-langpack-en
+fonts-noto-core
+fonts-noto-mono
+fonts-noto-color-emoji
 kbd
 curl
+ca-certificates
 nano
-# Profils d'énergie
-tuned-ppd
-# Polices (voir packaging/rpm/noos.spec)
-dejavu-fonts-all
-liberation-fonts-all
-google-carlito-fonts
-google-crosextra-caladea-fonts
-google-noto-serif-fonts
-google-noto-sans-cjk-vf-fonts
-google-noto-color-emoji-fonts
-google-noto-sans-symbols-fonts
-google-noto-sans-symbols-2-fonts
-google-noto-sans-math-fonts
-google-roboto-fonts
-open-sans-fonts
-lato-fonts
-rsms-inter-fonts
-adobe-source-code-pro-fonts
-fira-code-fonts
-jetbrains-mono-fonts-all
-cascadia-fonts-all
-ibm-plex-fonts-all
-fontawesome-fonts-all
+# Profils d'énergie (Économie / Équilibré / Performances)
+power-profiles-daemon
+# Polices (voir debian/control)
+fonts-dejavu
+fonts-liberation2
+fonts-crosextra-carlito
+fonts-crosextra-caladea
+fonts-noto-extra
+fonts-noto-cjk
+fonts-noto-ui-core
+fonts-symbola
+fonts-roboto
+fonts-open-sans
+fonts-lato
+fonts-inter
+fonts-firacode
+fonts-jetbrains-mono
+fonts-cascadia-code
+fonts-ibm-plex
+fonts-font-awesome
 cabextract
 # Archives (noos-archive)
 7zip
-bsdtar
+libarchive-tools
 unar
 xorriso
 zstd
 lz4
 lzip
+xz-utils
 udisks2
 # Disques : NTFS, exFAT, XFS, F2FS (formatage, réparation)
 ntfs-3g
-ntfsprogs
 exfatprogs
 xfsprogs
 f2fs-tools
+# Noms des cartes graphiques (installateur, widget Ressources)
+pci.ids
