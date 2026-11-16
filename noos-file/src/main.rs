@@ -11,6 +11,7 @@
 
 mod home;
 mod preview;
+mod rubberband;
 mod thumbs;
 mod transfers;
 
@@ -357,6 +358,9 @@ impl Explorer {
         let overlay = gtk::Overlay::new();
         overlay.set_child(Some(&view_stack));
         overlay.add_overlay(&empty_page);
+        // Cadre de sélection en direct (sous les cartes de copie).
+        rubberband::attach(grid.upcast_ref(), &overlay, &selection);
+        rubberband::attach(details.upcast_ref(), &overlay, &selection);
         // Copies et déplacements en cours : cartes en bas à droite, par-dessus la vue.
         let transfers = transfers::Panel::new();
         overlay.add_overlay(&transfers.widget);
@@ -679,16 +683,13 @@ impl Explorer {
             });
             view.add_controller(click);
 
-            // Menu contextuel (clic droit) : sur un élément non sélectionné, il le sélectionne.
+            // Menu contextuel (clic droit).
             let gesture = gtk::GestureClick::new();
             gesture.set_button(3);
             let (ex, v) = (self.clone(), view.clone());
             gesture.connect_pressed(move |g, _, x, y| {
                 g.set_state(gtk::EventSequenceState::Claimed);
-                if !on_item(&v, x, y) {
-                    ex.selection.unselect_all();
-                }
-                ex.context_menu(&v, x, y);
+                ex.right_click(&v, x, y);
             });
             view.add_controller(gesture);
 
@@ -771,7 +772,7 @@ impl Explorer {
                 let mut it = pos.split(',').filter_map(|v| v.trim().parse::<f64>().ok());
                 let (x, y) = (it.next().unwrap_or(100.0), it.next().unwrap_or(100.0));
                 let y = if y < 0.0 { g.height() as f64 + y } else { y };
-                ex.context_menu(&g, x, y);
+                ex.right_click(&g, x, y);
             }));
         }
         // NOOS_FILE_DEMO=<chemin>[;details][;list][;select=0,2][;look][;zoom=3][;sort=size][;copy=<source>]
@@ -1696,6 +1697,23 @@ impl Explorer {
         self.toasts.add_toast(adap::Toast::new(text));
     }
 
+    /// Clic droit dans la vue, comme sous Windows : l'élément sous le pointeur est
+    /// sélectionné (seul) s'il ne l'était pas, une sélection multiple qui le contient est
+    /// gardée, et un clic dans le vide désélectionne tout ; puis le menu correspondant.
+    fn right_click(&self, view: &gtk::Widget, x: f64, y: f64) {
+        match item_at(view, x, y) {
+            Some(pos) if !self.selection.is_selected(pos) => {
+                self.selection.select_item(pos, true);
+            }
+            Some(_) => {}
+            None if !on_item(view, x, y) => {
+                self.selection.unselect_all();
+            }
+            None => {}
+        }
+        self.context_menu(view, x, y);
+    }
+
     fn context_menu(&self, parent: &gtk::Widget, x: f64, y: f64) {
         let current = self.current.borrow().clone();
         if is_home(&current) {
@@ -1956,6 +1974,57 @@ fn on_item(view: &gtk::Widget, x: f64, y: f64) -> bool {
     false
 }
 
+/// Clé de la case (`gtk::ListItem`, référence faible) posée sur son contenu par les fabriques.
+const ITEM_KEY: &str = "noos-list-item";
+
+fn tag_item(content: &gtk::Widget, item: &gtk::ListItem) {
+    // SAFETY : la clé n'est lue qu'avec ce même type (item_position).
+    unsafe { content.set_data(ITEM_KEY, item.downgrade()) };
+}
+
+fn item_position(w: &gtk::Widget) -> Option<u32> {
+    // SAFETY : posée par tag_item avec ce type.
+    let weak = unsafe { w.data::<glib::WeakRef<gtk::ListItem>>(ITEM_KEY) }?;
+    let pos = unsafe { weak.as_ref() }.upgrade()?.position();
+    (pos != gtk::INVALID_LIST_POSITION).then_some(pos)
+}
+
+/// Position (dans le modèle de la vue) de l'élément sous le pointeur : on remonte depuis le
+/// widget touché jusqu'au contenu marqué par tag_item ; dans la marge d'une case (« child »,
+/// « row », « cell »), on cherche ce contenu parmi ses descendants.
+fn item_at(view: &gtk::Widget, x: f64, y: f64) -> Option<u32> {
+    fn below(w: &gtk::Widget, depth: u8) -> Option<u32> {
+        if let Some(pos) = item_position(w) {
+            return Some(pos);
+        }
+        if depth == 0 {
+            return None;
+        }
+        let mut child = w.first_child();
+        while let Some(c) = child {
+            if let Some(pos) = below(&c, depth - 1) {
+                return Some(pos);
+            }
+            child = c.next_sibling();
+        }
+        None
+    }
+    let mut w = view.pick(x, y, gtk::PickFlags::DEFAULT);
+    while let Some(cur) = w {
+        if &cur == view {
+            return None;
+        }
+        if let Some(pos) = item_position(&cur) {
+            return Some(pos);
+        }
+        if matches!(cur.css_name().as_str(), "child" | "row" | "cell") {
+            return below(&cur, 3);
+        }
+        w = cur.parent();
+    }
+    None
+}
+
 /// Fichiers glissés depuis une case : la sélection si la case en fait partie, sinon la case.
 fn drag_files(item: &gtk::ListItem) -> Vec<gio::File> {
     if item.is_selected() {
@@ -2024,6 +2093,7 @@ fn grid_factory() -> gtk::SignalListItemFactory {
         v.append(&image);
         v.append(&label);
         attach_dnd(v.upcast_ref(), item, &image);
+        tag_item(v.upcast_ref(), item);
         item.set_child(Some(&v));
     });
     factory.connect_bind(|_, item| {
@@ -2043,14 +2113,15 @@ fn grid_factory() -> gtk::SignalListItemFactory {
 fn build_grid(selection: &gtk::MultiSelection) -> gtk::GridView {
     let grid = gtk::GridView::new(Some(selection.clone()), Some(grid_factory()));
     grid.set_max_columns(20);
-    grid.set_enable_rubberband(true);
+    // Cadre de sélection : celui de rubberband.rs (en direct), pas celui de GTK.
+    grid.set_enable_rubberband(false);
     grid
 }
 
 fn build_details(selection: &gtk::MultiSelection) -> gtk::ColumnView {
     let view = gtk::ColumnView::new(Some(selection.clone()));
     view.set_show_column_separators(false);
-    view.set_enable_rubberband(true);
+    view.set_enable_rubberband(false);
     view.add_css_class("data-table");
 
     let column = |title: &str, expand: bool, bind: fn(&gio::FileInfo) -> String, with_icon: bool| {
@@ -2070,6 +2141,7 @@ fn build_details(selection: &gtk::MultiSelection) -> gtk::ColumnView {
             if with_icon {
                 attach_dnd(h.upcast_ref(), item, &img);
             }
+            tag_item(h.upcast_ref(), item);
             item.set_child(Some(&h));
         });
         factory.connect_bind(move |_, item| {
@@ -2143,6 +2215,7 @@ gridview > child:selected:hover .tile { background-color: alpha(@accent_bg_color
 gridview > child:focus-visible .tile { outline: 2px solid alpha(@accent_color, 0.6); outline-offset: -2px; }
 gridview .tile:drop(active) { background-color: alpha(@accent_bg_color, 0.35); box-shadow: inset 0 0 0 2px @accent_bg_color; }
 image.thumb { border-radius: 6px; }
+.noos-rubberband { background-color: alpha(@accent_bg_color, 0.18); border: 1px solid alpha(@accent_bg_color, 0.85); border-radius: 2px; }
 columnview > listview > row:drop(active) { background-color: alpha(@accent_bg_color, 0.25); }
 
 /* Copies et déplacements en cours */

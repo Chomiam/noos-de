@@ -154,6 +154,7 @@ compositeur y écrit (`[desktops] names`).
 | `NOOS_DEMO_NAME="Alex Martin"` | nom affiché (menu Démarrer, Paramètres) à la place du vrai : captures publiques |
 | `NOOS_SETTINGS_SCROLL=px` | noos-settings : défile la page ouverte (captures) |
 | `NOOS_FILE_MENU_DEMO=x,y` | noos-file ouvre le menu contextuel de la vue en icônes en (x, y) ; y < 0 = depuis le bas |
+| `NOOS_FILE_RUBBER_DEMO=x0,y0,x1,y1` | noos-file trace un cadre de sélection (vue en icônes) de (x0, y0) à (x1, y1) et le laisse affiché ; nombre d'éléments sélectionnés sur stderr |
 | `NOOS_FILE_SELECT_DEMO=0,1,2` | noos-file sélectionne ces éléments puis rejoue un clic dans le vide (coin inférieur droit) |
 | `NOOS_PHOTOVIEW_DEMO=<image>;info;zoom=2.5;next;hide;slideshow` | noos-photoview : ouvre une image, panneau d'infos, zoom, suivante, commandes masquées, diaporama |
 | `NOOS_ARCHIVE_DEMO=<archive>\|create` | noos-archive : ouvre une archive / la page de création préremplie |

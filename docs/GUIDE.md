@@ -126,6 +126,12 @@ Sans machine Linux : onglet **Actions › ISO › Run workflow** sur GitHub (art
   Ctrl : copier ; entre deux disques : copie). Déposer sur la Corbeille : mettre à la corbeille.
 - **Copies et déplacements suivis** : une carte par opération (pourcentage, éléments, octets,
   vitesse, temps restant, fichier en cours, Annuler), sans bloquer l'interface.
+- **Clic droit** comme sous Windows : l'élément sous le pointeur est sélectionné (seul) et son
+  menu s'ouvre (Ouvrir, Ouvrir avec, Compresser, Renommer…) ; dans une sélection multiple qui
+  le contient, elle est gardée ; dans le vide, menu du dossier (Nouveau, Coller, Trier…).
+- **Cadre de sélection en direct** (`src/rubberband.rs`, icônes et détails) : un élément est
+  surligné dès qu'il entre dans le cadre et désélectionné si le cadre rétrécit ; défilement
+  automatique près du haut et du bas ; Ctrl ou Maj ajoute à la sélection existante.
 - « Ouvrir avec », corbeille complète (restaurer, supprimer définitivement, vider), Suppr /
   Maj+Suppr, F2, Ctrl+A, Ctrl+F, Ctrl+1 / Ctrl+2, page « dossier vide ».
 
