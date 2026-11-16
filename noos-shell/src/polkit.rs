@@ -11,6 +11,12 @@
 //! standard, puis échanges ligne à ligne (`PAM_PROMPT_ECHO_OFF <invite>` → réponse, …),
 //! terminés par `SUCCESS` ou `FAILURE`.
 //!
+//! polkit récent (Debian sid) : l'assistant n'est plus setuid, systemd le lance en root à
+//! chaque connexion au socket `/run/polkit/agent-helper.socket` (polkit-agent-helper.socket).
+//! On écrit alors le nom d'utilisateur puis le cookie (une ligne chacun) sur le socket, et le
+//! reste de l'échange est identique (comme libpolkit-agent-1). L'assistant lancé directement
+//! sans setuid répond « Incorrect permissions … (needs to be setuid root) ».
+//!
 //! Test sans polkit : `NOOS_POLKIT_TEST=1 noos-shell` affiche la fenêtre avec une demande
 //! d'exemple.
 
@@ -29,6 +35,8 @@ use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
 use crate::Shell;
 
 const AGENT_PATH: &str = "/org/noos/PolicyKit1/AuthenticationAgent";
+/// Assistant activé par socket (polkit ≥ 126, systemd).
+const HELPER_SOCKET: &str = "/run/polkit/agent-helper.socket";
 const HELPERS: &[&str] = &[
     "/usr/lib/polkit-1/polkit-agent-helper-1",
     "/usr/libexec/polkit-agent-helper-1",
@@ -73,7 +81,31 @@ pub struct PolkitAgent {
     /// ferme, polkitd oublie l'agent (« No authentication agent found »).
     conn: RefCell<Option<gio::DBusConnection>>,
     /// Assistant en cours (pour l'annuler).
-    helper: RefCell<Option<std::sync::Arc<std::sync::Mutex<Option<std::process::Child>>>>>,
+    helper: RefCell<Option<std::sync::Arc<std::sync::Mutex<Option<HelperProc>>>>>,
+}
+
+/// Assistant polkit en cours : processus setuid lancé par l'agent, ou connexion au socket
+/// (assistant lancé par systemd).
+enum HelperProc {
+    Child(std::process::Child),
+    Socket(std::os::unix::net::UnixStream),
+}
+
+impl HelperProc {
+    /// Interrompt l'échange (annulation) ou libère l'assistant (fin normale).
+    fn stop(self, kill: bool) {
+        match self {
+            HelperProc::Child(mut c) => {
+                if kill {
+                    let _ = c.kill();
+                }
+                let _ = c.wait();
+            }
+            HelperProc::Socket(s) => {
+                let _ = s.shutdown(std::net::Shutdown::Both);
+            }
+        }
+    }
 }
 
 impl PolkitAgent {
@@ -188,9 +220,8 @@ impl PolkitAgent {
     /// Termine la demande courante (Ok = authentifiée) et passe à la suivante.
     fn finish(self: &Rc<Self>, result: Result<(), &str>) {
         if let Some(h) = self.helper.borrow_mut().take() {
-            if let Some(mut child) = h.lock().unwrap().take() {
-                let _ = child.kill();
-                let _ = child.wait();
+            if let Some(p) = h.lock().unwrap().take() {
+                p.stop(true);
             }
         }
         if let Some(w) = self.window.borrow_mut().take() {
@@ -473,39 +504,29 @@ enum HelperOutcome {
 }
 
 /// Lance `polkit-agent-helper-1` dans un fil : le mot de passe répond à la première
-/// question PAM masquée ; le résultat arrive sur le canal.
+/// question PAM masquée ; le résultat arrive sur le canal. Socket de systemd d'abord (polkit
+/// récent, assistant non setuid), sinon l'assistant setuid lancé directement.
 fn run_helper(user: &str, cookie: &str, password: String, agent: &Rc<PolkitAgent>) -> async_channel::Receiver<HelperOutcome> {
     let (tx, rx) = async_channel::bounded(1);
-    let Some(helper) = HELPERS.iter().find(|p| std::path::Path::new(p).exists()) else {
-        let _ = tx.send_blocking(HelperOutcome::Failed("polkit-agent-helper-1 introuvable".into()));
-        return rx;
-    };
-    let child = Command::new(helper)
-        .arg(user)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn();
-    let mut child = match child {
-        Ok(c) => c,
-        Err(e) => {
-            let _ = tx.send_blocking(HelperOutcome::Failed(format!("impossible de lancer l'assistant polkit : {e}")));
+    let started = start_helper(user);
+    let (writer, reader, proc_) = match started {
+        Ok(t) => t,
+        Err(msg) => {
+            let _ = tx.send_blocking(HelperOutcome::Failed(msg));
             return rx;
         }
     };
-    let stdin = child.stdin.take();
-    let stdout = child.stdout.take();
-    let shared = std::sync::Arc::new(std::sync::Mutex::new(Some(child)));
+    let shared = std::sync::Arc::new(std::sync::Mutex::new(Some(proc_)));
     *agent.helper.borrow_mut() = Some(shared.clone());
     let cookie = cookie.to_string();
     std::thread::spawn(move || {
+        let mut stdin = writer;
         let outcome = (|| {
-            let mut stdin = stdin?;
-            let stdout = stdout?;
             writeln!(stdin, "{cookie}").ok()?;
+            stdin.flush().ok()?;
             let mut password = Some(password);
             let mut last_error = String::new();
-            for line in BufReader::new(stdout).lines() {
+            for line in BufReader::new(reader).lines() {
                 let line = line.ok()?;
                 if line == "SUCCESS" {
                     return Some(HelperOutcome::Success);
@@ -526,12 +547,45 @@ fn run_helper(user: &str, cookie: &str, password: String, agent: &Rc<PolkitAgent
             Some(HelperOutcome::Failed(msg))
         })()
         .unwrap_or(HelperOutcome::Failed("échange avec l'assistant polkit interrompu".into()));
-        if let Some(mut c) = shared.lock().unwrap().take() {
-            let _ = c.wait();
+        if let Some(p) = shared.lock().unwrap().take() {
+            p.stop(false);
         }
         let _ = tx.send_blocking(outcome);
     });
     rx
+}
+
+type HelperIo = (Box<dyn Write + Send>, Box<dyn std::io::Read + Send>, HelperProc);
+
+/// Ouvre l'échange avec l'assistant : (écriture, lecture, processus ou socket).
+fn start_helper(user: &str) -> Result<HelperIo, String> {
+    if std::path::Path::new(HELPER_SOCKET).exists() {
+        match std::os::unix::net::UnixStream::connect(HELPER_SOCKET) {
+            Ok(mut stream) => {
+                // Mode socket : le nom d'utilisateur passe sur le socket, pas en argument.
+                writeln!(stream, "{user}").map_err(|e| format!("assistant polkit (socket) : {e}"))?;
+                let reader = stream.try_clone().map_err(|e| format!("assistant polkit (socket) : {e}"))?;
+                let keep = stream.try_clone().map_err(|e| format!("assistant polkit (socket) : {e}"))?;
+                return Ok((Box::new(stream), Box::new(reader), HelperProc::Socket(keep)));
+            }
+            // Socket présent mais injoignable : repli sur l'assistant lancé directement.
+            Err(e) => eprintln!("noos-shell : socket polkit {HELPER_SOCKET} injoignable ({e}), assistant direct"),
+        }
+    }
+    let Some(helper) = HELPERS.iter().find(|p| std::path::Path::new(p).exists()) else {
+        return Err("polkit-agent-helper-1 introuvable".into());
+    };
+    let mut child = Command::new(helper)
+        .arg(user)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| format!("impossible de lancer l'assistant polkit : {e}"))?;
+    let (Some(stdin), Some(stdout)) = (child.stdin.take(), child.stdout.take()) else {
+        return Err("assistant polkit sans entrée / sortie".into());
+    };
+    Ok((Box::new(stdin), Box::new(stdout), HelperProc::Child(child)))
 }
 
 // ───────────── Utilitaires ─────────────

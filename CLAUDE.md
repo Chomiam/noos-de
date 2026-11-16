@@ -244,7 +244,10 @@ compositeur y écrit (`[desktops] names`).
 - **polkit** : gio ne garde qu'une référence faible sur la connexion au bus système → la
   conserver, sinon polkitd oublie l'agent (« No authentication agent found »). Dans un
   terminal, `pkexec` garde son invite texte ; `--disable-internal-agent` pour tester la fenêtre.
-  Assistant Debian : `/usr/lib/polkit-1/polkit-agent-helper-1`.
+  Assistant Debian : `/usr/lib/polkit-1/polkit-agent-helper-1`, **plus setuid** depuis polkit
+  ≥ 126 (sid : 128) : systemd le lance par `/run/polkit/agent-helper.socket` ; l'agent
+  (`noos-shell/src/polkit.rs`) y écrit l'utilisateur puis le cookie, sinon « Incorrect
+  permissions … (needs to be setuid root) » et aucune élévation ne passe.
 - **Rendu logiciel (llvmpipe, VM sans 3D)** : attendre la fin du dessin (`glFinish`) avant
   d'afficher, sinon tuiles noires / restes d'images.
 - **Verrouillage** (`noos-comp/src/lock.rs`) : tant que le verrou est actif, seules les surfaces
