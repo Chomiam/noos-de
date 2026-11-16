@@ -56,7 +56,26 @@ jobs:
           fi
           if [ -s packaging/apt/noos-archive-keyring.asc ]; then echo "clé présente"; else echo "pas de clé : paquet sans dépôt APT"; fi
       - name: Paquet .deb (libAdapta + binaires release)
-        run: packaging/apt/build-deb.sh out
+        shell: bash
+        run: |
+          set -o pipefail
+          packaging/apt/build-deb.sh out 2>&1 | tee build.log
+      # Erreurs recopiées dans le résumé du run et en annotations (visibles sans connexion).
+      - name: Résumé des erreurs
+        if: failure()
+        shell: bash
+        run: |
+          {
+            echo '## Erreurs de compilation'
+            echo '```'
+            grep -n -E 'error(\[E[0-9]+\])?:|could not compile|dpkg-buildpackage: error|make(\[[0-9]+\])?: \*\*\*|ERROR|fatal' build.log | head -n 60 || true
+            echo '```'
+            echo '## Fin du journal'
+            echo '```'
+            tail -n 150 build.log || true
+            echo '```'
+          } >>"$GITHUB_STEP_SUMMARY"
+          grep -E '^error(\[E[0-9]+\])?:' -A 6 build.log | head -n 40 | sed 's/^/::error::/' || true
       # Cache enregistré même si la compilation échoue : la relance repart de là.
       - name: Cache cargo (écriture)
         if: always()
