@@ -338,6 +338,13 @@ NOOS est basé sur Debian sid : Logiciels gère les **paquets Debian (apt)** et 
   `StartupWMClass` ou nom) : l'ancienne est proposée à la corbeille. Outils Debian :
   `libfuse2t64` (runtime classique), `fuse3` (runtime statique), `squashfs-tools`,
   `desktop-file-utils` — dépendances du paquet et de l'ISO.
+- **Paquets .deb** (`noos-pkg/src/deb.rs`, `noos-software/src/deb.rs`) : Logiciels est
+  l'application par défaut des `.deb` (Archives reste dans « Ouvrir avec »). Fiche du paquet
+  (`dpkg-deb -f` : version, architecture, taille, mainteneur, site), simulation sans mot de
+  passe (`apt-get -s install <fichier>`) : dépendances ajoutées depuis les dépôts, mises à
+  jour, conflits ; un paquet aux dépendances introuvables est refusé avec l'explication
+  d'apt. Installation par la file d'opérations (pkexec, `apt-get install <chemin>`,
+  `--reinstall` si la même version est installée) ; « Ouvrir » si le paquet a un lanceur.
 
 En ligne de commande :
 
@@ -348,6 +355,7 @@ noos-pkg updates
 noos-pkg presets
 noos-pkg appimage ~/Téléchargements/App.AppImage   # nom, version, icône (sans l'exécuter)
 noos-pkg appimage-install ~/Téléchargements/App.AppImage
+noos-pkg deb ~/Téléchargements/paquet.deb          # fiche + simulation des dépendances
 noos-pkg repo-add -b apt apt-repo https://repo.example.org/apt stable main clé=https://repo.example.org/key.asc --dry-run
 ```
 

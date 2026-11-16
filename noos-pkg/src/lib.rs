@@ -13,6 +13,7 @@
 pub mod appimage;
 pub mod backends;
 pub mod catalog;
+pub mod deb;
 pub mod exec;
 pub mod firewall;
 pub mod sources;

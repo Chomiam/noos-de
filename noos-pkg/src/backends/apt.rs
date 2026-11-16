@@ -38,7 +38,7 @@ const NONINTERACTIVE: &[&str] = &[
     "Dpkg::Options::=--force-confold",
 ];
 
-fn apt_root(args: &[&str]) -> Vec<String> {
+pub(crate) fn apt_root(args: &[&str]) -> Vec<String> {
     NONINTERACTIVE.iter().chain(args).map(|s| s.to_string()).collect()
 }
 
@@ -60,7 +60,7 @@ fn lists_mtime(dir: &Path) -> Option<std::time::SystemTime> {
 
 /// Options apt pointant sur les listes de l'utilisateur si elles sont plus récentes que
 /// celles du système (sinon : aucune option, listes du système).
-fn freshest_lists_opts() -> Vec<String> {
+pub(crate) fn freshest_lists_opts() -> Vec<String> {
     let user = user_lists_dir();
     let sys = lists_mtime(Path::new("/var/lib/apt/lists"));
     match (lists_mtime(&user.join("lists")), sys) {

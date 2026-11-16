@@ -16,6 +16,7 @@
 //! noos-pkg appimage [fichier.AppImage]       lit une AppImage (sans l'exécuter) ; sans
 //!                                            fichier : AppImage installées
 //! noos-pkg appimage-install <fichier>        déplace dans ~/Applications + menu Démarrer
+//! noos-pkg deb <fichier.deb>                 fiche du paquet et simulation (sans root)
 //!
 //! Options : --dry-run (affiche le plan sans l'exécuter), --json
 //! Élévation : pkexec par défaut ; NOOS_PKG_ELEVATE=sudo|none
@@ -95,6 +96,21 @@ fn run() -> anyhow::Result<()> {
                 for p in appimage::unintegrated() {
                     println!("(hors menu) {}", p.display());
                 }
+            }
+        }
+        "deb" => {
+            let f = args.rest.first().ok_or_else(|| anyhow::anyhow!("précisez le fichier .deb"))?;
+            let i = noos_pkg::deb::inspect(std::path::Path::new(f))?;
+            println!("{} {} ({}) — {}", i.package, i.version, i.architecture, i.summary);
+            if let Some(v) = &i.installed_version {
+                println!("  installé : {v}");
+            }
+            match noos_pkg::deb::simulate(&i) {
+                Ok(s) => println!("  dépendances : {:?} ; mises à jour : {:?} ; retraits : {:?}", s.extra, s.upgraded, s.removed),
+                Err(e) => println!("  impossible à installer :\n{e:#}"),
+            }
+            for line in noos_pkg::deb::install_plan(&i).describe() {
+                println!("  {line}");
             }
         }
         "appimage-install" => {
