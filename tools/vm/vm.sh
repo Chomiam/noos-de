@@ -66,7 +66,13 @@ start)
         ACCEL=(-enable-kvm -cpu host -m 2560 -smp 4)
         CTRL=(-display none -qmp "unix:$QMP,server,nowait" -serial "unix:$SER,server,nowait")
     fi
-    exec qemu-system-x86_64 "${ACCEL[@]}" -machine q35 "${FW[@]}"         -drive "file=$DIR/disk.qcow2,if=virtio,format=qcow2"         ${ISO:+-cdrom "$ISO"} -boot order=dc,menu=off         -vga std -device qemu-xhci -device usb-tablet         -nic user,model=virtio-net-pci "${CTRL[@]}"
+    # bootindex : avec une ISO, le CD passe avant l'entrée UEFI « NOOS » créée par l'installateur
+    # (OVMF suit l'ordre donné par QEMU).
+    DRIVES=(-drive "file=$DIR/disk.qcow2,if=none,id=hd,format=qcow2" -device virtio-blk-pci,drive=hd,bootindex=1)
+    [ -n "$ISO" ] && DRIVES+=(-drive "file=$ISO,if=none,id=cd,media=cdrom,readonly=on" -device ide-cd,drive=cd,bootindex=0)
+    exec qemu-system-x86_64 "${ACCEL[@]}" -machine q35 "${FW[@]}" "${DRIVES[@]}" -boot menu=off \
+        -vga std -device qemu-xhci -device usb-tablet \
+        -nic user,model=virtio-net-pci "${CTRL[@]}"
     ;;
 install)
     c() { $Q click "$@"; sleep 2.5; }
