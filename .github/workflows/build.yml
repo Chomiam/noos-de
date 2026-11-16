@@ -35,15 +35,17 @@ jobs:
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Dépendances de compilation (+ Rust par rustup)
         run: ./scripts/install-build-deps.sh
-      - name: Cache cargo
-        uses: actions/cache@v4
+      - name: Cache cargo (lecture)
+        uses: actions/cache/restore@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: cargo-sid-${{ hashFiles('Cargo.lock') }}
-          restore-keys: cargo-sid-
+          key: cargo-sid-${{ hashFiles('Cargo.lock') }}-${{ github.run_id }}
+          restore-keys: |
+            cargo-sid-${{ hashFiles('Cargo.lock') }}-
+            cargo-sid-
       - name: Clé publique du dépôt APT
         env:
           APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
@@ -55,6 +57,16 @@ jobs:
           if [ -s packaging/apt/noos-archive-keyring.asc ]; then echo "clé présente"; else echo "pas de clé : paquet sans dépôt APT"; fi
       - name: Paquet .deb (libAdapta + binaires release)
         run: packaging/apt/build-deb.sh out
+      # Cache enregistré même si la compilation échoue : la relance repart de là.
+      - name: Cache cargo (écriture)
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-sid-${{ hashFiles('Cargo.lock') }}-${{ github.run_id }}
       - name: Tests
         run: |
           . "$HOME/.cargo/env"

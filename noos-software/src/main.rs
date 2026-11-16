@@ -663,10 +663,11 @@ impl App {
             let kind = self.kind(idx);
             let g = adap::PreferencesGroup::new();
             g.set_title(kind.label());
-            g.set_description(Some(&match kind {
+            let description = match kind {
                 BackendKind::Apt => format!("Paquets .deb installés avec le système (Debian {}, apt)", self.sys.release_label()),
                 BackendKind::Flatpak => "Applications isolées, indépendantes du système".to_string(),
-            }));
+            };
+            g.set_description(Some(description.as_str()));
             match res {
                 Err(e) => g.add(&row("Lecture impossible", &e)),
                 Ok(list) => {
