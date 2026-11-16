@@ -557,11 +557,11 @@ fn install(ctx: &Ctx, c: &Choices) -> anyhow::Result<()> {
     // ── 7. Configuration ──
     ctx.step(7);
     // Langue : locale générée (+ anglais américain, utilisé par certains outils).
-    let mut gen = format!("{}\n", model::locale_gen_line(&c.locale));
+    let mut locale_gen = format!("{}\n", model::locale_gen_line(&c.locale));
     if c.locale != "en_US.UTF-8" {
-        gen.push_str("en_US.UTF-8 UTF-8\n");
+        locale_gen.push_str("en_US.UTF-8 UTF-8\n");
     }
-    ctx.write("/etc/locale.gen", &gen)?;
+    ctx.write("/etc/locale.gen", &locale_gen)?;
     ctx.try_run("chroot", &[TARGET, "locale-gen"]);
     ctx.write("/etc/default/locale", &format!("LANG={}\n", c.locale))?;
     ctx.write("/etc/locale.conf", &format!("LANG={}\n", c.locale))?;
