@@ -22,8 +22,10 @@ donne le contexte de travail.
 - Ne jamais demander ni réutiliser de mot de passe ou de jeton : l'utilisateur fait lui-même
   les étapes root et les connexions (GitHub, secrets du dépôt comme `APT_SIGNING_KEY`). S'il en
   colle un dans la conversation, ne pas l'utiliser, lui conseiller de le régénérer.
-- Pousser sur GitHub uniquement quand il le demande (il a autorisé la compilation par la CI
-  GitHub : pousser une branche de travail pour la faire tourner, `main` seulement sur accord).
+- **On travaille directement sur `main`** (plus de branche de travail ; `debian-sid` supprimée
+  le 16/11/2026). Chaque envoi sur `main` compile, teste et **publie** le paquet dans le dépôt
+  APT : ne pousser que du code compilé ou testé autant que possible, et pas pendant qu'un run
+  de `main` publie (`cancel-in-progress` l'annulerait).
 
 ## Organisation
 
@@ -65,7 +67,7 @@ donne le contexte de travail.
   `C:\Users\Chomiam\Documents\Projets\noos-de`, Git Bash). Pas de WSL ni de conteneur :
   **les compilations se font sur GitHub Actions** (`build.yml`, conteneur `debian:sid`).
   CLI GitHub installée et connectée par Axel (`"/c/Program Files/GitHub CLI/gh.exe"`, pas
-  toujours dans le PATH de Git Bash) : `gh run list -b debian-sid`, `gh run watch <id>`,
+  toujours dans le PATH de Git Bash) : `gh run list -b main`, `gh run watch <id>`,
   `gh run view <id> --log-failed` (les journaux et le résumé d'un run demandent d'être
   connecté ; filtrer les couleurs avec `sed 's/\x1b\[[0-9;]*m//g'`). À refaire sur une
   nouvelle machine (`winget install --id GitHub.cli`, puis `gh auth login` par Axel).
