@@ -148,6 +148,22 @@ pub struct Taskbar {
 }
 
 impl Taskbar {
+    /// Première installation : Explorateur, Paramètres, Terminal, Firefox (paquet Debian
+    /// `firefox` ou `firefox-esr`, celui qui est installé) et Logiciels.
+    pub const DEFAULT_PINNED: &[&str] = &[
+        "org.noos.Files",
+        "org.noos.Settings",
+        "org.noos.Terminal",
+        "firefox",
+        "firefox-esr",
+        "org.noos.Software",
+    ];
+    /// Anciennes valeurs par défaut : remplacées par `DEFAULT_PINNED` au chargement
+    /// (l'utilisateur n'y a pas touché ; Firefox Flatpak jamais trouvé sur Debian).
+    const OLD_DEFAULT_PINNED: &[&[&str]] = &[&["org.noos.Terminal", "org.mozilla.firefox", "org.noos.Software"]];
+}
+
+impl Taskbar {
     pub const DEFAULT_LEFT: &'static [&'static str] = &["vitals"];
     pub const DEFAULT_CENTER: &'static [&'static str] = &["start", "search", "taskview", "tasks"];
     pub const DEFAULT_RIGHT: &'static [&'static str] = &["tray", "status", "clock", "notifications", "showdesktop"];
@@ -209,8 +225,7 @@ impl Default for Taskbar {
         Self {
             alignment: TaskbarAlignment::Center,
             height: 48,
-            // Première installation : Terminal, Firefox et Logiciels.
-            pinned: vec!["org.noos.Terminal".into(), "org.mozilla.firefox".into(), "org.noos.Software".into()],
+            pinned: Taskbar::DEFAULT_PINNED.iter().map(|s| s.to_string()).collect(),
             show_search: true,
             tray_expanded: false,
             show_vitals: true,
@@ -597,7 +612,11 @@ impl NoosConfig {
 
     pub fn load_from(path: &Path) -> anyhow::Result<Self> {
         match fs::read_to_string(path) {
-            Ok(text) => toml::from_str(&text).with_context(|| format!("lecture de {}", path.display())),
+            Ok(text) => {
+                let mut cfg: Self = toml::from_str(&text).with_context(|| format!("lecture de {}", path.display()))?;
+                cfg.upgrade_defaults();
+                Ok(cfg)
+            }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
             Err(e) => Err(e).with_context(|| format!("ouverture de {}", path.display())),
         }
@@ -622,6 +641,15 @@ impl NoosConfig {
         fs::write(&tmp, text)?;
         fs::rename(&tmp, &path)?;
         Ok(())
+    }
+
+    /// Valeurs par défaut d'anciennes versions, jamais modifiées par l'utilisateur, mises à
+    /// jour (le fichier est réécrit au prochain enregistrement).
+    fn upgrade_defaults(&mut self) {
+        let pinned: Vec<&str> = self.taskbar.pinned.iter().map(String::as_str).collect();
+        if Taskbar::OLD_DEFAULT_PINNED.iter().any(|old| *old == pinned.as_slice()) {
+            self.taskbar.pinned = Taskbar::DEFAULT_PINNED.iter().map(|s| s.to_string()).collect();
+        }
     }
 
     pub fn output(&self, name: &str) -> Option<&OutputConfig> {
@@ -650,6 +678,20 @@ impl NoosConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn epingles_par_defaut_mises_a_jour() {
+        let dir = std::env::temp_dir().join(format!("noos-cfg-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("noos.toml");
+        fs::write(&f, "[taskbar]\npinned = [\"org.noos.Terminal\", \"org.mozilla.firefox\", \"org.noos.Software\"]\n").unwrap();
+        let cfg = NoosConfig::load_from(&f).unwrap();
+        assert_eq!(cfg.taskbar.pinned[..2], ["org.noos.Files", "org.noos.Settings"]);
+        // Liste choisie par l'utilisateur : intacte.
+        fs::write(&f, "[taskbar]\npinned = [\"org.noos.Terminal\"]\n").unwrap();
+        assert_eq!(NoosConfig::load_from(&f).unwrap().taskbar.pinned, ["org.noos.Terminal"]);
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn bar_zones_hidden_and_topbar() {
