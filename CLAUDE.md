@@ -64,6 +64,12 @@ donne le contexte de travail.
 - Poste actuel d'Axel : **Windows 11** (application Claude, dépôt dans
   `C:\Users\Chomiam\Documents\Projets\noos-de`, Git Bash). Pas de WSL ni de conteneur :
   **les compilations se font sur GitHub Actions** (`build.yml`, conteneur `debian:sid`).
+  CLI GitHub installée et connectée par Axel (`"/c/Program Files/GitHub CLI/gh.exe"`, pas
+  toujours dans le PATH de Git Bash) : `gh run list -b debian-sid`, `gh run watch <id>`,
+  `gh run view <id> --log-failed` (les journaux et le résumé d'un run demandent d'être
+  connecté ; filtrer les couleurs avec `sed 's/\x1b\[[0-9;]*m//g'`). À refaire sur une
+  nouvelle machine (`winget install --id GitHub.cli`, puis `gh auth login` par Axel).
+- Rust 2024 : `gen` est un mot réservé (ne pas l'utiliser comme nom de variable).
   En local sous Windows, seule la logique pure se teste : `noos-pkg` compile avec un
   `noos-core` réduit (paths + updates), car `noos-core` utilise des sockets Unix.
 - Fins de ligne : `.gitattributes` impose LF (`core.autocrlf=false` dans le dépôt) ; ne jamais
