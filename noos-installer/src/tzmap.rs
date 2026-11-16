@@ -1,14 +1,28 @@
 //! Carte du monde interactive pour choisir le fuseau horaire.
 //!
-//! Fond de carte et villes : données de libtimezonemap (`/usr/share/libtimezonemap`,
-//! GPL-3.0, la carte des installateurs Ubuntu et Anaconda), recolorées aux couleurs de
-//! NOOS. Projection de Miller tronquée (81° N – 59° S), décalée de 6° comme l'image.
+//! Fond de carte et villes : données de libtimezonemap (GPL-3.0, la carte des installateurs
+//! Ubuntu et Anaconda), recolorées aux couleurs de NOOS. Debian (`libtimezonemap-data`) les
+//! range dans `/usr/share/libtimezonemap/ui` (`bg.png`, `cities15000.txt`) ; Fedora dans
+//! `/usr/share/libtimezonemap` (`time_zones_countryInfo-orig.svg`, `citiesInfo.txt`).
+//! Projection de Miller tronquée (81° N – 59° S), décalée de 6° comme l'image.
 
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use gtk::{gdk, gdk_pixbuf, glib, prelude::*};
 
-const DATA: &str = "/usr/share/libtimezonemap";
+const DATA_DIRS: [&str; 2] = ["/usr/share/libtimezonemap/ui", "/usr/share/libtimezonemap"];
+
+/// Premier fichier existant parmi `names`, cherché dans les dossiers de libtimezonemap.
+fn data_file(names: &[&str]) -> Option<std::path::PathBuf> {
+    DATA_DIRS
+        .iter()
+        .flat_map(|d| names.iter().map(move |n| std::path::Path::new(d).join(n)))
+        .find(|p| p.is_file())
+}
+
+fn read_data(names: &[&str]) -> String {
+    data_file(names).and_then(|p| std::fs::read_to_string(p).ok()).unwrap_or_default()
+}
 const MAP_W: f64 = 1671.12;
 const MAP_H: f64 = 856.49;
 
@@ -63,8 +77,7 @@ fn iso6709(s: &str) -> Option<(f64, f64)> {
 
 /// Villes : chefs-lieux de fuseaux (zone1970.tab) + villes de plus de 100 000 habitants.
 pub fn load_cities() -> Vec<City> {
-    let countries: HashMap<String, String> = std::fs::read_to_string(format!("{DATA}/countryInfo.txt"))
-        .unwrap_or_default()
+    let countries: HashMap<String, String> = read_data(&["countryInfo.txt"])
         .lines()
         .filter(|l| !l.starts_with('#'))
         .filter_map(|l| {
@@ -93,7 +106,7 @@ pub fn load_cities() -> Vec<City> {
             population: u64::MAX,
         });
     }
-    for line in std::fs::read_to_string(format!("{DATA}/citiesInfo.txt")).unwrap_or_default().lines() {
+    for line in read_data(&["cities15000.txt", "citiesInfo.txt"]).lines() {
         let f: Vec<&str> = line.split('\t').collect();
         if f.len() < 18 {
             continue;
@@ -162,18 +175,21 @@ pub fn normalize(s: &str) -> String {
         .collect()
 }
 
-/// Carte recolorée : terres (`land`), océans transparents.
+/// Carte recolorée : terres (`land`), océans transparents. Le fond de libtimezonemap (SVG de
+/// Fedora ou `bg.png` de Debian) n'a pas les mêmes couleurs selon la version : la couleur de
+/// l'océan est relevée au milieu du Pacifique sud, et tout ce qui s'en écarte est une terre.
 fn map_pixbuf(width: i32, land: (u8, u8, u8)) -> Option<gdk_pixbuf::Pixbuf> {
-    let src = gdk_pixbuf::Pixbuf::from_file_at_scale(format!("{DATA}/time_zones_countryInfo-orig.svg"), width, -1, true).ok()?;
+    let file = data_file(&["time_zones_countryInfo-orig.svg", "bg.png"])?;
+    let src = gdk_pixbuf::Pixbuf::from_file_at_scale(&file, width, -1, true).ok()?;
     let src = src.add_alpha(false, 0, 0, 0).ok()?;
     let (w, h, stride) = (src.width() as usize, src.height() as usize, src.rowstride() as usize);
     // SAFETY : pixbuf neuf (add_alpha), non partagé.
     let px = unsafe { src.pixels() };
+    let ocean = ocean_color(px, w, h, stride);
     for y in 0..h {
         for x in 0..w {
             let i = y * stride + x * 4;
-            // Océan ≈ (0x60, 0x9e, 0xe8), terres blanches : la composante rouge les distingue.
-            let t = ((px[i] as f64 - 0x60 as f64) / (255.0 - 0x60 as f64)).clamp(0.0, 1.0);
+            let t = land_weight(ocean, (px[i], px[i + 1], px[i + 2]));
             px[i] = land.0;
             px[i + 1] = land.1;
             px[i + 2] = land.2;
@@ -181,6 +197,29 @@ fn map_pixbuf(width: i32, land: (u8, u8, u8)) -> Option<gdk_pixbuf::Pixbuf> {
         }
     }
     Some(src)
+}
+
+/// Couleur moyenne d'un carré de 9 × 9 pixels en plein océan (150° O, 10° S).
+fn ocean_color(px: &[u8], w: usize, h: usize, stride: usize) -> (f64, f64, f64) {
+    let cx = wrap_x(lon_to_x(-150.0, w as f64), w as f64) as usize;
+    let cy = (lat_to_y(-10.0, h as f64) as usize).min(h.saturating_sub(1));
+    let (mut r, mut g, mut b, mut n) = (0.0, 0.0, 0.0, 0.0);
+    for y in cy.saturating_sub(4)..(cy + 5).min(h) {
+        for x in cx.saturating_sub(4)..(cx + 5).min(w) {
+            let i = y * stride + x * 4;
+            r += px[i] as f64;
+            g += px[i + 1] as f64;
+            b += px[i + 2] as f64;
+            n += 1.0;
+        }
+    }
+    if n == 0.0 { (0x60 as f64, 0x9e as f64, 0xe8 as f64) } else { (r / n, g / n, b / n) }
+}
+
+/// 0 = océan, 1 = terre ; transition douce sur les côtes (anticrénelage de l'image).
+fn land_weight(ocean: (f64, f64, f64), c: (u8, u8, u8)) -> f64 {
+    let d = ((c.0 as f64 - ocean.0).powi(2) + (c.1 as f64 - ocean.1).powi(2) + (c.2 as f64 - ocean.2).powi(2)).sqrt();
+    ((d - 18.0) / 60.0).clamp(0.0, 1.0)
 }
 
 pub struct TzMap {
@@ -377,5 +416,14 @@ mod tests {
         let (lat, _) = iso6709("+404251-0740023").unwrap();
         assert!((lat - 40.714).abs() < 0.01);
         assert_eq!(normalize("Évry-Courcouronnes"), "evry courcouronnes");
+    }
+
+    #[test]
+    fn terres_et_oceans() {
+        let ocean = (0x60 as f64, 0x9e as f64, 0xe8 as f64);
+        assert_eq!(land_weight(ocean, (0x60, 0x9e, 0xe8)), 0.0);
+        assert_eq!(land_weight(ocean, (0x62, 0x9c, 0xea)), 0.0);
+        assert_eq!(land_weight(ocean, (0xff, 0xff, 0xff)), 1.0);
+        assert_eq!(land_weight(ocean, (0x40, 0x80, 0x40)), 1.0);
     }
 }

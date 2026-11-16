@@ -6,7 +6,11 @@
 #      l'initramfs (initramfs-tools : /etc/initramfs-tools/modules) et Plymouth sans
 #      « simpledrm » : l'animation démarre directement sur le vrai pilote ;
 #   2. thème Plymouth NOOS par défaut ;
-#   3. initramfs régénéré si l'un de ces réglages a changé (--no-initramfs : ne pas le faire).
+#   3. initramfs régénéré si l'un de ces réglages a changé (--no-initramfs : ne pas le faire) ;
+#   4. GRUB à la définition native de l'écran (/etc/default/grub.d/91-noos-gfxmode.cfg) :
+#      avec « auto », beaucoup de micrologiciels UEFI laissent GRUB en 1024×768 ou 800×600.
+#      grub.cfg est régénéré si ce réglage change (sauf --no-initramfs : l'installateur le
+#      régénère lui-même juste après).
 #
 # Les entrées GRUB s'appellent « NOOS GNU/Linux » grâce à /etc/default/grub.d/90-noos.cfg.
 set -uo pipefail
@@ -52,6 +56,37 @@ fi
 if command -v plymouth-set-default-theme >/dev/null && [ -d /usr/share/plymouth/themes/noos ]; then
     if [ "$(plymouth-set-default-theme 2>/dev/null)" != noos ]; then
         plymouth-set-default-theme noos >/dev/null 2>&1 && changed=1
+    fi
+fi
+
+# ── 4. Définition de l'écran pour GRUB ──
+# Mode préféré (première ligne de « modes ») de chaque écran branché ; l'écran interne
+# (eDP / LVDS) d'abord, sinon le plus grand. GRUB essaie la liste dans l'ordre : si le
+# micrologiciel ne propose pas ce mode, il retombe sur 1920×1080 puis sur « auto ».
+best="" best_px=0 internal=""
+for c in /sys/class/drm/card[0-9]*-*; do
+    [ "$(cat "$c/status" 2>/dev/null)" = connected ] || continue
+    m=$(head -n1 "$c/modes" 2>/dev/null)
+    [[ "$m" =~ ^([0-9]+)x([0-9]+) ]] || continue
+    mode="${BASH_REMATCH[1]}x${BASH_REMATCH[2]}"
+    case "$(basename "$c")" in *-eDP-*|*-LVDS-*|*-DSI-*) internal="$mode" ;; esac
+    px=$((BASH_REMATCH[1] * BASH_REMATCH[2]))
+    if [ "$px" -gt "$best_px" ]; then best="$mode"; best_px=$px; fi
+done
+[ -n "$internal" ] && best="$internal"
+gfx=/etc/default/grub.d/91-noos-gfxmode.cfg
+if [ -n "$best" ]; then
+    list="$best"
+    [ "$best" != 1920x1080 ] && list="$list,1920x1080"
+    want="# Créé par noos-boot-setup : définition native de l'écran détecté.
+GRUB_GFXMODE=\"$list,auto\"
+GRUB_GFXPAYLOAD_LINUX=keep"
+    if [ "$(cat "$gfx" 2>/dev/null)" != "$want" ]; then
+        mkdir -p /etc/default/grub.d
+        printf '%s\n' "$want" >"$gfx"
+        if [ "$REGEN" = 1 ] && [ -f /boot/grub/grub.cfg ] && command -v grub-mkconfig >/dev/null; then
+            grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1 || true
+        fi
     fi
 fi
 
