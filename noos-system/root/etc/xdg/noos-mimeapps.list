@@ -132,3 +132,6 @@ text/x-cmake=org.noos.TextEditor.desktop
 text/x-diff=org.noos.TextEditor.desktop
 text/x-patch=org.noos.TextEditor.desktop
 inode/directory=org.noos.Files.desktop
+# AppImage : Logiciels (installation dans ~/Applications et menu Démarrer, ou lancement)
+application/vnd.appimage=org.noos.Software.desktop
+application/x-iso9660-appimage=org.noos.Software.desktop

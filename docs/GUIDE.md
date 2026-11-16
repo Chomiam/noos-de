@@ -326,6 +326,18 @@ NOOS est basé sur Debian sid : Logiciels gère les **paquets Debian (apt)** et 
   full-upgrade`.
 - Les opérations admin passent par **un seul** `pkexec` par opération ; Flatpak passe par polkit.
 - La page Explorer affiche la vitrine Flathub (API publique v2, en cache dans `~/.cache/noos-software`) : bannière, catégories, populaires, tendances, nouveautés et fiches détaillées.
+- **AppImage** (`noos-pkg/src/appimage.rs`, `noos-software/src/appimage.rs`) : ouvrir un
+  `.AppImage` (Explorateur, `noos-software fichier.AppImage`) affiche son nom, sa version et son
+  icône, lus **sans exécuter le fichier** (`unsquashfs -offset` après le runtime ELF ; type 1 :
+  `7z`). « Installer » la **déplace** dans `~/Applications`, la rend exécutable et crée
+  `~/.local/share/applications/appimage-<id>.desktop` (clé `X-NOOS-AppImage`, icône dans
+  `~/.local/share/noos/appimages/icons`) : elle apparaît dans le menu Démarrer. « Lancer sans
+  installer » la rend seulement exécutable. Une AppImage déjà installée est lancée directement.
+  Page Installées › AppImage : Ouvrir, Supprimer (corbeille + retrait du menu), Intégrer
+  (fichiers copiés à la main dans `~/Applications`), Ajouter… Nouvelle version (même
+  `StartupWMClass` ou nom) : l'ancienne est proposée à la corbeille. Outils Debian :
+  `libfuse2t64` (runtime classique), `fuse3` (runtime statique), `squashfs-tools`,
+  `desktop-file-utils` — dépendances du paquet et de l'ISO.
 
 En ligne de commande :
 
@@ -334,6 +346,8 @@ noos-pkg info
 noos-pkg search firefox
 noos-pkg updates
 noos-pkg presets
+noos-pkg appimage ~/Téléchargements/App.AppImage   # nom, version, icône (sans l'exécuter)
+noos-pkg appimage-install ~/Téléchargements/App.AppImage
 noos-pkg repo-add -b apt apt-repo https://repo.example.org/apt stable main clé=https://repo.example.org/key.asc --dry-run
 ```
 

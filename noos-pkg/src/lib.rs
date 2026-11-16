@@ -10,6 +10,7 @@
 //! sont regroupés en **sources** lisibles (voir [`sources`]) et les résultats des deux
 //! backends en **logiciels** proposant une ou plusieurs installations (voir [`catalog`]).
 
+pub mod appimage;
 pub mod backends;
 pub mod catalog;
 pub mod exec;

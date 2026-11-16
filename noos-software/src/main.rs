@@ -1,10 +1,12 @@
 //! noos-software — « Logiciels » de NOOS.
 //!
 //! Applications Flatpak (Flathub) et paquets Debian (apt). Quand un logiciel
-//! existe des deux façons, on choisit au moment d'installer.
+//! existe des deux façons, on choisit au moment d'installer. Ouvre aussi les fichiers
+//! `.AppImage` (installation dans ~/Applications + menu Démarrer, voir `appimage.rs`).
 //! Toute la logique de paquets est dans la bibliothèque `noos-pkg` ; ce fichier n'est que
 //! l'interface GTK4 + libAdapta.
 
+mod appimage;
 mod explore;
 mod flathub;
 mod ops;
@@ -468,6 +470,8 @@ impl App {
         clear(&self.installed_box);
         self.installed_box.append(&self.installed_filter);
         let filter = self.installed_filter.text().to_lowercase();
+        // AppImage en tête : peu nombreuses, et c'est là qu'on cherche juste après une installation.
+        self.installed_box.append(&self.appimage_group(&filter));
         for (idx, list, err) in self.installed.borrow().iter() {
             let kind = self.kind(*idx);
             let shown: Vec<&Package> = list
@@ -1091,6 +1095,7 @@ fn build(gapp: &adap::Application) {
             *app2.appstream.borrow_mut() = task.await;
         });
     }
+    APP.with(|a| *a.borrow_mut() = Some(app.clone()));
     window.present();
     search.grab_focus();
     // Tests visuels (aperçu sans souris) : page d'ouverture et recherche initiale.
@@ -1104,6 +1109,7 @@ fn build(gapp: &adap::Application) {
 
 thread_local! {
     static STACK: std::cell::RefCell<Option<adap::ViewStack>> = const { std::cell::RefCell::new(None) };
+    static APP: std::cell::RefCell<Option<Rc<App>>> = const { std::cell::RefCell::new(None) };
 }
 
 fn main() -> glib::ExitCode {
@@ -1122,7 +1128,35 @@ fn main() -> glib::ExitCode {
         }
     });
     app.connect_command_line(|app, cmd| {
+        // Fichiers .AppImage (Explorateur : `noos-software %F`). Déjà installées : lancées
+        // sans ouvrir de fenêtre ; sinon fenêtre « Installer ».
+        let files: Vec<std::path::PathBuf> = cmd
+            .arguments()
+            .iter()
+            .filter(|a| !a.to_string_lossy().starts_with("--"))
+            .filter_map(|a| cmd.create_file_for_arg(a).path())
+            .filter(|p| noos_pkg::appimage::is_appimage(p))
+            .collect();
+        if !files.is_empty() && app.active_window().is_none() {
+            let installed: Vec<std::path::PathBuf> = noos_pkg::appimage::installed().into_iter().map(|i| i.path).collect();
+            let canon = |p: &std::path::Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+            if files.iter().all(|f| installed.contains(&canon(f))) {
+                for f in &files {
+                    if let Err(e) = noos_pkg::appimage::run(f) {
+                        eprintln!("noos-software : {e:#}");
+                    }
+                }
+                return glib::ExitCode::SUCCESS;
+            }
+        }
         app.activate();
+        APP.with(|a| {
+            if let Some(a) = a.borrow().as_ref() {
+                for f in &files {
+                    a.open_appimage(f.clone());
+                }
+            }
+        });
         // `noos-software --updates` : page Mises à jour (icône de la barre des tâches).
         if cmd.arguments().iter().any(|a| a.to_str() == Some("--updates")) {
             STACK.with(|s| {

@@ -61,6 +61,13 @@ Depends: ${shlibs:Depends},
 # Logiciels : applications Flatpak (Flathub) et paquets apt (données AppStream DEP-11)
          flatpak,
          appstream,
+# Logiciels : AppImage. libfuse2t64 = runtime classique (libfuse.so.2), fuse3 = runtime
+# statique récent (fusermount3) ; unsquashfs lit l'icône et le .desktop sans exécuter le
+# fichier ; update-desktop-database pour les types de fichiers de l'appli
+         libfuse2t64,
+         fuse3,
+         squashfs-tools,
+         desktop-file-utils,
 # Trousseau déverrouillé à la connexion (greetd + pam_gnome_keyring)
          gnome-keyring,
          libpam-gnome-keyring,

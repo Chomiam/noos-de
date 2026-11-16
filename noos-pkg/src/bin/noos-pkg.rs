@@ -13,6 +13,9 @@
 //! noos-pkg presets                           dépôts additionnels proposés
 //! noos-pkg repo-add -b backend <préréglage> [argument]
 //! noos-pkg repo-enable|repo-disable|repo-remove -b backend <id>
+//! noos-pkg appimage [fichier.AppImage]       lit une AppImage (sans l'exécuter) ; sans
+//!                                            fichier : AppImage installées
+//! noos-pkg appimage-install <fichier>        déplace dans ~/Applications + menu Démarrer
 //!
 //! Options : --dry-run (affiche le plan sans l'exécuter), --json
 //! Élévation : pkexec par défaut ; NOOS_PKG_ELEVATE=sudo|none
@@ -74,6 +77,36 @@ fn run() -> anyhow::Result<()> {
     };
 
     match args.cmd.as_str() {
+        "appimage" => {
+            use noos_pkg::appimage;
+            if let Some(f) = args.rest.first() {
+                let i = appimage::inspect(std::path::Path::new(f))?;
+                println!("{} (type {}){}", i.name, i.kind, i.version.as_deref().map(|v| format!(" — version {v}")).unwrap_or_default());
+                if let Some(c) = &i.comment {
+                    println!("  {c}");
+                }
+                println!("  icône : {}", i.icon.as_ref().map_or("aucune".into(), |p| p.display().to_string()));
+                println!("  lanceur embarqué : {}", if i.entry.is_some() { "oui" } else { "non" });
+                println!("  installée : {}", i.installed.as_ref().map_or("non".into(), |a| a.launcher.display().to_string()));
+            } else {
+                for a in appimage::installed() {
+                    println!("{} — {} ({})", a.name, a.path.display(), a.launcher.display());
+                }
+                for p in appimage::unintegrated() {
+                    println!("(hors menu) {}", p.display());
+                }
+            }
+        }
+        "appimage-install" => {
+            let f = args.rest.first().ok_or_else(|| anyhow::anyhow!("précisez le fichier .AppImage"))?;
+            let i = noos_pkg::appimage::inspect(std::path::Path::new(f))?;
+            let out = noos_pkg::appimage::install(&i)?;
+            println!("{} → {}", out.app.name, out.app.path.display());
+            println!("  lanceur : {}", out.app.launcher.display());
+            if let Some(p) = out.previous {
+                println!("  ancienne version hors du menu : {}", p.display());
+            }
+        }
         "info" | "" => {
             let sys = SystemInfo::detect();
             println!("{} (id={}, version={})", sys.name, sys.id, sys.version_id);

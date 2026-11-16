@@ -24,6 +24,11 @@ gvfs
 gvfs-backends
 flatpak
 appstream
+# AppImage (Logiciels) : runtimes FUSE 2 et 3, lecture de l'icône et du .desktop
+libfuse2t64
+fuse3
+squashfs-tools
+desktop-file-utils
 firefox
 bash-completion
 # Outils de l'utilisateur (première installation) ; fish = shell par défaut des comptes
