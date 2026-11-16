@@ -384,7 +384,7 @@ pub fn deb822(uri: &str, suites: &str, components: &str, signed_by: &str) -> Str
 /// Fichier `noos.sources` (identique à celui du paquet `noos`).
 pub fn noos_sources() -> String {
     format!(
-        "# Dépôt APT de NOOS (GitHub Pages) : bureau NOOS et ses applications.\n{}",
+        "# Dépôt APT de NOOS (GitHub Pages) : bureau NOOS et ses applications.\n# Installé par le paquet noos ; désactivable dans Logiciels › Sources.\n{}",
         deb822(NOOS_URL, "sid", "main", NOOS_KEYRING)
     )
 }

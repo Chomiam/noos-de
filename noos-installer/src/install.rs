@@ -729,7 +729,9 @@ fn install(ctx: &Ctx, c: &Choices) -> anyhow::Result<()> {
 /// Fichier de sources du dépôt APT de NOOS (identique à celui du paquet `noos`).
 fn noos_sources(keyring: &str) -> String {
     format!(
-        "# Dépôt APT de NOOS (GitHub Pages) : bureau NOOS et ses applications.\nTypes: deb\nURIs: https://chomiam.github.io/noos-de\nSuites: sid\nComponents: main\nSigned-By: {keyring}\n"
+        // Identique à packaging/apt/noos.sources (fichier du paquet) : sinon dpkg garde le
+        // sien à côté (noos.sources.dpkg-dist) en installant le paquet.
+        "# Dépôt APT de NOOS (GitHub Pages) : bureau NOOS et ses applications.\n# Installé par le paquet noos ; désactivable dans Logiciels › Sources.\nTypes: deb\nURIs: https://chomiam.github.io/noos-de\nSuites: sid\nComponents: main\nSigned-By: {keyring}\n"
     )
 }
 
