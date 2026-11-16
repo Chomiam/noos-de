@@ -29,6 +29,22 @@ if [ ! -x "$NOOS_PREFIX/bin/noos-comp" ]; then
     exit 1
 fi
 
+# Langue de la session. Sur Debian, c'est pam_env (envfile=/etc/default/locale) qui la
+# charge pour login et GDM, mais la pile PAM de greetd (/etc/pam.d/greetd, paquet greetd)
+# ne le fait pas et /etc/profile non plus : sans ça, la session démarre en locale POSIX et
+# Chrome, les applis Electron (Claude, VS Code…) et GTK s'affichent en anglais. Une langue
+# déjà choisie par le gestionnaire de connexion (GDM, ~/.pam_environment…) est respectée.
+if [ -z "${LANG:-}" ] && [ -z "${LC_ALL:-}" ]; then
+    for f in /etc/default/locale /etc/locale.conf; do
+        if [ -r "$f" ]; then
+            set -a # exporte LANG, LANGUAGE, LC_* définis par le fichier
+            . "$f"
+            set +a
+            break
+        fi
+    done
+fi
+echo "Langue : LANG=${LANG:-<non définie>}${LANGUAGE:+ LANGUAGE=$LANGUAGE}${LC_ALL:+ LC_ALL=$LC_ALL}"
 export PATH="$NOOS_PREFIX/bin:$PATH"
 export LD_LIBRARY_PATH="$NOOS_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export NOOS_DATA_DIR="$NOOS_PREFIX/share/noos"

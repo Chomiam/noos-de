@@ -237,6 +237,9 @@ compositeur y écrit (`[desktops] names`).
   autologin root sur tty1 → `noos-live-installer`.
 - **greetd** lance lui-même `sh -c "… exec <commande>"` : passer la ligne Exec telle quelle,
   jamais un `sh -c` imbriqué. Trousseau : gnome-keyring + `libpam-gnome-keyring`.
+  `/etc/pam.d/greetd` (paquet greetd) n'a pas `pam_env envfile=/etc/default/locale` : la
+  session arrivait sans `LANG` (Chrome, Electron en anglais) → `noos-session` lit lui-même
+  `/etc/default/locale` si `LANG` est vide.
 - **greetd sur la console 1** (`vt = 1` + `greetd.service.d/90-noos-vt1.conf`, Conflicts
   getty@tty1), pas la 7 de Debian : la bascule 1 → 7 se perdait au démarrage (fin de Plymouth),
   greetd restait bloqué dans `VT_WAITACTIVE` et l'écran sur « login: » (installation réelle,
