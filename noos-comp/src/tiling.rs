@@ -234,7 +234,20 @@ impl NoosState {
         let area = self.usable_area(&output);
         let target = zone.rect(area);
         let from = self.window_rect(window);
-        let toplevel = window.toplevel().unwrap();
+        // Fenêtre X11 : état « maximisée » et nouveau rectangle, sans états d'ancrage xdg.
+        let Some(toplevel) = window.toplevel() else {
+            if let Some(x) = window.x11_surface() {
+                let _ = x.set_maximized(zone == Zone::Maximize);
+            }
+            crate::xwayland::configure_x11(window, target);
+            data.maximized.set(true);
+            data.zone.set(Some(zone));
+            self.animate_window(window, from, target);
+            self.space.map_element(window.clone(), target.loc, true);
+            self.focus_window(window);
+            self.refresh_pointer_focus_soon();
+            return;
+        };
         toplevel.with_pending_state(|state| {
             for s in [State::Maximized, State::TiledLeft, State::TiledRight, State::TiledTop, State::TiledBottom] {
                 state.states.unset(s);

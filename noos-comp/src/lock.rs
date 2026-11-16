@@ -81,7 +81,7 @@ impl SessionLockHandler for NoosState {
         if self.lock.surfaces.is_empty() {
             let serial = SERIAL_COUNTER.next_serial();
             if let Some(k) = self.seat.get_keyboard() {
-                k.set_focus(self, Some(surface.wl_surface().clone()), serial);
+                k.set_focus(self, Some(surface.wl_surface().clone().into()), serial);
             }
         }
         self.lock.surfaces.retain(|(name, s)| *name != output.name() && s.alive());
@@ -180,7 +180,7 @@ impl NoosState {
         if let Some((surface, _)) = self.lock_surface_under(pos) {
             let serial = SERIAL_COUNTER.next_serial();
             if let Some(k) = self.seat.get_keyboard() {
-                k.set_focus(self, Some(surface), serial);
+                k.set_focus(self, Some(surface.into()), serial);
             }
         }
     }

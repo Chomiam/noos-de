@@ -85,7 +85,7 @@ pub fn gaming(app: &Rc<App>) -> adap::NavigationPage {
         });
     }
     m.add(&game);
-    m.add(&card("dialog-information-symbolic", "Steam, Proton et jeux X11", "Pris en charge via Xwayland (xwayland-satellite). Les jeux peuvent verrouiller la souris (pointer-constraints)."));
+    m.add(&card("dialog-information-symbolic", "Steam, Proton et jeux X11", "Pris en charge par Xwayland, géré directement par le compositeur. Les jeux peuvent verrouiller la souris (pointer-constraints)."));
     content.append(&m);
     p
 }

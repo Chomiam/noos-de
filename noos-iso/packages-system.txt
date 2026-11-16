@@ -10,8 +10,8 @@ xdg-desktop-portal-gtk
 xdg-desktop-portal-wlr
 xdg-user-dirs
 xdg-utils
+# Applis X11 : Xwayland, lancé et géré par le compositeur
 xwayland
-xwayland-satellite
 grim
 libvte-2.91-gtk4-0
 polkitd

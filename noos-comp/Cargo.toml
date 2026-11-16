@@ -32,6 +32,8 @@ features = [
     "desktop",
     "renderer_gl",
     "wayland_frontend",
+    # Applis X11 : Xwayland lancé par le compositeur, gestionnaire de fenêtres X11 intégré.
+    "xwayland",
 ]
 
 [dependencies.smithay-drm-extras]

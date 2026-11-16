@@ -349,9 +349,9 @@ impl NoosState {
             if let Some(layer) = self.upper_layer_under(pos) {
                 if layer.can_receive_keyboard_focus() {
                     let keyboard = self.seat.get_keyboard().unwrap();
-                    if keyboard.current_focus().as_ref() != Some(layer.wl_surface()) {
+                    if self.keyboard_focus_surface().as_ref() != Some(layer.wl_surface()) {
                         tracing::info!(namespace = layer.namespace(), "clic : clavier donné au panneau");
-                        keyboard.set_focus(self, Some(layer.wl_surface().clone()), serial);
+                        keyboard.set_focus(self, Some(layer.wl_surface().clone().into()), serial);
                     }
                 }
             } else if let Some((window, _)) = self.space.element_under(pos).map(|(w, l)| (w.clone(), l)) {
@@ -421,7 +421,7 @@ impl NoosState {
         if let Some(surface) = surface {
             let serial = SERIAL_COUNTER.next_serial();
             let keyboard = self.seat.get_keyboard().unwrap();
-            keyboard.set_focus(self, Some(surface), serial);
+            keyboard.set_focus(self, Some(surface.into()), serial);
         } else if self.upper_layer_under(pos).is_some() {
             // Clic sur la barre des tâches (sans clavier) : la fenêtre active le reste,
             // comme sous Windows.

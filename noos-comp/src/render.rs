@@ -68,6 +68,8 @@ pub fn output_elements(
     if state.screens_off {
         return elements;
     }
+    // Position réelle des fenêtres X11 transmise au serveur X (menus bien placés).
+    state.sync_x11_geometry();
     let Some(output_geo) = state.space.output_geometry(output) else { return elements };
     let scale = Scale::from(output.current_scale().fractional_scale());
 

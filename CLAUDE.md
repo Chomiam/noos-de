@@ -31,7 +31,7 @@ donne le contexte de travail.
 
 | Dossier | Rôle |
 |---|---|
-| `noos-comp/` | Compositeur Smithay (DRM/KMS + libinput, ou imbriqué winit), tiling, Mica (flou), capture d'écran, IPC, mode kiosque (`--kiosk "<cmd>"`) |
+| `noos-comp/` | Compositeur Smithay (DRM/KMS + libinput, ou imbriqué winit), tiling, Mica (flou), capture d'écran, IPC, mode kiosque (`--kiosk "<cmd>"`), **applis X11** : lance `Xwayland` (paquet Debian) et gère ses fenêtres lui-même (`src/xwayland.rs`, `X11Wm` de Smithay) |
 | `noos-shell/` | Barre des tâches, menu Démarrer, réglages rapides, notifications, zone de notification, fond d'écran, **agent polkit** (`src/polkit.rs`) |
 | `noos-settings/`, `noos-file/`, `noos-term/`, `noos-snip/`, `noos-keys/`, `noos-software/` + `noos-pkg/` | Applications |
 | `noos-pkg/src/deb.rs` | Fichiers `.deb` : fiche (`dpkg-deb -f`), simulation sans root (`apt-get -s install <fichier>`), installation `apt-get install <chemin>` (pkexec) ; Logiciels est l'appli par défaut des `.deb` |
@@ -238,6 +238,13 @@ compositeur y écrit (`[desktops] names`).
   de `/etc` = conffiles automatiques ; sudoers.d mis en 0440 par dh_fixperms.
 - **Live** : live-boot (`boot=live components`), squashfs dans `/live/filesystem.squashfs`,
   autologin root sur tty1 → `noos-live-installer`.
+- **Applis X11** : `xwayland-satellite` n'existe pas dans Debian → le compositeur lance
+  `Xwayland` (Depends `xwayland`) et joue le gestionnaire de fenêtres X11 (`xwayland.rs`).
+  Focus clavier = `FocusTarget` (surface Wayland ou fenêtre X11) ; une fenêtre peut ne pas
+  avoir de `toplevel()` xdg : jamais de `toplevel().unwrap()`. Menus X11 = fenêtres
+  override-redirect (hors barre des tâches et focus). Position X synchronisée à chaque image
+  (`sync_x11_geometry`). Electron en Wayland natif : une fenêtre créée cachée
+  (`show: false` + `ready-to-show`) peut ne jamais s'afficher (Kudu) ; en X11 elle s'affiche.
 - **greetd** lance lui-même `sh -c "… exec <commande>"` : passer la ligne Exec telle quelle,
   jamais un `sh -c` imbriqué. Trousseau : gnome-keyring + `libpam-gnome-keyring`.
   `/etc/pam.d/greetd` (paquet greetd) n'a pas `pam_env envfile=/etc/default/locale` : la

@@ -25,14 +25,15 @@ mod session;
 mod state;
 mod tiling;
 mod wm;
+mod xwayland;
 
 use std::{path::Path, sync::OnceLock};
 
-use tracing::{info, warn};
+use tracing::info;
 
 use crate::state::NoosState;
 
-/// `DISPLAY` de xwayland-satellite (si lancé), transmis aux clients.
+/// `DISPLAY` de Xwayland (si lancé), transmis aux clients.
 pub static XWAYLAND_DISPLAY: OnceLock<String> = OnceLock::new();
 
 /// Mode kiosque (`--kiosk "<commande>"`) : une seule application plein écran, sans barre
@@ -182,29 +183,18 @@ pub fn startup(state: &mut NoosState) {
     info!(socket = ?state.socket_name, "NOOS prêt");
 }
 
-/// Xwayland via xwayland-satellite (applis X11, Steam, beaucoup de jeux).
-fn start_xwayland(state: &NoosState) {
-    let found = std::env::var_os("PATH")
-        .map(|p| std::env::split_paths(&p).any(|d| d.join("xwayland-satellite").is_file()))
-        .unwrap_or(false);
-    if !found {
-        warn!("xwayland-satellite introuvable : pas de support X11");
-        return;
-    }
-    let display = (1..64)
+/// Applis X11 (Steam, beaucoup de jeux, Electron en X11) : Xwayland lancé et géré par le
+/// compositeur (voir `xwayland.rs`). Le numéro d'affichage est choisi ici pour exporter
+/// `DISPLAY` avant de lancer le shell et les services.
+fn start_xwayland(state: &mut NoosState) {
+    let display = (0..64)
         .find(|n| !Path::new(&format!("/tmp/.X11-unix/X{n}")).exists() && !Path::new(&format!("/tmp/.X{n}-lock")).exists())
         .unwrap_or(42);
-    let name = format!(":{display}");
-    match std::process::Command::new("xwayland-satellite")
-        .arg(&name)
-        .env("WAYLAND_DISPLAY", &state.socket_name)
-        .spawn()
-    {
-        Ok(_) => {
-            info!(display = name, "xwayland-satellite lancé");
-            let _ = XWAYLAND_DISPLAY.set(name.clone());
-            unsafe { std::env::set_var("DISPLAY", &name) };
-        }
-        Err(e) => warn!("xwayland-satellite : {e}"),
+    if state.start_xwayland(display) {
+        let name = format!(":{display}");
+        info!(display = name, "Xwayland lancé");
+        let _ = XWAYLAND_DISPLAY.set(name.clone());
+        // SAFETY : appelé depuis startup(), avant la boucle d'événements.
+        unsafe { std::env::set_var("DISPLAY", &name) };
     }
 }

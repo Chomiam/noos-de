@@ -495,7 +495,7 @@ sessions (GNOME…).
 - placement et snap des fenêtres, IPC ;
 - barre des tâches, menu Démarrer, réglages rapides ;
 - explorateur, paramètres, thème libAdapta généré à chaud ;
-- Xwayland via xwayland-satellite.
+- Xwayland lancé et géré par le compositeur (gestionnaire de fenêtres X11 intégré, `noos-comp/src/xwayland.rs`).
 
 **Testé en mode imbriqué :**
 - notifications (`org.freedesktop.Notifications`) : bannières, centre de notifications, calendrier, ne pas déranger ;

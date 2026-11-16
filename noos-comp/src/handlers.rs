@@ -69,6 +69,10 @@ impl CompositorHandler for NoosState {
     }
 
     fn client_compositor_state<'a>(&self, client: &'a Client) -> &'a CompositorClientState {
+        // Xwayland a ses propres données de client.
+        if let Some(x) = client.get_data::<smithay::xwayland::XWaylandClientData>() {
+            return &x.compositor_state;
+        }
         &client.get_data::<ClientState>().unwrap().compositor_state
     }
 
@@ -106,7 +110,8 @@ impl CompositorHandler for NoosState {
 
 impl NoosState {
     fn on_toplevel_commit(&mut self, window: &Window) {
-        let toplevel = window.toplevel().unwrap();
+        // Fenêtre X11 : placée par le gestionnaire X11 (xwayland.rs), rien à faire ici.
+        let Some(toplevel) = window.toplevel() else { return };
         let initial_configure_sent = with_states(toplevel.wl_surface(), |states| {
             states
                 .data_map
@@ -195,9 +200,9 @@ impl NoosState {
             !layer.user_data().get::<std::cell::Cell<bool>>().unwrap().replace(true)
         };
         let keyboard = self.seat.get_keyboard().unwrap();
-        if exclusive && first_map && keyboard.current_focus().as_ref() != Some(surface) {
+        if exclusive && first_map && self.keyboard_focus_surface().as_ref() != Some(surface) {
             let serial = smithay::utils::SERIAL_COUNTER.next_serial();
-            keyboard.set_focus(self, Some(surface.clone()), serial);
+            keyboard.set_focus(self, Some(surface.clone().into()), serial);
         }
         // La zone exclusive a pu changer (barre des tâches) : on réajuste les fenêtres maximisées.
         self.relayout_maximized(&output);
@@ -388,17 +393,13 @@ impl XdgShellHandler for NoosState {
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
-        self.minimized.retain(|w| w.toplevel().is_some_and(|t| t != &surface));
-        self.desktops.parked.retain(|(w, _)| w.toplevel().is_some_and(|t| t != &surface));
-        self.fullscreen.retain(|_, w| w.toplevel().is_some_and(|t| t != &surface));
+        // (Les fenêtres X11 n'ont pas de toplevel xdg : on ne retire que celle-ci.)
+        let gone = |w: &Window| w.toplevel() == Some(&surface);
+        self.minimized.retain(|w| !gone(w));
+        self.desktops.parked.retain(|(w, _)| !gone(w));
+        self.fullscreen.retain(|_, w| !gone(w));
         if let Some(window) = self.window_for_surface(surface.wl_surface()) {
-            let id = window_data(&window).id;
-            self.space.unmap_elem(&window);
-            self.blur_forget_window(id);
-            if self.snap_drag.as_ref().is_some_and(|d| d.window == window) {
-                self.snap_drag = None;
-            }
-            self.refresh_pointer_focus_soon();
+            self.forget_window(&window);
         }
         self.focus_top_window();
         self.update_vrr();
@@ -536,8 +537,8 @@ impl WlrLayerShellHandler for NoosState {
                 self.relayout_maximized(&output);
             }
         }
-        let keyboard = self.seat.get_keyboard().unwrap();
-        if keyboard.current_focus().as_ref() == Some(surface.wl_surface()) || keyboard.current_focus().is_none() {
+        let focus = self.keyboard_focus_surface();
+        if focus.as_ref() == Some(surface.wl_surface()) || focus.is_none() {
             self.focus_top_window();
         }
     }
@@ -546,7 +547,7 @@ impl WlrLayerShellHandler for NoosState {
 // ───────────────────────────── Seat / sélection ─────────────────────────────
 
 impl SeatHandler for NoosState {
-    type KeyboardFocus = WlSurface;
+    type KeyboardFocus = crate::xwayland::FocusTarget;
     type PointerFocus = WlSurface;
     type TouchFocus = WlSurface;
 
@@ -558,9 +559,9 @@ impl SeatHandler for NoosState {
         self.cursor_status = image;
     }
 
-    fn focus_changed(&mut self, seat: &Seat<Self>, focused: Option<&WlSurface>) {
+    fn focus_changed(&mut self, seat: &Seat<Self>, focused: Option<&crate::xwayland::FocusTarget>) {
         let dh = &self.display_handle;
-        let client = focused.and_then(|s| dh.get_client(s.id()).ok());
+        let client = focused.and_then(|f| f.surface()).and_then(|s| dh.get_client(s.id()).ok());
         set_data_device_focus(dh, seat, client.clone());
         set_primary_focus(dh, seat, client);
     }
@@ -578,6 +579,36 @@ impl smithay::input::tablet::TabletSeatHandler for NoosState {
 
 impl SelectionHandler for NoosState {
     type SelectionUserData = ();
+
+    /// Copie dans une appli Wayland : les applis X11 la voient aussi.
+    fn new_selection(
+        &mut self,
+        ty: smithay::wayland::selection::SelectionTarget,
+        source: Option<smithay::wayland::selection::SelectionSource>,
+        _seat: Seat<Self>,
+    ) {
+        if let Some(xwm) = self.xwm.as_mut() {
+            if let Err(e) = xwm.new_selection(ty, source.map(|s| s.mime_types())) {
+                warn!("presse-papiers Wayland → X11 : {e}");
+            }
+        }
+    }
+
+    /// Une appli Wayland colle ce qu'une appli X11 a copié.
+    fn send_selection(
+        &mut self,
+        ty: smithay::wayland::selection::SelectionTarget,
+        mime_type: String,
+        fd: std::os::unix::io::OwnedFd,
+        _seat: Seat<Self>,
+        _user_data: &(),
+    ) {
+        if let Some(xwm) = self.xwm.as_mut() {
+            if let Err(e) = xwm.send_selection(ty, mime_type, fd) {
+                warn!("presse-papiers X11 → Wayland : {e}");
+            }
+        }
+    }
 }
 
 impl DataDeviceHandler for NoosState {

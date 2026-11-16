@@ -113,6 +113,10 @@ pub struct NoosState {
     pub fractional_scale_state: FractionalScaleManagerState,
     pub presentation_state: PresentationState,
     pub single_pixel_buffer_state: SinglePixelBufferState,
+    /// Association surfaces Wayland ↔ fenêtres X11 (protocole xwayland-shell).
+    pub xwayland_shell_state: smithay::wayland::xwayland_shell::XWaylandShellState,
+    /// Gestionnaire de fenêtres X11 (prêt une fois Xwayland démarré, voir `xwayland.rs`).
+    pub xwm: Option<smithay::xwayland::X11Wm>,
 
     // Entrées
     pub seat: Seat<NoosState>,
@@ -217,6 +221,7 @@ impl NoosState {
         let fractional_scale_state = FractionalScaleManagerState::new::<Self>(&dh);
         let presentation_state = PresentationState::new::<Self>(&dh, clock.id() as u32);
         let single_pixel_buffer_state = SinglePixelBufferState::new::<Self>(&dh);
+        let xwayland_shell_state = smithay::wayland::xwayland_shell::XWaylandShellState::new::<Self>(&dh);
         PointerConstraintsState::new::<Self>(&dh);
         smithay::wayland::idle_inhibit::IdleInhibitManagerState::new::<Self>(&dh);
         RelativePointerManagerState::new::<Self>(&dh);
@@ -285,6 +290,8 @@ impl NoosState {
             fractional_scale_state,
             presentation_state,
             single_pixel_buffer_state,
+            xwayland_shell_state,
+            xwm: None,
             seat,
             pointer,
             cursor_status: CursorImageStatus::default_named(),
@@ -355,7 +362,10 @@ impl NoosState {
         self.space
             .elements()
             .chain(self.minimized.iter())
-            .find(|w| w.toplevel().is_some_and(|t| t.wl_surface() == surface))
+            .find(|w| {
+                use smithay::wayland::seat::WaylandFocus;
+                w.wl_surface().is_some_and(|s| &*s == surface)
+            })
             .cloned()
     }
 

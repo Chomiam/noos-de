@@ -11,10 +11,12 @@ use smithay::{
     output::Output,
     reexports::wayland_protocols::xdg::shell::server::xdg_toplevel,
     utils::{Logical, Point, Rectangle, SERIAL_COUNTER},
-    wayland::{compositor::with_states, shell::xdg::XdgToplevelSurfaceData},
 };
 
-use crate::state::{NoosState, window_data};
+use crate::{
+    state::{NoosState, window_data},
+    xwayland::{configure_x11, focus_target, is_override_redirect, title_and_app_id},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Snap {
@@ -55,33 +57,36 @@ impl NoosState {
     }
 
     pub fn focus_window(&mut self, window: &Window) {
+        // Menu / info-bulle X11 : placés par l'appli, ils ne prennent jamais le clavier.
+        if is_override_redirect(window) {
+            return;
+        }
         self.space.raise_element(window, true);
         let serial = SERIAL_COUNTER.next_serial();
         let keyboard = self.seat.get_keyboard().unwrap();
-        let surface = window.toplevel().map(|t| t.wl_surface().clone());
-        if keyboard.current_focus() != surface {
-            let (title, app_id) = window
-                .toplevel()
-                .map(|t| {
-                    smithay::wayland::compositor::with_states(t.wl_surface(), |states| {
-                        let d = states.data_map.get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>();
-                        d.map(|d| {
-                            let d = d.lock().unwrap();
-                            (d.title.clone().unwrap_or_default(), d.app_id.clone().unwrap_or_default())
-                        })
-                        .unwrap_or_default()
-                    })
-                })
-                .unwrap_or_default();
+        let target = focus_target(window);
+        if keyboard.current_focus() != target {
+            let (title, app_id) = title_and_app_id(window);
             tracing::info!(app_id, title, "focus clavier → fenêtre");
         }
-        keyboard.set_focus(self, surface, serial);
-        for w in self.space.elements() {
+        keyboard.set_focus(self, target, serial);
+        self.after_focus_change(Some(window));
+        self.notify_windows_changed();
+    }
+
+    /// États « actif » à jour : xdg (configure en attente) et X11 (_NET_WM_STATE_FOCUSED,
+    /// fenêtre active passée au-dessus dans la pile X).
+    fn after_focus_change(&mut self, focused: Option<&Window>) {
+        for w in self.space.elements().chain(self.minimized.iter()) {
             if let Some(t) = w.toplevel() {
                 t.send_pending_configure();
+            } else if let Some(x) = w.x11_surface().filter(|x| !x.is_override_redirect()) {
+                let _ = x.set_activated(Some(w) == focused);
             }
         }
-        self.notify_windows_changed();
+        if let (Some(xwm), Some(x)) = (self.xwm.as_mut(), focused.and_then(|w| w.x11_surface())) {
+            let _ = xwm.raise_window(x);
+        }
     }
 
     /// Restaure si réduite, puis donne le focus.
@@ -106,32 +111,35 @@ impl NoosState {
     }
 
     pub fn focus_top_window(&mut self) {
-        let top = self.space.elements().last().cloned();
+        let top = self.space.elements().rev().find(|w| !is_override_redirect(w)).cloned();
         let serial = SERIAL_COUNTER.next_serial();
         let keyboard = self.seat.get_keyboard().unwrap();
         match top {
             Some(w) => {
                 self.space.raise_element(&w, true);
-                keyboard.set_focus(self, w.toplevel().map(|t| t.wl_surface().clone()), serial);
-                for e in self.space.elements().chain(self.minimized.iter()) {
-                    if let Some(t) = e.toplevel() {
-                        t.send_pending_configure();
-                    }
-                }
+                keyboard.set_focus(self, focus_target(&w), serial);
+                self.after_focus_change(Some(&w));
             }
-            None => keyboard.set_focus(self, None, serial),
+            None => {
+                keyboard.set_focus(self, None, serial);
+                self.after_focus_change(None);
+            }
         }
         self.notify_windows_changed();
     }
 
     pub fn focused_window(&self) -> Option<Window> {
-        let focus = self.seat.get_keyboard()?.current_focus()?;
-        self.window_for_surface(&focus)
+        match self.seat.get_keyboard()?.current_focus()? {
+            crate::xwayland::FocusTarget::Wayland(s) => self.window_for_surface(&s),
+            crate::xwayland::FocusTarget::X11(x) => self.window_for_x11(&x),
+        }
     }
 
     pub fn close_window(&mut self, window: &Window) {
         if let Some(t) = window.toplevel() {
             t.send_close();
+        } else if let Some(x) = window.x11_surface() {
+            let _ = x.close();
         }
     }
 
@@ -181,7 +189,7 @@ impl NoosState {
     }
 
     pub fn show_desktop(&mut self) {
-        let visible: Vec<Window> = self.space.elements().cloned().collect();
+        let visible: Vec<Window> = self.space.elements().filter(|w| !is_override_redirect(w)).cloned().collect();
         if visible.is_empty() {
             // Deuxième appui : tout restaurer.
             for w in self.minimized.clone() {
@@ -215,20 +223,23 @@ impl NoosState {
         data.maximized.set(false);
         data.zone.set(None);
         let from = self.window_rect(window);
-        let toplevel = window.toplevel().unwrap();
-        toplevel.with_pending_state(|state| {
-            for s in [
-                xdg_toplevel::State::Maximized,
-                xdg_toplevel::State::TiledLeft,
-                xdg_toplevel::State::TiledRight,
-                xdg_toplevel::State::TiledTop,
-                xdg_toplevel::State::TiledBottom,
-            ] {
-                state.states.unset(s);
-            }
-            state.size = restore.map(|r| r.size);
-        });
-        toplevel.send_configure();
+        if let Some(toplevel) = window.toplevel() {
+            toplevel.with_pending_state(|state| {
+                for s in [
+                    xdg_toplevel::State::Maximized,
+                    xdg_toplevel::State::TiledLeft,
+                    xdg_toplevel::State::TiledRight,
+                    xdg_toplevel::State::TiledTop,
+                    xdg_toplevel::State::TiledBottom,
+                ] {
+                    state.states.unset(s);
+                }
+                state.size = restore.map(|r| r.size);
+            });
+            toplevel.send_configure();
+        } else if let Some(x) = window.x11_surface() {
+            let _ = x.set_maximized(false);
+        }
         if let Some(r) = restore {
             let loc = match grab_point {
                 // Garder la fenêtre sous le curseur, centrée horizontalement (sans animation :
@@ -239,6 +250,7 @@ impl NoosState {
                     r.loc
                 }
             };
+            configure_x11(window, Rectangle::new(loc, r.size));
             self.space.map_element(window.clone(), loc, true);
         }
         self.notify_windows_changed();
@@ -310,13 +322,17 @@ impl NoosState {
     pub fn set_fullscreen(&mut self, window: &Window, output: &Output) {
         let Some(geo) = self.space.output_geometry(output) else { return };
         self.save_restore_geometry(window);
-        let toplevel = window.toplevel().unwrap();
-        toplevel.with_pending_state(|state| {
-            state.states.set(xdg_toplevel::State::Fullscreen);
-            state.size = Some(geo.size);
-            state.fullscreen_output = toplevel.wl_surface().client().and_then(|c| output.client_outputs(&c).next());
-        });
-        toplevel.send_configure();
+        if let Some(toplevel) = window.toplevel() {
+            toplevel.with_pending_state(|state| {
+                state.states.set(xdg_toplevel::State::Fullscreen);
+                state.size = Some(geo.size);
+                state.fullscreen_output = toplevel.wl_surface().client().and_then(|c| output.client_outputs(&c).next());
+            });
+            toplevel.send_configure();
+        } else if let Some(x) = window.x11_surface() {
+            let _ = x.set_fullscreen(true);
+            configure_x11(window, geo);
+        }
         window_data(window).fullscreen.set(true);
         self.space.map_element(window.clone(), geo.loc, true);
         self.fullscreen.insert(output.name(), window.clone());
@@ -329,13 +345,19 @@ impl NoosState {
         data.fullscreen.set(false);
         self.fullscreen.retain(|_, w| w != window);
         let restore = if data.maximized.get() { None } else { data.restore.borrow_mut().take() };
-        let toplevel = window.toplevel().unwrap();
-        toplevel.with_pending_state(|state| {
-            state.states.unset(xdg_toplevel::State::Fullscreen);
-            state.fullscreen_output = None;
-            state.size = restore.map(|r| r.size);
-        });
-        toplevel.send_configure();
+        if let Some(toplevel) = window.toplevel() {
+            toplevel.with_pending_state(|state| {
+                state.states.unset(xdg_toplevel::State::Fullscreen);
+                state.fullscreen_output = None;
+                state.size = restore.map(|r| r.size);
+            });
+            toplevel.send_configure();
+        } else if let Some(x) = window.x11_surface() {
+            let _ = x.set_fullscreen(false);
+            if let Some(r) = restore {
+                configure_x11(window, r);
+            }
+        }
         if let Some(r) = restore {
             self.space.map_element(window.clone(), r.loc, true);
         }
@@ -360,17 +382,20 @@ impl NoosState {
             .cloned()
             .collect();
         for window in windows {
-            let toplevel = window.toplevel().unwrap();
             let zone = window_data(&window).zone.get().unwrap_or(crate::tiling::Zone::Maximize);
             let r = zone.rect(area);
             let (loc, size) = (r.loc, r.size);
-            let changed = toplevel.with_pending_state(|s| {
-                let changed = s.size != Some(size);
-                s.size = Some(size);
-                changed
-            });
-            if changed {
-                toplevel.send_pending_configure();
+            if let Some(toplevel) = window.toplevel() {
+                let changed = toplevel.with_pending_state(|s| {
+                    let changed = s.size != Some(size);
+                    s.size = Some(size);
+                    changed
+                });
+                if changed {
+                    toplevel.send_pending_configure();
+                }
+            } else {
+                configure_x11(&window, r);
             }
             if self.space.element_location(&window) != Some(loc) {
                 self.space.map_element(window, loc, false);
@@ -380,7 +405,7 @@ impl NoosState {
 
     /// Alt+Tab : passe à la fenêtre suivante dans l'ordre d'empilement.
     pub fn cycle_windows(&mut self) {
-        let windows: Vec<Window> = self.space.elements().cloned().collect();
+        let windows: Vec<Window> = self.space.elements().filter(|w| !is_override_redirect(w)).cloned().collect();
         if windows.len() < 2 {
             return;
         }
@@ -401,15 +426,7 @@ impl NoosState {
             .chain(self.desktops.parked.iter().map(|(w, _)| (w, false)))
             .filter(|(w, _)| window_data(w).placed.get())
             .map(|(w, minimized)| {
-                let (title, app_id) = w
-                    .toplevel()
-                    .map(|t| {
-                        with_states(t.wl_surface(), |states| {
-                            let data = states.data_map.get::<XdgToplevelSurfaceData>().unwrap().lock().unwrap();
-                            (data.title.clone().unwrap_or_default(), data.app_id.clone().unwrap_or_default())
-                        })
-                    })
-                    .unwrap_or_default();
+                let (title, app_id) = title_and_app_id(w);
                 let d = window_data(w);
                 WindowInfo {
                     id: d.id,

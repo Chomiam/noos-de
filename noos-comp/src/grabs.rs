@@ -2,7 +2,7 @@
 //! Adapté de « smallvil » (exemple minimal de Smithay, licence MIT).
 
 pub use move_grab::MoveSurfaceGrab;
-pub use resize_grab::{ResizeSurfaceGrab, handle_commit as resize_commit};
+pub use resize_grab::{ResizeEdge, ResizeSurfaceGrab, handle_commit as resize_commit};
 
 pub fn handle_resize_commit(state: &mut crate::state::NoosState, surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface) {
     resize_commit(&mut state.space, surface);
@@ -207,6 +207,23 @@ bitflags::bitflags! {
     }
 }
 
+impl ResizeEdge {
+    /// Bord demandé par une fenêtre X11 (_NET_WM_MOVERESIZE).
+    pub fn from_x11(e: smithay::xwayland::xwm::ResizeEdge) -> Self {
+        use smithay::xwayland::xwm::ResizeEdge as X;
+        match e {
+            X::Top => Self::TOP,
+            X::Bottom => Self::BOTTOM,
+            X::Left => Self::LEFT,
+            X::Right => Self::RIGHT,
+            X::TopLeft => Self::TOP_LEFT,
+            X::TopRight => Self::TOP_RIGHT,
+            X::BottomLeft => Self::BOTTOM_LEFT,
+            X::BottomRight => Self::BOTTOM_RIGHT,
+        }
+    }
+}
+
 impl From<xdg_toplevel::ResizeEdge> for ResizeEdge {
     #[inline]
     fn from(x: xdg_toplevel::ResizeEdge) -> Self {
@@ -233,9 +250,12 @@ impl ResizeSurfaceGrab {
     ) -> Self {
         let initial_rect = initial_window_rect;
 
-        ResizeSurfaceState::with(window.toplevel().unwrap().wl_surface(), |state| {
-            *state = ResizeSurfaceState::Resizing { edges, initial_rect };
-        });
+        // Fenêtre X11 : redimensionnée directement (voir motion), pas d'état xdg.
+        if let Some(t) = window.toplevel() {
+            ResizeSurfaceState::with(t.wl_surface(), |state| {
+                *state = ResizeSurfaceState::Resizing { edges, initial_rect };
+            });
+        }
 
         Self {
             start_data,
@@ -279,12 +299,15 @@ impl PointerGrab<NoosState> for ResizeSurfaceGrab {
             new_window_height = (self.initial_rect.size.h as f64 + delta.y) as i32;
         }
 
-        let (min_size, max_size) =
-            compositor::with_states(self.window.toplevel().unwrap().wl_surface(), |states| {
+        let (min_size, max_size) = match (self.window.toplevel(), self.window.x11_surface()) {
+            (Some(t), _) => compositor::with_states(t.wl_surface(), |states| {
                 let mut guard = states.cached_state.get::<SurfaceCachedState>();
                 let data = guard.current();
                 (data.min_size, data.max_size)
-            });
+            }),
+            (None, Some(x)) => (x.min_size().unwrap_or_default(), x.max_size().unwrap_or_default()),
+            (None, None) => Default::default(),
+        };
 
         let min_width = min_size.w.max(1);
         let min_height = min_size.h.max(1);
@@ -297,7 +320,21 @@ impl PointerGrab<NoosState> for ResizeSurfaceGrab {
             new_window_height.max(min_height).min(max_height),
         ));
 
-        let xdg = self.window.toplevel().unwrap();
+        // Fenêtre X11 : nouveau rectangle tout de suite (bord gauche / haut : la position
+        // bouge aussi).
+        let Some(xdg) = self.window.toplevel() else {
+            let size = self.last_window_size;
+            let mut loc = self.initial_rect.loc;
+            if self.edges.intersects(ResizeEdge::LEFT) {
+                loc.x += self.initial_rect.size.w - size.w;
+            }
+            if self.edges.intersects(ResizeEdge::TOP) {
+                loc.y += self.initial_rect.size.h - size.h;
+            }
+            crate::xwayland::configure_x11(&self.window, Rectangle::new(loc, size));
+            data.space.map_element(self.window.clone(), loc, false);
+            return;
+        };
         xdg.with_pending_state(|state| {
             state.states.set(xdg_toplevel::State::Resizing);
             state.size = Some(self.last_window_size);
@@ -332,7 +369,7 @@ impl PointerGrab<NoosState> for ResizeSurfaceGrab {
             // No more buttons are pressed, release the grab.
             handle.unset_grab(self, data, event.serial, event.time, true);
 
-            let xdg = self.window.toplevel().unwrap();
+            let Some(xdg) = self.window.toplevel() else { return };
             xdg.with_pending_state(|state| {
                 state.states.unset(xdg_toplevel::State::Resizing);
                 state.size = Some(self.last_window_size);
@@ -493,7 +530,7 @@ impl ResizeSurfaceState {
 pub fn handle_commit(space: &mut Space<Window>, surface: &WlSurface) -> Option<()> {
     let window = space
         .elements()
-        .find(|w| w.toplevel().unwrap().wl_surface() == surface)
+        .find(|w| w.toplevel().is_some_and(|t| t.wl_surface() == surface))
         .cloned()?;
 
     let mut window_loc = space.element_location(&window)?;

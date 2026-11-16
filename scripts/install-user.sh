@@ -5,8 +5,8 @@
 #     ./scripts/install-user.sh
 #
 # libAdapta (absente de Debian) est copiée dans le préfixe ; le reste (libseat,
-# gtk4-layer-shell, xdg-desktop-portal-wlr, xwayland-satellite) vient des paquets Debian :
-#     sudo apt install libseat1 libgtk4-layer-shell0 xdg-desktop-portal-wlr xwayland-satellite grim
+# gtk4-layer-shell, xdg-desktop-portal-wlr, xwayland) vient des paquets Debian :
+#     sudo apt install libseat1 libgtk4-layer-shell0 xdg-desktop-portal-wlr xwayland grim
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -68,9 +68,6 @@ fi
 # Choix des portails pour XDG_CURRENT_DESKTOP=NOOS (ignoré par GNOME).
 install -Dm644 noos-session/noos-portals.conf "${XDG_CONFIG_HOME:-$HOME/.config}/xdg-desktop-portal/noos-portals.conf"
 
-if command -v xwayland-satellite >/dev/null; then
-    put "$(command -v xwayland-satellite)" "$PREFIX/bin/xwayland-satellite" 755
-fi
 
 cp -r data/. "$PREFIX/share/noos/"
 rm -rf "$PREFIX/share/noos/wallpapers"   # ancien fond fourni par défaut (supprimé)

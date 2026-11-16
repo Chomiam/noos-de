@@ -48,6 +48,20 @@ impl Cursor {
     }
 }
 
+/// Flèche par défaut du thème, en RGBA (pixels, taille, point chaud) : curseur des
+/// fenêtres X11 (Xwayland).
+pub fn default_cursor_rgba() -> Option<(Vec<u8>, smithay::utils::Size<u16, smithay::utils::Logical>, smithay::utils::Point<u16, smithay::utils::Logical>)> {
+    let img = Cursor::load().get_image(CursorIcon::Default, 1, Duration::ZERO);
+    if img.pixels_rgba.len() < (img.width * img.height * 4) as usize {
+        return None;
+    }
+    Some((
+        img.pixels_rgba,
+        (img.width as u16, img.height as u16).into(),
+        (img.xhot as u16, img.yhot as u16).into(),
+    ))
+}
+
 fn load_named(theme: &CursorTheme, names: &[&str]) -> Option<Vec<Image>> {
     let path = names.iter().find_map(|n| theme.load_icon(n))?;
     let data = std::fs::read(path).ok()?;

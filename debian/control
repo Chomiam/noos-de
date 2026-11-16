@@ -109,10 +109,11 @@ Depends: ${shlibs:Depends},
          fonts-noto-color-emoji,
          cabextract,
 # VPN WireGuard (NetworkManager le gère nativement ; wg pour l'état des tunnels)
-         wireguard-tools
-Recommends: xwayland,
-            xwayland-satellite,
-            grim,
+         wireguard-tools,
+# Applis X11 (Steam, jeux, Electron en X11) : Xwayland, lancé et géré par le compositeur
+# (gestionnaire de fenêtres X11 intégré à noos-comp)
+         xwayland
+Recommends: grim,
             bluez,
             gcr,
             gvfs,
