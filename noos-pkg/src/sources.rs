@@ -15,7 +15,7 @@
 
 use crate::{
     BackendKind, Repo, Scope,
-    backends::aptsources::{is_debian_uri, is_noos_uri},
+    backends::aptsources::{is_chrome_uri, is_debian_uri, is_noos_uri, is_nvidia_uri},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -79,6 +79,10 @@ fn apt_family(r: &Repo) -> (String, Channel) {
     let channel = if testing { Channel::Testing } else { Channel::Stable };
     if is_noos_uri(&r.url) {
         ("noos".into(), Channel::Stable)
+    } else if is_chrome_uri(&r.url) {
+        ("google-chrome".into(), Channel::Stable)
+    } else if is_nvidia_uri(&r.url) {
+        ("nvidia".into(), Channel::Stable)
     } else if r.url.contains("security.debian.org") || r.suites.iter().any(|s| s.ends_with("-security")) {
         ("debian-security".into(), Channel::Stable)
     } else if is_debian_uri(&r.url) {
@@ -126,6 +130,8 @@ fn apt_label(family: &str, members: &[Repo]) -> (String, String, bool, bool) {
             false,
         ),
         "noos" => ("NOOS".into(), "Bureau NOOS et ses applications (dépôt APT sur GitHub Pages)".into(), true, true),
+        "google-chrome" => ("Google Chrome".into(), CHROME_DESC.into(), false, false),
+        "nvidia" => ("NVIDIA — pilotes et CUDA".into(), NVIDIA_DESC.into(), false, false),
         _ => {
             let m = &members[0];
             let host = m.url.trim_start_matches("https://").trim_start_matches("http://").split('/').next().unwrap_or("").to_string();
@@ -134,6 +140,10 @@ fn apt_label(family: &str, members: &[Repo]) -> (String, String, bool, bool) {
         }
     }
 }
+
+const CHROME_DESC: &str = "Dépôt officiel de Google : le navigateur Chrome (paquet google-chrome-stable) et ses mises à jour";
+const NVIDIA_DESC: &str = "Dépôt officiel de NVIDIA (Debian 13) : pilotes plus récents et CUDA. Ils remplacent le \
+     pilote NVIDIA de Debian (contrib / non-free) : à n'ajouter que si celui-ci ne suffit pas";
 
 fn missing(family: &str, name: &str, description: &str, channel: Channel, preset: &'static str) -> Source {
     Source {
@@ -195,6 +205,12 @@ pub fn group_apt(repos: &[Repo]) -> Vec<Source> {
     }
     if !out.iter().any(|s| s.key == "apt:noos:Stable") {
         out.push(missing("noos", "NOOS", "Bureau NOOS et ses applications : mises à jour de NOOS", Channel::Stable, "noos"));
+    }
+    if !out.iter().any(|s| s.key == "apt:google-chrome:Stable") {
+        out.push(missing("google-chrome", "Google Chrome", CHROME_DESC, Channel::Stable, "google-chrome"));
+    }
+    if !out.iter().any(|s| s.key == "apt:nvidia:Stable") {
+        out.push(missing("nvidia", "NVIDIA — pilotes et CUDA", NVIDIA_DESC, Channel::Stable, "nvidia-cuda"));
     }
     if !out.iter().any(|s| s.key == "apt:debian-experimental:Testing") {
         out.push(missing(
@@ -314,6 +330,23 @@ mod tests {
         let exp = s.iter().find(|s| s.channel == Channel::Testing).unwrap();
         assert_eq!((exp.state, exp.preset), (State::Missing, Some("debian-experimental")));
         assert!(s.iter().all(|s| s.repos.iter().all(|r| !is_technical(r))));
+        // Google Chrome et NVIDIA proposés tant qu'ils sont absents.
+        let chrome = s.iter().find(|s| s.key == "apt:google-chrome:Stable").unwrap();
+        assert_eq!((chrome.state, chrome.preset), (State::Missing, Some("google-chrome")));
+        assert!(s.iter().any(|s| s.key == "apt:nvidia:Stable" && s.preset == Some("nvidia-cuda")));
+    }
+
+    #[test]
+    fn chrome_et_nvidia_ajoutes() {
+        let s = group_apt(&[
+            repo("debian:0", "http://deb.debian.org/debian", &["sid"], &["main"], true, true),
+            repo("google-chrome:0", "https://dl.google.com/linux/chrome/deb/", &["stable"], &["main"], true, false),
+            repo("nvidia-cuda:0", "https://developer.download.nvidia.com/compute/cuda/repos/debian13/x86_64/", &["/"], &[], true, false),
+        ]);
+        let chrome = s.iter().find(|s| s.key == "apt:google-chrome:Stable").unwrap();
+        assert_eq!((chrome.name.as_str(), chrome.state), ("Google Chrome", State::Enabled));
+        let nvidia = s.iter().find(|s| s.key == "apt:nvidia:Stable").unwrap();
+        assert_eq!(nvidia.state, State::Enabled);
     }
 
     #[test]

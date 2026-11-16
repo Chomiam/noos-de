@@ -26,6 +26,19 @@ pub const DEBIAN_MIRROR: &str = "http://deb.debian.org/debian";
 /// Composants non libres de Debian (pilotes NVIDIA, firmwares, codecs restreints).
 pub const NONFREE_COMPONENTS: &[&str] = &["contrib", "non-free", "non-free-firmware"];
 
+/// Google Chrome : même fichier et même ligne que ceux que le paquet google-chrome-stable
+/// écrit lui-même (sa tâche cron les retrouve et ne crée pas de doublon) ; clé dans
+/// trusted.gpg.d, comme le fait Google.
+pub const CHROME_LIST: &str = "/etc/apt/sources.list.d/google-chrome.list";
+pub const CHROME_URL: &str = "https://dl.google.com/linux/chrome/deb/";
+pub const CHROME_KEY_URL: &str = "https://dl.google.com/linux/linux_signing_key.pub";
+pub const CHROME_KEYRING: &str = "/etc/apt/trusted.gpg.d/google-chrome.asc";
+/// Dépôt officiel de NVIDIA (pilotes récents, CUDA) pour Debian 13, utilisable sur sid.
+pub const NVIDIA_SOURCES: &str = "/etc/apt/sources.list.d/nvidia-cuda.sources";
+pub const NVIDIA_URL: &str = "https://developer.download.nvidia.com/compute/cuda/repos/debian13/x86_64/";
+pub const NVIDIA_KEY_URL: &str = "https://developer.download.nvidia.com/compute/cuda/repos/debian13/x86_64/8793F200.pub";
+pub const NVIDIA_KEYRING: &str = "/etc/apt/keyrings/nvidia-cuda.asc";
+
 /// Une entrée de dépôt, quel que soit son format.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Entry {
@@ -83,6 +96,14 @@ pub fn is_debian_uri(u: &str) -> bool {
 
 pub fn is_noos_uri(u: &str) -> bool {
     u.trim_end_matches('/').starts_with(NOOS_URL)
+}
+
+pub fn is_chrome_uri(u: &str) -> bool {
+    u.contains("dl.google.com/linux/chrome")
+}
+
+pub fn is_nvidia_uri(u: &str) -> bool {
+    u.contains("developer.download.nvidia.com/compute/cuda/repos")
 }
 
 /// Format une ligne : `deb [options] URI suite [composants…]`, éventuellement commenté.
@@ -365,6 +386,19 @@ pub fn noos_sources() -> String {
     format!(
         "# Dépôt APT de NOOS (GitHub Pages) : bureau NOOS et ses applications.\n{}",
         deb822(NOOS_URL, "sid", "main", NOOS_KEYRING)
+    )
+}
+
+/// `google-chrome.list` (format d'une ligne, celui de Google).
+pub fn chrome_list() -> String {
+    format!("# Google Chrome (ajouté par Logiciels de NOOS)\ndeb [arch=amd64] {CHROME_URL} stable main\n")
+}
+
+/// Dépôt de NVIDIA (dépôt « plat » : suite « / », sans composants).
+pub fn nvidia_sources() -> String {
+    format!(
+        "# Dépôt officiel de NVIDIA : pilotes récents et CUDA (ajouté par Logiciels de NOOS).\n{}",
+        deb822(NVIDIA_URL, "/", "", NVIDIA_KEYRING)
     )
 }
 

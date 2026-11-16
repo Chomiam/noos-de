@@ -316,6 +316,20 @@ pub fn apt_presets() -> Vec<Preset> {
             argument: None,
         },
         Preset {
+            id: "google-chrome",
+            backend,
+            name: "Google Chrome",
+            description: "Dépôt officiel de Google : le navigateur Chrome et ses mises à jour",
+            argument: None,
+        },
+        Preset {
+            id: "nvidia-cuda",
+            backend,
+            name: "NVIDIA — pilotes et CUDA",
+            description: "Dépôt officiel de NVIDIA (Debian 13) : pilotes plus récents que ceux de Debian, CUDA",
+            argument: None,
+        },
+        Preset {
             id: "i386",
             backend,
             name: "Applications 32 bits (i386)",
@@ -393,6 +407,16 @@ pub fn add_preset_plan(preset: &str, argument: Option<&str>) -> anyhow::Result<P
             .root_owned(update()),
         "noos" => Plan::new().write(aptsources::NOOS_SOURCES, &aptsources::noos_sources()).root_owned(update()),
         "i386" => Plan::new().root(&["dpkg", "--add-architecture", "i386"]).root_owned(update()),
+        "google-chrome" => Plan::new()
+            .root(&["install", "-d", "-m", "0755", "/etc/apt/trusted.gpg.d"])
+            .root(&["curl", "-fsSL", "-o", aptsources::CHROME_KEYRING, aptsources::CHROME_KEY_URL])
+            .write(aptsources::CHROME_LIST, &aptsources::chrome_list())
+            .root_owned(update()),
+        "nvidia-cuda" => Plan::new()
+            .root(&["install", "-d", "-m", "0755", aptsources::KEYRINGS_DIR])
+            .root(&["curl", "-fsSL", "-o", aptsources::NVIDIA_KEYRING, aptsources::NVIDIA_KEY_URL])
+            .write(aptsources::NVIDIA_SOURCES, &aptsources::nvidia_sources())
+            .root_owned(update()),
         "apt-repo" => {
             let (uri, suite, comps, key) = parse_repo_argument(arg.ok_or_else(|| anyhow::anyhow!("indiquez l'adresse du dépôt"))?)?;
             let name = aptsources::file_name_for(&uri);
