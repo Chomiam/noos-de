@@ -64,6 +64,16 @@ fn capitalize(s: &str) -> String {
     c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
 }
 
+/// « Lundi 16 novembre », comme l'écran de connexion. Pas `%A %B` de glib : sans locale
+/// initialisée dans le processus, ils sortent en anglais (« Monday 16 November »).
+fn french_date(now: &glib::DateTime) -> String {
+    const DAYS: [&str; 7] = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
+    const MONTHS: [&str; 12] =
+        ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+    let day = DAYS[(now.day_of_week() as usize).clamp(1, 7) - 1];
+    capitalize(&format!("{day} {} {}", now.day_of_month(), MONTHS[(now.month() as usize).clamp(1, 12) - 1]))
+}
+
 /// Avatar de l'utilisateur : ~/.face, sinon AccountsService, sinon initiales.
 fn avatar(name: &str) -> adap::Avatar {
     let a = adap::Avatar::new(96, Some(name), true);
@@ -149,7 +159,7 @@ fn build_screen(cfg: &NoosConfig, animation_override: Option<&str>, preview: boo
         move || {
             if let Ok(now) = glib::DateTime::now_local() {
                 time.set_text(&now.format("%H:%M").map(|s| s.to_string()).unwrap_or_default());
-                date.set_text(&capitalize(&now.format("%A %-d %B").map(|s| s.to_string()).unwrap_or_default()));
+                date.set_text(&french_date(&now));
             }
         }
     };

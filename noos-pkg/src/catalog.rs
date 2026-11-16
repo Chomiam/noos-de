@@ -31,10 +31,18 @@ impl Software {
     }
 }
 
+/// Paquets de dépôts tiers sans données AppStream (DEP-11) : identifiant de l'appli Flatpak
+/// correspondante, pour une seule fiche avec les deux façons de l'installer.
+const KNOWN_APPSTREAM: &[(&str, &str)] = &[("google-chrome-stable", "com.google.chrome")];
+
 fn key_of(p: &Package, appstream: &HashMap<String, String>) -> String {
     match p.backend {
         Some(BackendKind::Flatpak) => p.id.to_lowercase(),
-        _ => appstream.get(&p.id).cloned().unwrap_or_else(|| format!("apt:{}", p.id)),
+        _ => appstream
+            .get(&p.id)
+            .cloned()
+            .or_else(|| KNOWN_APPSTREAM.iter().find(|(pkg, _)| *pkg == p.id).map(|(_, id)| id.to_string()))
+            .unwrap_or_else(|| format!("apt:{}", p.id)),
     }
 }
 
@@ -92,5 +100,18 @@ mod tests {
         assert_eq!(s[0].offers[0].origin, "flathub");
         assert_eq!(s[0].offers[2].backend, Some(BackendKind::Apt));
         assert_eq!(s[1].key, "apt:gimp-devel");
+    }
+
+    #[test]
+    fn chrome_depot_google_et_flathub() {
+        let found = vec![
+            pkg(BackendKind::Flatpak, "com.google.Chrome", "Google Chrome", "flathub"),
+            pkg(BackendKind::Apt, "google-chrome-beta", "google-chrome-beta", "dl.google.com"),
+            pkg(BackendKind::Apt, "google-chrome-stable", "google-chrome-stable", "dl.google.com"),
+        ];
+        let s = merge(found, &HashMap::new());
+        assert_eq!(s.len(), 2);
+        assert_eq!((s[0].name.as_str(), s[0].offers.len()), ("Google Chrome", 2));
+        assert_eq!(s[0].offers[1].id, "google-chrome-stable");
     }
 }
