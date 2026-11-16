@@ -182,6 +182,16 @@ compositeur y écrit (`[desktops] names`).
   installé), `tools/vm/vm.sh login`. OVMF Debian : `/usr/share/OVMF/OVMF_CODE_4M.fd`.
   Lire/modifier le disque de la VM éteinte : `guestfish` (`LIBGUESTFS_BACKEND=direct`,
   `mount-options subvol=@ /dev/sda3 /`).
+- **VM sous Windows** (poste d'Axel) : QEMU de qemu.org (`winget install
+  SoftwareFreedomConservancy.QEMU`) + « Plateforme de l'hyperviseur Windows » activée (WHPX).
+  Mêmes commandes dans Git Bash (`vm.sh` détecte Windows : WHPX `kernel-irqchip=off`, sinon
+  la VM se fige ; edk2 de QEMU ; fenêtre SDL ; QMP 127.0.0.1:4444, série 127.0.0.1:4445).
+  **Jamais `system_reset` ni redémarrage depuis l'invité** : WHPX plante ou fige l'image ;
+  toujours `vm.sh stop` puis `vm.sh start`. GRUB : touches US (qcodes), pas AZERTY. Console
+  série : ajouter `console=tty0 console=ttyS0,115200` à la ligne `linux` (GRUB › e), puis
+  `tools/vm/serial.py login atest <mdp>` et `tools/vm/serial.py run "commande"`.
+  L'utilisateur peut voir la fenêtre QEMU : lui demander de ne pas y cliquer pendant un
+  parcours scripté (clics à coordonnées fixes).
 
 ## Debian sid : pièges et leçons apprises
 
@@ -225,6 +235,10 @@ compositeur y écrit (`[desktops] names`).
   autologin root sur tty1 → `noos-live-installer`.
 - **greetd** lance lui-même `sh -c "… exec <commande>"` : passer la ligne Exec telle quelle,
   jamais un `sh -c` imbriqué. Trousseau : gnome-keyring + `libpam-gnome-keyring`.
+- **greetd sur la console 1** (`vt = 1` + `greetd.service.d/90-noos-vt1.conf`, Conflicts
+  getty@tty1), pas la 7 de Debian : la bascule 1 → 7 se perdait au démarrage (fin de Plymouth),
+  greetd restait bloqué dans `VT_WAITACTIVE` et l'écran sur « login: » (installation réelle,
+  reproduit en VM). postinst corrige les `vt = 7` déjà installés.
 - **polkit** : gio ne garde qu'une référence faible sur la connexion au bus système → la
   conserver, sinon polkitd oublie l'agent (« No authentication agent found »). Dans un
   terminal, `pkexec` garde son invite texte ; `--disable-internal-agent` pour tester la fenêtre.

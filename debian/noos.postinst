@@ -52,6 +52,12 @@ if [ "$1" = configure ]; then
         touch /var/lib/noos/update-timer
     fi
 
+    # Écran de connexion sur la console 1 (voir greetd.service.d/90-noos-vt1.conf) : les
+    # installations faites avec vt = 7 restaient bloquées sur la console texte au démarrage.
+    if grep -q noos-greeter /etc/greetd/config.toml 2>/dev/null && grep -q '^vt *= *7' /etc/greetd/config.toml; then
+        sed -i 's/^vt *= *7/vt = 1/' /etc/greetd/config.toml
+    fi
+
     # Écran de connexion : répertoire d'état du greeter (compte _greetd du paquet greetd).
     if getent passwd _greetd >/dev/null 2>&1; then
         install -d -o _greetd -g _greetd /var/lib/noos-login 2>/dev/null || true

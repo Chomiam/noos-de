@@ -9,6 +9,7 @@
     qmp.py cmd COMMANDE           commande QMP brute (system_powerdown, system_reset…)
 
 Socket : $NOOS_VM_QMP, sinon $XDG_RUNTIME_DIR/noosvm.sock (chemin court : limite de 108 octets).
+Sous Windows (QEMU + WHPX, tools/vm/vm.sh) : NOOS_VM_QMP=127.0.0.1:4444 (TCP).
 """
 import json
 import os
@@ -16,7 +17,9 @@ import socket
 import sys
 import time
 
-SOCK = os.environ.get("NOOS_VM_QMP") or os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "noosvm.sock")
+SOCK = os.environ.get("NOOS_VM_QMP") or (
+    "127.0.0.1:4444" if os.name == "nt" else os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "noosvm.sock")
+)
 
 # Touches physiques à envoyer pour obtenir un caractère avec une disposition AZERTY (fr).
 AZERTY = {
@@ -33,9 +36,13 @@ AZERTY = {
 
 class Qmp:
     def __init__(self):
-        self.s = socket.socket(socket.AF_UNIX)
-        self.s.connect(SOCK)
-        self.f = self.s.makefile("rw")
+        host, _, port = SOCK.rpartition(":")
+        if port.isdigit() and not SOCK.startswith("/"):
+            self.s = socket.create_connection((host, int(port)))
+        else:
+            self.s = socket.socket(socket.AF_UNIX)
+            self.s.connect(SOCK)
+        self.f = self.s.makefile("rw", encoding="utf-8")
         self.f.readline()
         self.call("qmp_capabilities")
 
@@ -56,6 +63,11 @@ class Qmp:
 
 
 def shot(q, out):
+    # QEMU ≥ 7.1 écrit directement un PNG ; sinon PPM converti par pycairo.
+    r = q.call("screendump", filename=os.path.abspath(out), format="png")
+    if "error" not in r:
+        print(out)
+        return
     import cairo
     ppm = out + ".ppm"
     r = q.call("screendump", filename=ppm)

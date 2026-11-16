@@ -630,11 +630,13 @@ fn install(ctx: &Ctx, c: &Choices) -> anyhow::Result<()> {
     ctx.try_run("chroot", &[TARGET, "passwd", "-l", "root"]);
     ctx.progress(0.4);
     // Écran de connexion noos-login (greetd). Le paquet Debian crée le compte « _greetd ».
+    // Console 1 (comme greetd d'origine), pas la 7 de Debian : la bascule de console se perd au
+    // démarrage (voir /usr/lib/systemd/system/greetd.service.d/90-noos-vt1.conf).
     let greeter = greeter_user();
     ctx.line(format!("compte de l'écran de connexion : {greeter}"));
     ctx.write(
         "/etc/greetd/config.toml",
-        &format!("[terminal]\nvt = 7\n\n[default_session]\ncommand = \"{}\"\nuser = \"{greeter}\"\n", greeter_command()),
+        &format!("[terminal]\nvt = 1\n\n[default_session]\ncommand = \"{}\"\nuser = \"{greeter}\"\n", greeter_command()),
     )?;
     ctx.run("mkdir", &["-p", &format!("{TARGET}/var/lib/noos-login")])?;
     ctx.chroot(&["chown", &format!("{greeter}:{greeter}"), "/var/lib/noos-login"])?;

@@ -292,6 +292,10 @@ impl XdgShellHandler for NoosState {
         let Some(seat) = Seat::<Self>::from_resource(&seat) else { return };
         let Some(start_data) = check_grab(&seat, surface.wl_surface(), serial) else { return };
         let Some(window) = self.window_for_surface(surface.wl_surface()) else { return };
+        // Kiosque (installateur, écran de connexion) et plein écran : la fenêtre ne bouge pas.
+        if crate::kiosk() || window_data(&window).fullscreen.get() {
+            return;
+        }
 
         // Glisser une fenêtre maximisée la restaure (comme sous Windows).
         if window_data(&window).maximized.get() {
@@ -315,6 +319,9 @@ impl XdgShellHandler for NoosState {
         let Some(seat) = Seat::<Self>::from_resource(&seat) else { return };
         let Some(start_data) = check_grab(&seat, surface.wl_surface(), serial) else { return };
         let Some(window) = self.window_for_surface(surface.wl_surface()) else { return };
+        if crate::kiosk() || window_data(&window).fullscreen.get() {
+            return;
+        }
         let Some(loc) = self.space.element_location(&window) else { return };
         let size = window.geometry().size;
 
@@ -361,12 +368,20 @@ impl XdgShellHandler for NoosState {
     }
 
     fn unfullscreen_request(&mut self, surface: ToplevelSurface) {
+        // Kiosque : la fenêtre principale reste en plein écran.
+        if crate::kiosk() && surface.parent().is_none() {
+            surface.send_configure();
+            return;
+        }
         if let Some(window) = self.window_for_surface(surface.wl_surface()) {
             self.unset_fullscreen(&window);
         }
     }
 
     fn minimize_request(&mut self, surface: ToplevelSurface) {
+        if crate::kiosk() {
+            return;
+        }
         if let Some(window) = self.window_for_surface(surface.wl_surface()) {
             self.minimize(&window);
         }
