@@ -39,7 +39,7 @@ donne le contexte de travail.
 | `noos-plymouth/` | Thème Plymouth (`generate.py` produit les PNG, déjà générés dans le dépôt) |
 | `noos-iso/` | ISO live Debian sid : `build.sh` (podman/docker) ou CI `iso.yml` → `noos-sid-amd64.iso` ; live-boot, GRUB signé `gcdx64.efi` + `/.disk/info` |
 | `debian/` | Paquet Debian `noos` (debhelper 13, `rules`, `postinst` « une seule fois » via `/var/lib/noos/*`) |
-| `packaging/apt/` | `build-deb.sh` (version `0.1.0~git<date>.<commit>-1`), `update-repo.sh` (dépôt signé), `generate-key.sh`, `noos.sources`, `index.html` de Pages |
+| `packaging/apt/` | `build-deb.sh` (version `0.1.0~git<date>.<commit>`), `update-repo.sh` (dépôt signé), `generate-key.sh`, `noos.sources`, `index.html` de Pages |
 | `.github/workflows/` | `build.yml` (debian:sid : `.deb` + tests ; publication `gh-pages` sur `main`), `iso.yml` (à la demande) |
 | `tools/vm/` | VM de test QEMU pilotée par QMP (voir plus bas) |
 | `noos-core/` | Configuration `~/.config/noos/noos.toml`, `/etc/noos/login.toml`, protocole IPC |

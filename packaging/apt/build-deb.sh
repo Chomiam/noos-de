@@ -3,7 +3,7 @@
 #
 #     packaging/apt/build-deb.sh [DOSSIER_DE_SORTIE]     (défaut : packaging/apt/out)
 #
-# Version de développement : 0.1.0~git<date>.<commit>-1 (toujours croissante d'un commit à
+# Version de développement : 0.1.0~git<date>.<commit> (toujours croissante d'un commit à
 # l'autre, et inférieure à une future 0.1.0 publiée). debian/changelog est réécrit pour la
 # construction puis restauré. Utilisé par la CI (.github/workflows/build.yml) ou en local
 # (dépendances : scripts/install-build-deps.sh).
@@ -17,7 +17,8 @@ cd "$ROOT"
 BASE="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
 COMMIT="$(git rev-parse --short=8 HEAD)"
 STAMP="$(git log -1 --format=%cd --date=format:%Y%m%d%H%M)"
-VERSION="${BASE}~git${STAMP}.${COMMIT}-1"
+# Paquet natif (format 3.0 native) : pas de révision Debian « -1 ».
+VERSION="${BASE}~git${STAMP}.${COMMIT}"
 DATE="$(git log -1 --format=%cd --date=rfc2822)"
 
 cp debian/changelog debian/changelog.orig

@@ -442,7 +442,8 @@ fn install(ctx: &Ctx, c: &Choices) -> anyhow::Result<()> {
             &[
                 "--arch=amd64",
                 &format!("--components={comps}"),
-                "--include=ca-certificates,locales,apt-utils,curl,gnupg",
+                // sudo dès le système de base : le compte root sera verrouillé.
+                "--include=ca-certificates,locales,apt-utils,curl,gnupg,sudo",
                 "--keyring=/usr/share/keyrings/debian-archive-keyring.gpg",
                 SUITE,
                 TARGET,
@@ -499,7 +500,7 @@ fn install(ctx: &Ctx, c: &Choices) -> anyhow::Result<()> {
     let missing = apt_install_lenient(ctx, &pkgs, 0.3, 0.7);
     if !missing.is_empty() {
         ctx.line(format!("(attention) paquets indisponibles : {}", missing.join(" ")));
-        if missing.iter().any(|m| m.starts_with("linux-image") || m.starts_with("grub") || m == "systemd-sysv") {
+        if missing.iter().any(|m| m.starts_with("linux-image") || m.starts_with("grub") || m == "systemd-sysv" || m == "sudo") {
             bail!("paquets indispensables indisponibles : {}", missing.join(" "));
         }
     }
@@ -595,7 +596,14 @@ fn install(ctx: &Ctx, c: &Choices) -> anyhow::Result<()> {
     if shell == "/usr/bin/fish" {
         ctx.try_run("chroot", &[TARGET, "useradd", "-D", "-s", "/usr/bin/fish"]);
     }
+    // Debian n'ajoute pas toujours le premier compte aux administrateurs : groupe « sudo »
+    // garanti, règle %sudo explicite (vérifiée par visudo) et contrôle avant de verrouiller root.
+    ctx.chroot(&["groupadd", "-f", "sudo"])?;
+    ctx.write("/etc/sudoers.d/10-noos-admins", "# NOOS : les membres du groupe sudo administrent l'ordinateur.\n%sudo\tALL=(ALL:ALL) ALL\n")?;
+    ctx.run("chmod", &["0440", &format!("{TARGET}/etc/sudoers.d/10-noos-admins")])?;
+    ctx.chroot(&["visudo", "-c", "-f", "/etc/sudoers.d/10-noos-admins"])?;
     ctx.chroot(&["useradd", "-m", "-G", "sudo", "-c", &c.full_name, "-s", shell, &c.username])?;
+    ctx.chroot(&["usermod", "-aG", "sudo", &c.username])?;
     // Groupes facultatifs (présents selon les paquets installés).
     for group in ["audio", "video", "render", "input", "netdev", "plugdev", "bluetooth", "lpadmin"] {
         ctx.try_run("chroot", &[TARGET, "usermod", "-aG", group, &c.username]);
@@ -609,6 +617,16 @@ fn install(ctx: &Ctx, c: &Choices) -> anyhow::Result<()> {
             bail!("chpasswd : {}", String::from_utf8_lossy(&out.stderr));
         }
     }
+    // Root n'est verrouillé que si le compte peut vraiment utiliser sudo.
+    if !ctx.dry {
+        let groups = Command::new("chroot").args([TARGET, "id", "-nG", &c.username]).output()?;
+        let groups = String::from_utf8_lossy(&groups.stdout).to_string();
+        if !groups.split_whitespace().any(|g| g == "sudo") {
+            bail!("le compte {} n'est pas dans le groupe sudo ({})", c.username, groups.trim());
+        }
+    }
+    ctx.chroot(&["sudo", "-l", "-U", &c.username])
+        .with_context(|| format!("sudo ne reconnaît pas {} comme administrateur", c.username))?;
     ctx.try_run("chroot", &[TARGET, "passwd", "-l", "root"]);
     ctx.progress(0.4);
     // Écran de connexion noos-login (greetd). Le paquet Debian crée le compte « _greetd ».

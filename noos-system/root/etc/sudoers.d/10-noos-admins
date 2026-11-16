@@ -1,0 +1,2 @@
+# NOOS : les membres du groupe sudo administrent l'ordinateur.
+%sudo	ALL=(ALL:ALL) ALL

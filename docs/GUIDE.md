@@ -252,7 +252,7 @@ Les paquets Debian sont comparés sans droits root : `apt-get update` dans
 `apt-get -s full-upgrade`. Le paquet `noos` lui-même vient du **dépôt APT de NOOS** :
 
 - `.github/workflows/build.yml` construit le `.deb` (`packaging/apt/build-deb.sh`, version
-  `0.1.0~git<date>.<commit>-1`) à chaque envoi ; sur `main`, `packaging/apt/update-repo.sh`
+  `0.1.0~git<date>.<commit>`) à chaque envoi ; sur `main`, `packaging/apt/update-repo.sh`
   l'ajoute à la branche `gh-pages` (5 dernières versions, index `apt-ftparchive`, `InRelease`
   signé par la clé du secret `APT_SIGNING_KEY`) ;
 - GitHub Pages sert https://chomiam.github.io/noos-de/ ; le paquet installe
