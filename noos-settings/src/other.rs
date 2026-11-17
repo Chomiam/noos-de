@@ -6,7 +6,7 @@ use adap::prelude::*;
 use gtk::glib;
 use noos_core::config::VrrPolicy;
 
-use crate::ui::{App, card, combo, group, hero, link, page, spin, switch};
+use crate::ui::{App, card, combo, group, hero, page, spin, switch};
 
 pub fn gaming(app: &Rc<App>) -> adap::NavigationPage {
     let (p, content) = page(app, &[], "Jeux");
@@ -119,16 +119,7 @@ pub fn gaming(app: &Rc<App>) -> adap::NavigationPage {
     p
 }
 
-pub fn devices(app: &Rc<App>) -> adap::NavigationPage {
-    let (p, content) = page(app, &[], "Bluetooth et appareils");
-    let g = group("");
-    g.add(&link(app, "input-mouse-symbolic", "Souris et pavé tactile", "Vitesse du pointeur, défilement, appui pour cliquer", mouse));
-    g.add(&link(app, "input-keyboard-symbolic", "Clavier", "Disposition et variante", keyboard));
-    content.append(&g);
-    p
-}
-
-fn mouse(app: &Rc<App>) -> adap::NavigationPage {
+pub fn mouse(app: &Rc<App>) -> adap::NavigationPage {
     let (p, content) = page(app, &["Bluetooth et appareils"], "Souris et pavé tactile");
     let cfg = app.cfg();
     let g = group("");
@@ -165,7 +156,7 @@ fn mouse(app: &Rc<App>) -> adap::NavigationPage {
     p
 }
 
-fn keyboard(app: &Rc<App>) -> adap::NavigationPage {
+pub fn keyboard(app: &Rc<App>) -> adap::NavigationPage {
     let (p, content) = page(app, &["Bluetooth et appareils"], "Clavier");
     let cfg = app.cfg();
     let g = group("Disposition");

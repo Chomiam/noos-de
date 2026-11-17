@@ -650,7 +650,7 @@ fn install(ctx: &Ctx, c: &Choices) -> anyhow::Result<()> {
     ctx.try_run("chroot", &[TARGET, "chmod", "g+s", "/etc/noos"]);
     ctx.try_run("chroot", &[TARGET, "ldconfig"]);
     ctx.progress(0.55);
-    for unit in ["greetd.service", "NetworkManager.service", "bluetooth.service", "fstrim.timer", "systemd-oomd.service", "power-profiles-daemon.service", "noos-firewall.service"] {
+    for unit in ["greetd.service", "NetworkManager.service", "bluetooth.service", "fstrim.timer", "systemd-oomd.service", "power-profiles-daemon.service", "noos-firewall.service", "cups.service", "cups-browsed.service", "avahi-daemon.service"] {
         ctx.try_run("systemctl", &["--root", TARGET, "enable", unit]);
     }
     // Recherche régulière des mises à jour (timer de session de chaque utilisateur).

@@ -148,6 +148,8 @@ pub fn page(app: &Rc<App>, crumbs: &[&str], title: &str) -> (adap::NavigationPag
     let t = gtk::Label::new(Some(title));
     t.add_css_class("win11-title");
     t.set_xalign(0.0);
+    // Fil d'Ariane long (Bluetooth et appareils › Imprimantes et scanners › …) : tronqué.
+    t.set_ellipsize(gtk::pango::EllipsizeMode::End);
     header.append(&t);
     content.append(&header);
 
@@ -378,5 +380,38 @@ button.da-tile .da-tile-app { font-weight: 700; }
 .net-speed.net-fastest { color: #3ccf72; }
 .net-down { color: #4cc2ff; } .net-up { color: #ff8fb1; }
 .net-graph { background: alpha(@window_fg_color, 0.03); border-radius: 6px; }
+/* ── Bluetooth et appareils ── */
+.bt-hero-icon, .pr-hero-icon { border-radius: 999px; min-width: 72px; min-height: 72px; background: alpha(@accent_bg_color, 0.16); color: @accent_color; }
+.bt-hero-icon.off { background: alpha(@window_fg_color, 0.08); color: alpha(@window_fg_color, 0.55); }
+.bt-tile { background-color: @card_bg_color; border-radius: 8px; border: 1px solid alpha(@card_fg_color, 0.06); padding: 14px 12px 14px 16px; }
+.bt-tile:hover { background-color: mix(@card_bg_color, @window_fg_color, 0.03); }
+.bt-tile.busy { opacity: 0.6; }
+.bt-tile-icon { border-radius: 999px; min-width: 42px; min-height: 42px; background: alpha(@window_fg_color, 0.07); }
+.bt-tile.connected .bt-tile-icon { background: alpha(@accent_bg_color, 0.18); color: @accent_color; }
+.bt-dot { color: #3ccf72; font-size: 0.7em; }
+.bt-battery-low { color: #f0564a; }
+.bt-big-icon { border-radius: 999px; min-width: 96px; min-height: 96px; background: alpha(@accent_bg_color, 0.16); color: @accent_color; }
+.bt-big-icon.off { background: alpha(@window_fg_color, 0.08); color: alpha(@window_fg_color, 0.55); }
+.bt-big-icon.success { background: alpha(#3ccf72, 0.16); color: #3ccf72; }
+.bt-big-icon.warning { background: alpha(#ffb43c, 0.16); color: #ffb43c; }
+@keyframes bt-pulse { 0% { box-shadow: 0 0 0 0 alpha(@accent_bg_color, 0.45); } 100% { box-shadow: 0 0 0 22px alpha(@accent_bg_color, 0); } }
+.bt-big-icon.pulse { animation: bt-pulse 1.6s ease-out infinite; }
+.bt-code { font-size: 38px; font-weight: 700; letter-spacing: 6px; font-family: monospace; margin: 6px 0; }
+.bt-pin-entry { font-size: 22px; font-family: monospace; letter-spacing: 4px; }
+.dev-dialog { background-color: @dialog_bg_color; }
+.dev-empty { padding: 26px 24px; border-radius: 8px; background-color: alpha(@window_fg_color, 0.03); border: 1px dashed alpha(@window_fg_color, 0.14); }
+.pr-dot-ok { color: #3ccf72; } .pr-dot-busy { color: @accent_color; } .pr-dot-warn { color: #ffb43c; } .pr-dot-paused { color: alpha(@window_fg_color, 0.45); }
+.pr-problem { background-color: alpha(#ffb43c, 0.10); }
+.pr-problem image { color: #ffb43c; }
+.pr-ink { background-color: @card_bg_color; border-radius: 8px; border: 1px solid alpha(@card_fg_color, 0.06); padding: 8px 18px; }
+.pr-ink-row { min-height: 40px; }
+.pr-ink-swatch { min-width: 16px; min-height: 16px; border-radius: 999px; border: 1px solid alpha(@window_fg_color, 0.25); }
+.pr-ink levelbar trough block.filled, .pr-ink levelbar block.filled { background-color: @accent_bg_color; }
+.pr-ink levelbar.ink-black block.filled { background-color: #8a8f98; }
+.pr-ink levelbar.ink-cyan block.filled { background-color: #00b7eb; }
+.pr-ink levelbar.ink-magenta block.filled { background-color: #e3007f; }
+.pr-ink levelbar.ink-yellow block.filled { background-color: #ffd400; }
+.pr-ink levelbar.pr-low block.filled { background-color: #f0564a; }
+.pr-low-text { color: #f0564a; font-weight: 700; }
 .swatch { min-width: 30px; min-height: 30px; border-radius: 99px; padding: 0; }
 "#;

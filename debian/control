@@ -115,9 +115,34 @@ Depends: ${shlibs:Depends},
          xwayland,
 # Pare-feu applicatif NOOS (noos-firewalld) : nftables + NFQUEUE (netlink, sans
 # libnetfilter-queue) ; pkcheck (polkitd) pour les modifications
-         nftables
+         nftables,
+# Bluetooth (Paramètres › Bluetooth et appareils : agent d'appairage BlueZ) et profils audio
+# Bluetooth de PipeWire (casques, enceintes : A2DP, micro HFP)
+         bluez,
+         libspa-0.2-bluetooth,
+# Imprimantes (Paramètres › Imprimantes et scanners) : CUPS, découverte réseau (Avahi / mDNS,
+# cups-browsed), `driverless` et filtres (cups-filters), imprimantes USB sans pilote
+# (ipp-usb), pilotes libres courants (HP, Brother, Gutenprint) ; avahi-browse trouve la page
+# Web des imprimantes annoncées (dnssd://). Pas de system-config-printer : tout passe par
+# les outils de CUPS (lpadmin, lpinfo).
+         cups,
+         cups-browsed,
+         cups-filters,
+         avahi-daemon,
+         avahi-utils,
+         libnss-mdns,
+         ipp-usb,
+         printer-driver-gutenprint,
+         printer-driver-hpcups,
+         printer-driver-brlaser,
+# Scanners : SANE (scanimage) et scanners réseau sans pilote (eSCL / WSD : sane-airscan)
+         sane-utils,
+         sane-airscan
 Recommends: grim,
-            bluez,
+# Tous les pilotes d'imprimante libres (Epson, Canon, Samsung, Kyocera…) ; logiciel de
+# numérisation lancé par « Numériser »
+            printer-driver-all,
+            simple-scan,
             gcr,
             gvfs,
             xdg-user-dirs,

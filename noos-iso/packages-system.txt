@@ -17,6 +17,22 @@ libvte-2.91-gtk4-0
 polkitd
 # Pare-feu NOOS (noos-firewalld : table nftables + file NFQUEUE)
 nftables
+# Bluetooth : profils audio de PipeWire (casques, enceintes) ; bluez est dans packages-common
+libspa-0.2-bluetooth
+# Imprimantes (voir debian/control) et scanners
+cups
+cups-browsed
+cups-filters
+avahi-daemon
+avahi-utils
+libnss-mdns
+ipp-usb
+printer-driver-gutenprint
+printer-driver-hpcups
+printer-driver-brlaser
+sane-utils
+sane-airscan
+simple-scan
 pkexec
 # Trousseau : gnome-keyring, déverrouillé à la connexion par greetd (libpam-gnome-keyring)
 gnome-keyring

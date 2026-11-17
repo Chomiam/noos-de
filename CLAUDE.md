@@ -39,6 +39,7 @@ donne le contexte de travail.
 | `noos-pkg/` | Paquets : backend **apt** (`backends/apt.rs` : `apt-cache`, `dpkg-query`, `apt-get -s`, DEP-11) + **sources APT** (`backends/aptsources.rs` : une ligne et deb822, activer / supprimer / composants) + Flatpak ; `sources.rs` regroupe (Debian sid, NOOS, experimental, contrib/non-free manquants) (plus d'ufw : remplacé par `noos-firewall`) |
 | `noos-firewall/` | **Pare-feu applicatif** : démon `noos-firewalld` (root, service `noos-firewall`) — table nftables `inet noos` + NFQUEUE (crate `nfq`, sans libnetfilter-queue) ; programme par `/proc/net/*` → inode → `/proc/<pid>` ; socket `/run/noos-firewall/control.sock` (`SO_PEERCRED` + `pkcheck` `org.noos.firewall.manage`) ; règles `/etc/noos/firewall/` ; CLI `noos-firewall` ; `install-host.sh` (installation depuis le dépôt) |
 | `noos-firewall-prompt/` | Fenêtre d'autorisation (agent de session, `/etc/xdg/autostart`) ; page Paramètres = `noos-settings/src/security.rs` |
+| `noos-settings/src/devices/` | **Bluetooth et appareils** : BlueZ par D-Bus (gio, bus système) avec agent d'appairage `org.bluez.Agent1` (`bluez.rs`, `bt_add.rs`) ; **Imprimantes et scanners** par les outils CUPS (`lpoptions`, `lpinfo`, `driverless`, `lpadmin` direct pour le groupe `lpadmin`, sinon pkexec) et `scanimage -L` (`cups.rs`, `printers.rs`) |
 | `noos-photoview/` | « Photos » : visionneuse d'images (zoom centré sur le pointeur, ambilight, bande de miniatures, diaporama, EXIF) ; appli par défaut des images (`/etc/xdg/noos-mimeapps.list`) |
 | `noos-login/` | Écran de connexion (greeter greetd, compte `_greetd`), lancé par `noos-greeter` = `noos-comp --kiosk noos-login` |
 | `noos-installer/` | Installateur plein écran : Btrfs @/@home, **debootstrap sid** puis apt dans le chroot (avancement `APT::Status-Fd`), contrib/non-free au choix, i386, paquet `noos` du dépôt APT (sinon copie de l'ISO), GRUB (shim signé en UEFI, `EFI/debian`, entrée NVRAM « NOOS ») |
@@ -167,6 +168,8 @@ compositeur y écrit (`[desktops] names`).
 | `NOOS_VRR_DEMO=gpu:i915\|display\|supported` | noos-settings › Écran / Jeux : simule la cause d'indisponibilité du VRR (écran FreeSync 48–180 Hz fictif) |
 | `NOOS_HDR_PREVIEW=roundtrip\|pq` | noos-comp imbriqué : écran simulé compatible HDR ; HDR actif = conversion PQ puis décodage inverse (image identique attendue) / signal PQ brut |
 | `NOOS_FIREWALL_DEMO=1\|in\|done` | pare-feu fictif (sans démon) : page Paramètres › Pare-feu (`noos-settings firewall`) et fenêtre d'autorisation `noos-firewall-prompt` (sortie / entrée d'abord / écran « Révoquer ») ; `NOOS_FIREWALL_DIALOG=port\|app` ouvre le dialogue d'ajout |
+| `NOOS_BT_DEMO=1\|add\|pair\|pin\|off\|none\|service` | noos-settings › Bluetooth et appareils (`noos-settings bluetooth`) sans BlueZ : appareils fictifs / assistant « Ajouter un appareil » / association avec code à confirmer / code PIN / désactivé / sans adaptateur / service arrêté |
+| `NOOS_PRINT_DEMO=1\|printer\|add\|driver\|fail\|none\|missing` | noos-settings › Imprimantes et scanners (`noos-settings printers`) sans CUPS : imprimantes et scanners fictifs / fiche d'imprimante / assistant d'ajout / choix du pilote / échec / rien trouvé / CUPS absent |
 | `NOOS_PKG_ELEVATE=sudo\|none` | noos-pkg : élévation par `sudo -n` ou aucune (tests), au lieu de pkexec |
 
 ### Règles de sécurité (erreurs déjà commises)
