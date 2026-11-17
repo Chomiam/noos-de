@@ -77,6 +77,7 @@ impl WinitData {
             can_set_mode: false,
             vrr_capable: false,
             vrr_active: false,
+            vrr_reason: noos_core::ipc::VrrReason::Nested,
             hdr_capable: false,
             hdr_active: false,
             format: "ARGB8888".into(),

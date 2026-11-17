@@ -9,6 +9,7 @@ pub mod archive;
 pub mod bing;
 pub mod config;
 pub mod disk_image;
+pub mod edid;
 pub mod ipc;
 pub mod login;
 pub mod paths;

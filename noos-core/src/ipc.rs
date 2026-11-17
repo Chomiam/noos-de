@@ -139,6 +139,15 @@ pub struct OutputInfo {
     pub modes: Vec<ModeInfo>,
     pub vrr_capable: bool,
     pub vrr_active: bool,
+    /// Pourquoi le VRR est disponible ou non (carte graphique, écran…).
+    #[serde(default)]
+    pub vrr_reason: VrrReason,
+    /// Plage de fréquence variable annoncée par l'EDID de l'écran, quelle que soit la carte.
+    #[serde(default)]
+    pub vrr_display: Option<crate::edid::VrrRange>,
+    /// Pilote DRM de la carte graphique (`i915`, `xe`, `amdgpu`, `nvidia-drm`…).
+    #[serde(default)]
+    pub gpu_driver: String,
     /// L'EDID annonce le HDR (EOTF PQ) ET le pilote expose `HDR_OUTPUT_METADATA`.
     pub hdr_capable: bool,
     pub hdr_active: bool,
@@ -165,6 +174,25 @@ pub struct OutputInfo {
     /// Écran principal (barre des tâches complète, nouvelles fenêtres).
     #[serde(default)]
     pub primary: bool,
+}
+
+/// Origine de la (non-)prise en charge du VRR sur un écran.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum VrrReason {
+    /// Compositeur trop ancien pour le dire.
+    #[default]
+    Unknown,
+    /// Carte graphique et écran d'accord : le VRR peut être activé.
+    Supported,
+    /// Le pilote n'expose pas l'Adaptive-Sync sur ce connecteur (carte graphique ou pilote
+    /// incapable : propriété DRM `vrr_capable` absente, ou `VRR_ENABLED` absente du CRTC).
+    Gpu,
+    /// La carte graphique sait faire, mais l'écran ne l'annonce pas (`vrr_capable` = 0) :
+    /// écran incompatible, FreeSync désactivé dans son menu, câble ou adaptateur.
+    Display,
+    /// Fenêtre de développement (compositeur imbriqué).
+    Nested,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]

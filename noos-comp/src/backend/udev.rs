@@ -18,7 +18,8 @@ use std::{collections::HashMap, path::Path, time::Duration};
 
 use noos_core::{
     NoosConfig,
-    ipc::{ModeInfo, OutputInfo},
+    edid::VrrRange,
+    ipc::{ModeInfo, OutputInfo, VrrReason},
 };
 use smithay::{
     backend::{
@@ -50,6 +51,7 @@ use smithay::{
             EventLoop, LoopHandle, RegistrationToken,
             timer::{TimeoutAction, Timer},
         },
+        drm::Device as _,
         drm::control::{Device as _, ModeTypeFlags, connector, crtc},
         input::{DeviceCapability, Libinput},
         rustix::fs::OFlags,
@@ -90,6 +92,9 @@ struct Surface {
     drm_output: NoosDrmOutput,
     vrr_support: VrrSupport,
     vrr_active: bool,
+    vrr_reason: VrrReason,
+    vrr_display: Option<VrrRange>,
+    gpu_driver: String,
     hdr_capable: bool,
     modes: Vec<ModeInfo>,
     drm_modes: Vec<smithay::reexports::drm::control::Mode>,
@@ -251,6 +256,9 @@ impl UdevData {
                     can_set_mode: true,
                     vrr_capable: s.vrr_support != VrrSupport::NotSupported,
                     vrr_active: s.vrr_active,
+                    vrr_reason: s.vrr_reason,
+                    vrr_display: s.vrr_display,
+                    gpu_driver: s.gpu_driver.clone(),
                     hdr_capable: s.hdr_capable,
                     width: mode.size.w,
                     height: mode.size.h,
@@ -572,16 +580,15 @@ impl NoosState {
         let model = info.as_ref().and_then(|i| i.model()).unwrap_or_else(|| name.clone());
         let serial = info.as_ref().and_then(|i| i.serial()).unwrap_or_default();
         let edid_hdr = info.as_ref().map(|i| i.hdr_static_metadata().pq).unwrap_or(false);
-        let driver_hdr = drm
-            .get_properties(connector.handle())
-            .ok()
-            .map(|props| {
-                props.into_iter().any(|(h, _)| {
-                    drm.get_property(h).ok().is_some_and(|p| p.name().to_str() == Ok("HDR_OUTPUT_METADATA"))
-                })
-            })
-            .unwrap_or(false);
+        let conn_props = properties(drm, connector.handle());
+        let driver_hdr = conn_props.iter().any(|(n, _)| n == "HDR_OUTPUT_METADATA");
         let hdr_capable = edid_hdr && driver_hdr;
+
+        // VRR : ce que l'écran annonce (EDID) et ce que le pilote expose, pour expliquer un refus.
+        let vrr_display = edid_blob(drm, &conn_props).and_then(|e| noos_core::edid::vrr_range(&e));
+        let driver_vrr = conn_props.iter().find(|(n, _)| n == "vrr_capable").map(|(_, v)| *v != 0);
+        let crtc_vrr = properties(drm, crtc).iter().any(|(n, _)| n == "VRR_ENABLED");
+        let gpu_driver = drm.get_driver().map(|d| d.name().to_string_lossy().into_owned()).unwrap_or_default();
 
         // Mode : celui de la config, sinon le mode préféré de l'écran.
         let modes = connector.modes();
@@ -645,12 +652,18 @@ impl NoosState {
         let vrr_support = drm_output
             .with_compositor(|c| c.vrr_supported(connector.handle()))
             .unwrap_or(VrrSupport::NotSupported);
+        let vrr_reason = match (vrr_support, crtc_vrr, driver_vrr) {
+            (s, _, _) if s != VrrSupport::NotSupported => VrrReason::Supported,
+            (_, true, Some(false)) => VrrReason::Display,
+            _ => VrrReason::Gpu,
+        };
 
         info!(
             name, make, model,
             mode = %format!("{}x{}@{:.2}", wl_mode.size.w, wl_mode.size.h, wl_mode.refresh as f64 / 1000.0),
             format = %drm_output.format(),
-            vrr = ?vrr_support, hdr = hdr_capable,
+            vrr = ?vrr_support, vrr_reason = ?vrr_reason, vrr_display = ?vrr_display, driver = gpu_driver,
+            hdr = hdr_capable,
             "écran connecté"
         );
 
@@ -663,6 +676,9 @@ impl NoosState {
                 drm_output,
                 vrr_support,
                 vrr_active: false,
+                vrr_reason,
+                vrr_display,
+                gpu_driver,
                 hdr_capable,
                 modes: mode_infos,
                 drm_modes: modes.to_vec(),
@@ -868,4 +884,22 @@ impl NoosState {
         }
         feedback
     }
+}
+
+/// Propriétés DRM d'un objet (connecteur, CRTC…) : nom et valeur brute.
+fn properties(drm: &DrmDevice, handle: impl smithay::reexports::drm::control::ResourceHandle) -> Vec<(String, u64)> {
+    let Ok(props) = drm.get_properties(handle) else { return vec![] };
+    props
+        .into_iter()
+        .filter_map(|(h, v)| Some((drm.get_property(h).ok()?.name().to_string_lossy().into_owned(), v)))
+        .collect()
+}
+
+/// EDID brut du connecteur (blob de la propriété `EDID`).
+fn edid_blob(drm: &DrmDevice, props: &[(String, u64)]) -> Option<Vec<u8>> {
+    let (_, id) = props.iter().find(|(n, _)| n == "EDID")?;
+    if *id == 0 {
+        return None;
+    }
+    drm.get_property_blob(*id).ok()
 }

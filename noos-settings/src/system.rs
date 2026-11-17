@@ -514,17 +514,8 @@ fn render_display(app: &Rc<App>, holder: &gtk::Box, outputs: Rc<Vec<OutputInfo>>
         Some(VrrPolicy::Fullscreen) => 2,
         Some(VrrPolicy::Always) => 3,
     };
-    let vrr = combo(
-        "speedometer-symbolic",
-        "Fréquence d'actualisation variable",
-        if o.vrr_capable {
-            if o.vrr_active { "VRR actif en ce moment" } else { "FreeSync / G-Sync compatible" }
-        } else {
-            "Non pris en charge par cet écran ou ce GPU"
-        },
-        &vrr_items,
-        vrr_idx,
-    );
+    let vrr_text = crate::vrr::explain(&o);
+    let vrr = combo("speedometer-symbolic", "Fréquence d'actualisation variable", &vrr_text.short, &vrr_items, vrr_idx);
     vrr.set_sensitive(o.vrr_capable);
     {
         let (app, name) = (app.clone(), o.name.clone());
@@ -539,6 +530,9 @@ fn render_display(app: &Rc<App>, holder: &gtk::Box, outputs: Rc<Vec<OutputInfo>>
         });
     }
     adv.add(&vrr);
+    if let Some(detail) = &vrr_text.detail {
+        adv.add(&card("dialog-information-symbolic", "Pourquoi le VRR est-il indisponible ?", detail));
+    }
 
     let hdr = switch(
         "weather-clear-symbolic",

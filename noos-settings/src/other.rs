@@ -37,6 +37,35 @@ pub fn gaming(app: &Rc<App>) -> adap::NavigationPage {
         });
     }
     g.add(&vrr);
+    // Écrans sans VRR : on l'explique sous le réglage (carte graphique, menu de l'écran…).
+    {
+        let (g, vrr) = (g.clone(), vrr.clone());
+        let task = crate::ui::ipc(noos_core::ipc::Request::GetOutputs);
+        glib::spawn_future_local(async move {
+            let Ok(noos_core::ipc::Event::Outputs { outputs }) = task.await else { return };
+            let several = outputs.len() > 1;
+            let mut after: gtk::Widget = vrr.upcast();
+            for o in &outputs {
+                let Some(detail) = crate::vrr::explain(o).detail else { continue };
+                let title = if several {
+                    format!("VRR indisponible sur {} ({})", o.name, o.model)
+                } else {
+                    "Pourquoi le VRR est-il indisponible ?".into()
+                };
+                let row = card("dialog-information-symbolic", &title, &detail);
+                // Juste sous la ligne VRR, avant les autres réglages du groupe.
+                if let Some(list) = after.parent() {
+                    if let Some(lb) = list.downcast_ref::<gtk::ListBox>() {
+                        let idx = after.downcast_ref::<gtk::ListBoxRow>().map(|r| r.index() + 1).unwrap_or(-1);
+                        lb.insert(&row, idx);
+                        after = row.upcast();
+                        continue;
+                    }
+                }
+                g.add(&row);
+            }
+        });
+    }
     for (icon, title, sub, get, set) in [
         (
             "media-playback-start-symbolic",

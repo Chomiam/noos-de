@@ -15,6 +15,7 @@ mod personalization;
 mod security;
 mod system;
 mod ui;
+mod vrr;
 
 use std::{cell::RefCell, rc::Rc};
 

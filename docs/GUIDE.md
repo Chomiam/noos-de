@@ -506,8 +506,19 @@ sessions (GNOME…).
 **Écrit mais pas encore testé sur du vrai matériel :** le backend DRM (session greetd / GDM), le VRR
 (`VRR_ENABLED`), le scanout direct en plein écran et le framebuffer 10 bits.
 
-> Votre GPU actuel (Intel UHD 630, gen 9.5) n'expose pas le VRR dans le pilote i915 : la page
-> Écrans affichera « VRR ✗ ». Un GPU AMD, ou Intel gen 11 et plus récent, est nécessaire pour l'essayer.
+**Pourquoi le VRR est indisponible** : le compositeur distingue la cause et la transmet par IPC
+(`vrr_reason`, `vrr_display`, `gpu_driver` de `OutputInfo`) ; Paramètres › Écran et › Jeux l'expliquent.
+- `gpu` : le connecteur n'a pas la propriété DRM `vrr_capable` (ou le CRTC pas `VRR_ENABLED`) : carte ou
+  pilote incapable. Cas des Intel HD/UHD Graphics avant la 11e génération : i915 n'attache
+  `vrr_capable` que si `DISPLAY_VER >= 11` (Ice Lake, Iris Xe, Arc). L'UHD 630 (Coffee Lake, gen 9.5)
+  n'a pas le circuit : aucun paquet ni réglage n'y change rien.
+- `display` : `vrr_capable` existe mais vaut 0 : l'écran ne l'annonce pas (FreeSync désactivé dans son
+  menu, câble/adaptateur, écran incompatible).
+- `vrr_display` : plage lue dans l'EDID (`noos-core/src/edid.rs` : bloc AMD FreeSync de l'extension
+  CTA, sinon descripteur « Display Range Limits »), indépendamment de la carte. Ex. AOC Q27G4 :
+  FreeSync 48–180 Hz.
+- Vérifier soi-même : `python3` + libdrm, ou `modetest -c` (paquet `libdrm-tests`) : chercher
+  `vrr_capable` dans les propriétés du connecteur.
 
 **À faire :**
 - sortie **HDR** réelle : encodage PQ/BT.2020, `HDR_OUTPUT_METADATA`, protocole `wp-color-management` (aujourd'hui seule la détection EDID + pilote existe) ;

@@ -162,6 +162,7 @@ compositeur y écrit (`[desktops] names`).
 | `NOOS_PHOTOVIEW_DEMO=<image>;info;zoom=2.5;next;hide;slideshow` | noos-photoview : ouvre une image, panneau d'infos, zoom, suivante, commandes masquées, diaporama |
 | `NOOS_ARCHIVE_DEMO=<archive>\|create` | noos-archive : ouvre une archive / la page de création préremplie |
 | `NOOS_FILE_DEMO=<dossier>;details;list;select=0,2;look;zoom=3;sort=size;copy=<source>;menu;mount;trash` | noos-file : ouvre un dossier, volet de détails, vue Détails, sélection, aperçu rapide, zoom, tri, copie suivie |
+| `NOOS_VRR_DEMO=gpu:i915\|display\|supported` | noos-settings › Écran / Jeux : simule la cause d'indisponibilité du VRR (écran FreeSync 48–180 Hz fictif) |
 | `NOOS_PKG_ELEVATE=sudo\|none` | noos-pkg : élévation par `sudo -n` ou aucune (tests), au lieu de pkexec |
 
 ### Règles de sécurité (erreurs déjà commises)
