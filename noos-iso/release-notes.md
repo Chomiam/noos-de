@@ -1,8 +1,13 @@
-Troisième préversion de NOOS, **désormais basée sur Debian sid** (Fedora abandonnée).
+Quatrième préversion de NOOS, basée sur **Debian sid**.
 
 **Installation réseau** : l'ISO démarre un système live complet (toutes les dépendances de NOOS y sont) ; l'installateur télécharge ensuite Debian sid (debootstrap) et le paquet `noos` depuis le dépôt APT du projet. Une connexion Internet est nécessaire pendant l'installation.
 
-### Nouveautés depuis l'alpha 2
+### Nouveautés depuis l'alpha 3
+- **Énergie dans la barre des tâches** : sur portable, batterie dessinée selon le niveau et l'état (en charge, branchée, faible, critique) avec l'autonomie restante au survol ; sur PC fixe, jauge du mode d'alimentation. Au clic : pourcentage, santé de la batterie, consommation, modes Économie / Équilibré / Performances. Molette : mode voisin. Alerte à 10 %.
+- **Portables** : l'installateur détecte un portable et installe **auto-cpufreq** (économie d'énergie automatique), piloté depuis le menu Énergie et Paramètres › Alimentation.
+- **Démarrage** : correction de l'erreur de montage d'efivarfs (busybox dans l'initramfs), firmwares Intel graphiques et Wi-Fi (l'ISO live les embarque pour installer en Wi-Fi), rtkit, upower, téléphones et appareils MTP.
+
+### Depuis l'alpha 2 (rappel)
 - **Debian sid** : apt, dépôt APT signé (https://chomiam.github.io/noos-de/), GRUB signé (Secure Boot), architecture i386 activée (Steam, Wine).
 - **Applis X11** par Xwayland, avec un gestionnaire de fenêtres X11 intégré au compositeur.
 - **Écran** : sortie HDR10 (PQ, BT.2020, 10 bits) ; VRR avec la cause précise quand il est indisponible.
