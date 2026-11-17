@@ -7,6 +7,7 @@
 # - udev : pas de mise en veille automatique des cartes réseau (Ethernet, Wi-Fi)
 # - WirePlumber : pas de mise en veille des nœuds audio (coupures de son au réveil)
 # - sudo : « * » affichés pendant la saisie du mot de passe (pwfeedback)
+# - énergie : noos-power-helper (auto-cpufreq des portables, action polkit org.noos.power.helper)
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(realpath -m "${1:-/}")"   # absolu : on change de dossier ensuite

@@ -685,11 +685,14 @@ fn timeout_label(m: u32) -> String {
     }
 }
 
-/// Profils d'alimentation via D-Bus (power-profiles-daemon ou tuned-ppd).
+/// Profils d'alimentation via D-Bus (power-profiles-daemon ou tuned-ppd), ou auto-cpufreq
+/// (portables installés par NOOS : power-profiles-daemon masqué, voir `noos_core::power`).
 struct PowerProfiles {
     dest: &'static str,
     path: &'static str,
 }
+
+const ACF: &str = "auto-cpufreq";
 
 const PP_IFACES: &[(&str, &str)] = &[
     ("org.freedesktop.UPower.PowerProfiles", "/org/freedesktop/UPower/PowerProfiles"),
@@ -717,10 +720,18 @@ impl PowerProfiles {
             }
             return Some((Self { dest, path }, active, profiles));
         }
+        if noos_core::power::acf_running() {
+            let active = noos_core::power::acf_profile(std::fs::read(noos_core::power::ACF_OVERRIDE).ok().as_deref());
+            let profiles = noos_core::power::PROFILES.iter().map(|s| s.to_string()).collect();
+            return Some((Self { dest: ACF, path: "" }, active.to_string(), profiles));
+        }
         None
     }
 
     fn set(&self, profile: &str) -> bool {
+        if self.dest == ACF {
+            return Command::new("pkexec").args([noos_core::power::HELPER, "profile", profile]).status().is_ok_and(|s| s.success());
+        }
         Command::new("busctl")
             .args(["--system", "set-property", self.dest, self.path, self.dest, "ActiveProfile", "s", profile])
             .status()
@@ -785,7 +796,12 @@ pub fn power(app: &Rc<App>) -> adap::NavigationPage {
                 Some((pp, active, profiles)) if !profiles.is_empty() => {
                     let labels: Vec<String> = profiles.iter().map(|p| profile_label(p)).collect();
                     let idx = profiles.iter().position(|p| *p == active).unwrap_or(0);
-                    let row = combo("power-profile-balanced-symbolic", "Mode d'alimentation", "Optimise l'appareil selon la consommation et les performances", &labels, idx);
+                    let sub = if pp.dest == ACF {
+                        "Géré par auto-cpufreq (portable) : Équilibré = réglage automatique selon la charge et le secteur"
+                    } else {
+                        "Optimise l'appareil selon la consommation et les performances"
+                    };
+                    let row = combo("power-profile-balanced-symbolic", "Mode d'alimentation", sub, &labels, idx);
                     let pp = Rc::new(pp);
                     row.connect_selected_notify(move |r| {
                         let name = profiles[r.selected() as usize].clone();

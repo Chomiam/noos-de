@@ -11,6 +11,7 @@ mod editmode;
 mod net;
 mod notify;
 mod polkit;
+mod power;
 mod quick;
 mod reorder;
 mod startmenu;
@@ -84,6 +85,8 @@ pub struct Shell {
     pub drives: RefCell<Option<Rc<drives::Drives>>>,
     /// Icône « mises à jour disponibles ».
     pub updates: RefCell<Option<Rc<updates::UpdateIcon>>>,
+    /// Batterie / mode d'alimentation (élément `power` de la barre).
+    pub power: RefCell<Option<Rc<power::Power>>>,
     status: RefCell<StatusIcons>,
     /// Bureaux virtuels (noms, bureau actif) et écrans (positions, principal), d'après le
     /// compositeur.
@@ -349,6 +352,16 @@ impl Shell {
     }
 
     pub fn close_flyouts(&self) {
+        self.close_flyouts_except("");
+    }
+
+    /// Ferme les panneaux, sauf `keep` (`power`).
+    pub fn close_flyouts_except(&self, keep: &str) {
+        if keep != "power" {
+            if let Some(p) = self.power.borrow().as_ref() {
+                p.hide();
+            }
+        }
         if let Some(s) = self.start.borrow().as_ref() {
             s.hide();
         }
@@ -478,6 +491,7 @@ fn main() -> glib::ExitCode {
             audio: RefCell::new(None),
             drives: RefCell::new(None),
             updates: RefCell::new(None),
+            power: RefCell::new(None),
             status: RefCell::new(StatusIcons::default()),
             desktops: RefCell::new((vec!["Bureau 1".into()], 0)),
             outputs: RefCell::new(vec![]),
@@ -497,6 +511,7 @@ fn main() -> glib::ExitCode {
         *shell.audio.borrow_mut() = Some(audio::AudioFlyout::new(&shell));
         *shell.drives.borrow_mut() = Some(drives::Drives::new(&shell));
         *shell.updates.borrow_mut() = Some(updates::UpdateIcon::new(&shell));
+        *shell.power.borrow_mut() = Some(power::Power::new(&shell));
         *shell.taskview.borrow_mut() = Some(taskview::TaskView::new(&shell));
         *shell.editmode.borrow_mut() = Some(editmode::EditMode::new(&shell));
         {

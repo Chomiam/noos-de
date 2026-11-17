@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <vendor>NOOS</vendor>
+  <vendor_url>https://github.com/Chomiam/noos-de</vendor_url>
+  <action id="org.noos.power.helper">
+    <description>Change the power mode</description>
+    <description xml:lang="fr">Changer le mode d'alimentation</description>
+    <message>Authentication is required to change the power mode</message>
+    <message xml:lang="fr">Une authentification est nécessaire pour changer le mode d'alimentation</message>
+    <icon_name>battery</icon_name>
+    <!-- Comme power-profiles-daemon : libre pour la session active, sur place. -->
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/noos-power-helper</annotate>
+  </action>
+</policyconfig>

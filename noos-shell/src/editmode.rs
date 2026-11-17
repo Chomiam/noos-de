@@ -57,6 +57,7 @@ pub fn item_label(id: &str) -> &'static str {
         "tasks" => "Applications",
         "tray" => "Zone de notification",
         "status" => "Réseau, son, réglages",
+        "power" => "Énergie (batterie)",
         "clock" => "Horloge",
         "notifications" => "Notifications",
         "showdesktop" => "Afficher le bureau",
@@ -102,6 +103,7 @@ pub fn frame(id: &str, child: &impl IsA<gtk::Widget>, shell: Weak<Shell>) -> (gt
             match id.as_str() {
                 "search" => c.taskbar.show_search = false,
                 "vitals" => c.taskbar.show_vitals = false,
+                "power" => c.taskbar.show_power = false,
                 "taskview" => c.desktops.taskbar_button = false,
                 _ => {}
             }
@@ -583,6 +585,7 @@ impl EditMode {
                             match id.as_str() {
                                 "search" => c.taskbar.show_search = true,
                                 "vitals" => c.taskbar.show_vitals = true,
+                                "power" => c.taskbar.show_power = true,
                                 "taskview" => c.desktops.taskbar_button = true,
                                 _ => {}
                             }

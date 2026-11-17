@@ -1,0 +1,67 @@
+#!/bin/bash
+# noos-power-helper — modes d'alimentation avec auto-cpufreq (portables installés par NOOS).
+#
+#   profile <power-saver|balanced|performance>
+#          choisi depuis la barre des tâches ou Paramètres (pkexec, action polkit
+#          org.noos.power.helper : sans mot de passe pour la session active, comme
+#          power-profiles-daemon). Équilibré = mode automatique d'auto-cpufreq.
+#   laptop-setup
+#          (root seulement, pas par pkexec) auto-cpufreq actif au démarrage et
+#          power-profiles-daemon masqué : les deux se disputeraient le gouverneur du processeur.
+#          Utilisé par l'installateur ; sur une installation existante :
+#          sudo apt install auto-cpufreq && sudo /usr/libexec/noos-power-helper laptop-setup
+#   desktop-setup
+#          (root seulement) retour à power-profiles-daemon (auto-cpufreq arrêté).
+set -euo pipefail
+export LC_ALL=C.UTF-8
+die() { echo "$*" >&2; exit 1; }
+STATE=/opt/auto-cpufreq   # le paquet Debian d'auto-cpufreq ne le crée pas (--force échouerait)
+
+# Dans un chroot (installateur), systemctl enable/mask agissent sur les fichiers seulement.
+running() { [ -d /run/systemd/system ] && ! systemd-detect-virt -q --chroot 2>/dev/null; }
+
+case "${1:-}" in
+profile)
+    [ $# -eq 2 ] || die "usage : profile <power-saver|balanced|performance>"
+    case "$2" in
+        power-saver) force=powersave ;;
+        balanced) force=reset ;;
+        performance) force=performance ;;
+        *) die "mode inconnu : $2" ;;
+    esac
+    command -v auto-cpufreq >/dev/null || die "auto-cpufreq n'est pas installé"
+    mkdir -p "$STATE"
+    chmod 755 "$STATE"
+    # auto-cpufreq refuse --force quand son démon ne tourne pas : on le démarre au besoin.
+    if running && ! systemctl is-active --quiet auto-cpufreq.service; then
+        systemctl start auto-cpufreq.service || die "le service auto-cpufreq ne démarre pas"
+        sleep 1
+    fi
+    auto-cpufreq --force="$force" >/dev/null
+    # Lisible par la session (la barre surveille ce dossier).
+    [ -e "$STATE/override.pickle" ] && chmod 644 "$STATE/override.pickle"
+    exit 0
+    ;;
+laptop-setup | desktop-setup)
+    [ -z "${PKEXEC_UID:-}" ] || die "à lancer en root (sudo), pas par pkexec"
+    [ "$(id -u)" -eq 0 ] || die "à lancer en root"
+    if [ "$1" = laptop-setup ]; then
+        command -v auto-cpufreq >/dev/null || die "installez d'abord le paquet auto-cpufreq"
+        mkdir -p "$STATE"
+        chmod 755 "$STATE"
+        if running; then systemctl disable --now power-profiles-daemon.service >/dev/null 2>&1 || true; fi
+        systemctl mask power-profiles-daemon.service
+        systemctl enable auto-cpufreq.service
+        if running; then systemctl start auto-cpufreq.service; fi
+    else
+        if running; then systemctl disable --now auto-cpufreq.service >/dev/null 2>&1 || true; fi
+        systemctl disable auto-cpufreq.service >/dev/null 2>&1 || true
+        systemctl unmask power-profiles-daemon.service
+        systemctl enable power-profiles-daemon.service
+        if running; then systemctl start power-profiles-daemon.service; fi
+    fi
+    ;;
+*)
+    die "usage : noos-power-helper profile <mode> | laptop-setup | desktop-setup"
+    ;;
+esac

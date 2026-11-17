@@ -43,7 +43,7 @@ donne le contexte de travail.
 | `noos-share/` | **Partage de fichiers** : Samba (bloc NOOS à la fin de smb.conf, `[homes]` + dossiers, wsdd2, Avahi), SSH (`sshd_config.d/90-noos.conf`), WebDAV (`noos-webdav` = service utilisateur rclone) ; `/etc/noos/sharing.toml` écrit par `noos-share-helper` (pkexec, `org.noos.share.helper`) ; règles du pare-feu « Partage NOOS · … » en zone LAN. Pages `noos-settings/src/network/sharing.rs` ; Explorateur : `noos-file/src/network.rs` (page Réseau, montage gvfs, identifiants + trousseau) |
 | `noos-photoview/` | « Photos » : visionneuse d'images (zoom centré sur le pointeur, ambilight, bande de miniatures, diaporama, EXIF) ; appli par défaut des images (`/etc/xdg/noos-mimeapps.list`) |
 | `noos-login/` | Écran de connexion (greeter greetd, compte `_greetd`), lancé par `noos-greeter` = `noos-comp --kiosk noos-login` |
-| `noos-installer/` | Installateur plein écran : Btrfs @/@home, **debootstrap sid** puis apt dans le chroot (avancement `APT::Status-Fd`), contrib/non-free au choix, i386, paquet `noos` du dépôt APT (sinon copie de l'ISO), GRUB (shim signé en UEFI, `EFI/debian`, entrée NVRAM « NOOS ») |
+| `noos-installer/` | Installateur plein écran : Btrfs @/@home, **debootstrap sid** puis apt dans le chroot (avancement `APT::Status-Fd`), contrib/non-free au choix, i386, paquet `noos` du dépôt APT (sinon copie de l'ISO), GRUB (shim signé en UEFI, `EFI/debian`, entrée NVRAM « NOOS »), portable détecté (`hardware.rs`) → auto-cpufreq |
 | `noos-plymouth/` | Thème Plymouth (`generate.py` produit les PNG, déjà générés dans le dépôt) |
 | `noos-iso/` | ISO live Debian sid : `build.sh` (podman/docker) ou CI `iso.yml` → `noos-sid-amd64.iso` ; live-boot, GRUB signé `gcdx64.efi` + `/.disk/info` |
 | `debian/` | Paquet Debian `noos` (debhelper 13, `rules`, `postinst` « une seule fois » via `/var/lib/noos/*`) |
@@ -65,6 +65,7 @@ donne le contexte de travail.
 | `noos-comp/src/desktops.rs` + `outputs.rs` | Bureaux virtuels et plusieurs écrans (`[[output]] position, primary`, Super+Maj+←/→). Shell : `taskview.rs` (Super+Tab), `editmode.rs` (dock sur les 4 bords, 6 zones via `NoosConfig::bar_zones()`, widgets du bureau `[[desktop_widget]]` déplacés par un geste posé sur le `gtk::Fixed` — jamais sur l'élément qui bouge, sinon clignotement). Le shell reconstruit les barres (`rebuild_bars`) quand le bord ou la barre fine change |
 | `noos-save/` | « Sauvegarder et Restaurer » : instantanés Btrfs (snapper, `ALLOW_GROUPS=sudo`), avant / après chaque opération apt (`/etc/apt/apt.conf.d/80noos-save` → `noos-save-helper apt-pre/apt-post`, numéro « avant » dans `/run/noos-save/apt-pre`), restauration au redémarrage ; comparaison des paquets par `dpkg-query --admindir` |
 | `noos-grub/` | Thème GRUB (`generate.py` produit images et polices .pf2, déjà générées) ; `install.sh` le copie dans `/boot/grub/themes/noos` |
+| `noos-shell/src/power.rs` + `noos-core/src/power.rs` | **Énergie** (élément `power` de la barre, `[taskbar] show_power`) : batterie dessinée (UPower par D-Bus, `PropertiesChanged` ; repli `/sys/class/power_supply`), jauge du mode sur PC fixe, panneau (santé, consommation, modes). Modes : power-profiles-daemon, sinon **auto-cpufreq** (portables : PPD masqué, `pkexec /usr/libexec/noos-power-helper profile <mode>`, action `org.noos.power.helper`) |
 | `noos-system/` | Réglages système livrés par le paquet : Wi-Fi/Ethernet sans économie d'énergie, WirePlumber sans mise en veille, sudo `pwfeedback`, PAM `noos-lock`, `GRUB_DISTRIBUTOR=NOOS` (`/etc/default/grub.d/90-noos.cfg`), `noos-boot-setup` (initramfs-tools), fastfetch, fish |
 
 ## Environnement de travail
@@ -174,6 +175,7 @@ compositeur y écrit (`[desktops] names`).
 | `NOOS_PRINT_OPEN=<file CUPS>` | noos-settings printers : ouvre la fiche d'une vraie imprimante (ex. `EPSON_ET_4800_Series`) |
 | `NOOS_PKG_ELEVATE=sudo\|none` | noos-pkg : élévation par `sudo -n` ou aucune (tests), au lieu de pkexec |
 | `NOOS_SHARE_DEMO=1\|nopass\|off\|missing` (+ `NOOS_SHARE_QR=1`) | noos-settings › Partage (`noos-settings samba\|ssh\|webdav`) : services, dossiers, connexions, clés fictifs (sans mot de passe / tout désactivé / paquets absents) ; premier QR code ouvert |
+| `NOOS_POWER_DEMO=battery\|charging\|low\|critical\|full\|plugged\|desktop` (+ `NOOS_POWER_OPEN=1`) | noos-shell : batterie fictive (ou PC fixe) dans la barre, modes fictifs ; panneau Énergie ouvert après 2 s. noos-installer : portable simulé (sauf `desktop`) |
 | `NOOS_FILE_NET_DEMO=1` | noos-file : appareils, partages et serveurs fictifs dans la page Réseau (`NOOS_FILE_DEMO='network:///;connect'` ou `;auth` : dialogue « Se connecter à un serveur » / fenêtre d'identifiants) |
 
 ### Règles de sécurité (erreurs déjà commises)
@@ -347,6 +349,11 @@ compositeur y écrit (`[desktops] names`).
   arrêter l'émission de `ask-password` / `ask-question` (sinon réponse « non traité »
   immédiate) ; dans `dbus-run-session`, gvfs bloque sur le trousseau. rclone : pas d'`union` à
   un seul membre (même dossier deux fois en `:ro`).
+- **auto-cpufreq** (portables, installateur) : en conflit avec power-profiles-daemon (même
+  gouverneur) → PPD masqué par `noos-power-helper laptop-setup`. Le paquet Debian ne crée pas
+  `/opt/auto-cpufreq` : `auto-cpufreq --force` y écrit `override.pickle` et échoue sans lui ;
+  `--force` refuse aussi de marcher si le démon ne tourne pas (l'assistant le démarre). Rien
+  d'automatique pour une installation existante (postinst) : commande manuelle dans GUIDE.md.
 - **Configuration illisible** : `NoosConfig::save()` garde une copie `noos.toml.illisible`
   avant d'écraser un fichier qui ne se lit plus.
 

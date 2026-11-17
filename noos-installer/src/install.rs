@@ -653,6 +653,15 @@ fn install(ctx: &Ctx, c: &Choices) -> anyhow::Result<()> {
     for unit in ["greetd.service", "NetworkManager.service", "bluetooth.service", "fstrim.timer", "systemd-oomd.service", "power-profiles-daemon.service", "noos-firewall.service", "cups.service", "cups-browsed.service", "avahi-daemon.service"] {
         ctx.try_run("systemctl", &["--root", TARGET, "enable", unit]);
     }
+    // Portable : auto-cpufreq à la place de power-profiles-daemon (masqué), piloté par le menu
+    // Énergie de la barre (noos-power-helper, paquet noos).
+    if hw_plan.auto_cpufreq {
+        if ctx.dry || Path::new(&format!("{TARGET}/usr/bin/auto-cpufreq")).exists() {
+            ctx.try_run("chroot", &[TARGET, "/usr/libexec/noos-power-helper", "laptop-setup"]);
+        } else {
+            ctx.line("(attention) auto-cpufreq non installé : power-profiles-daemon reste actif");
+        }
+    }
     // Recherche régulière des mises à jour (timer de session de chaque utilisateur).
     ctx.try_run("systemctl", &["--root", TARGET, "--global", "enable", "noos-update-check.timer"]);
     ctx.run("systemctl", &["--root", TARGET, "set-default", "graphical.target"])?;

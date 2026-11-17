@@ -1084,6 +1084,8 @@ impl Installer {
                         "audio-x-generic-symbolic"
                     } else if title.starts_with("Machine virtuelle") {
                         "computer-symbolic"
+                    } else if title.starts_with("Ordinateur portable") {
+                        "battery-good-symbolic"
                     } else {
                         "video-display-symbolic"
                     };

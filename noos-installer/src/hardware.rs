@@ -10,6 +10,7 @@
 //! | NVIDIA Maxwell / Pascal / Volta            | `nvidia-driver` (branche 580)                             |
 //! | NVIDIA Kepler et plus ancien               | pilote libre nouveau (la branche 470 n'a pas GBM : pas de Wayland) |
 //! | machine virtuelle                          | outils invités (QEMU/KVM, VMware, VirtualBox, Hyper-V)   |
+//! | portable (batterie ou châssis portable)    | `auto-cpufreq` (power-profiles-daemon masqué)             |
 //!
 //! Sans contrib / non-free : seulement les pilotes et codecs libres de Debian.
 
@@ -48,6 +49,8 @@ pub struct Hardware {
     pub gpus: Vec<Gpu>,
     /// Hyperviseur (`kvm`, `qemu`, `vmware`, `oracle`, `microsoft`…) si machine virtuelle.
     pub vm: Option<String>,
+    /// Portable : batterie dans `/sys/class/power_supply` ou châssis portable (DMI).
+    pub laptop: bool,
 }
 
 /// Génération d'une carte NVIDIA d'après l'identifiant de sa puce (plages PCI par architecture).
@@ -125,7 +128,14 @@ pub fn detect() -> Hardware {
         .ok()
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
         .filter(|s| !s.is_empty() && s != "none");
-    Hardware { gpus, vm }
+    // Une machine virtuelle peut simuler une batterie (QEMU) : pas d'auto-cpufreq dans une VM,
+    // le processeur virtuel n'a pas de gouverneur à régler.
+    // Captures : NOOS_POWER_DEMO=battery (ou autre que desktop) simule un portable.
+    let laptop = match noos_core::power::demo() {
+        Some(b) => b.is_some(),
+        None => vm.is_none() && noos_core::power::is_laptop(),
+    };
+    Hardware { gpus, vm, laptop }
 }
 
 /// Ce que l'installation fera pour ce matériel.
@@ -137,6 +147,9 @@ pub struct Plan {
     pub dkms: bool,
     /// Arguments du noyau en plus.
     pub kernel_args: Vec<String>,
+    /// Portable : auto-cpufreq activé et power-profiles-daemon masqué
+    /// (`noos-power-helper laptop-setup`), les deux se disputant le gouverneur du processeur.
+    pub auto_cpufreq: bool,
     /// Résumé lisible (récapitulatif et journal).
     pub summary: Vec<String>,
 }
@@ -255,6 +268,13 @@ pub fn plan(hw: &Hardware, nonfree: bool) -> Plan {
             format!("Machine virtuelle {label} : outils invités (presse-papiers, redimensionnement)")
         });
     }
+    if hw.laptop {
+        // Paquet de « main » (sid) ; le menu Énergie de la barre le pilote (Économie /
+        // Équilibré = automatique / Performances).
+        push(&mut p.packages, &["auto-cpufreq"]);
+        p.auto_cpufreq = true;
+        p.summary.push("Ordinateur portable : économie d'énergie automatique (auto-cpufreq), selon la charge du processeur et le secteur".into());
+    }
     if hw.gpus.is_empty() && hw.vm.is_none() {
         p.summary.push("Aucune carte graphique détectée : pilotes libres (Mesa)".into());
     }
@@ -281,27 +301,41 @@ mod tests {
     #[test]
     fn plans() {
         let gpu = |v, d| Gpu { vendor: classify(v, d), vendor_id: v, device_id: d, name: "carte".into() };
-        let p = plan(&Hardware { gpus: vec![gpu(0x10de, 0x2504)], vm: None }, true);
+        let p = plan(&Hardware { gpus: vec![gpu(0x10de, 0x2504)], vm: None, laptop: false }, true);
         assert!(p.dkms && p.packages.contains(&"nvidia-driver".to_string()));
         assert!(p.packages.contains(&"linux-headers-amd64".to_string()));
         assert!(p.kernel_args.contains(&"nvidia-drm.modeset=1".to_string()));
         assert!(p.packages.contains(&"ffmpeg".to_string()));
 
-        let p = plan(&Hardware { gpus: vec![gpu(0x10de, 0x1b80)], vm: None }, true);
+        let p = plan(&Hardware { gpus: vec![gpu(0x10de, 0x1b80)], vm: None, laptop: false }, true);
         assert!(p.dkms);
 
-        let p = plan(&Hardware { gpus: vec![gpu(0x10de, 0x1184)], vm: None }, true);
+        let p = plan(&Hardware { gpus: vec![gpu(0x10de, 0x1184)], vm: None, laptop: false }, true);
         assert!(!p.dkms && p.kernel_args.is_empty());
 
-        let p = plan(&Hardware { gpus: vec![gpu(0x8086, 0x3e91), gpu(0x10de, 0x1f82)], vm: None }, true);
+        let p = plan(&Hardware { gpus: vec![gpu(0x8086, 0x3e91), gpu(0x10de, 0x1f82)], vm: None, laptop: false }, true);
         assert!(p.packages.contains(&"intel-media-va-driver-non-free".to_string()) && p.packages.contains(&"switcheroo-control".to_string()));
         assert!(p.packages.contains(&"firmware-intel-graphics".to_string()));
 
-        let p = plan(&Hardware { gpus: vec![gpu(0x1002, 0x73bf)], vm: None }, false);
+        let p = plan(&Hardware { gpus: vec![gpu(0x1002, 0x73bf)], vm: None, laptop: false }, false);
         assert!(!p.packages.contains(&"firmware-amd-graphics".to_string()));
         assert!(!p.packages.iter().any(|x| x.starts_with("firmware-")));
 
-        let p = plan(&Hardware { gpus: vec![gpu(0x1af4, 0x1050)], vm: Some("kvm".into()) }, true);
+        let p = plan(&Hardware { gpus: vec![gpu(0x1af4, 0x1050)], vm: Some("kvm".into()), laptop: false }, true);
         assert!(p.packages.contains(&"qemu-guest-agent".to_string()) && !p.dkms);
+        assert!(!p.auto_cpufreq);
+    }
+
+    #[test]
+    fn portable() {
+        let gpu = Gpu { vendor: classify(0x8086, 0x9a49), vendor_id: 0x8086, device_id: 0x9a49, name: "Intel Iris Xe".into() };
+        let fixe = plan(&Hardware { gpus: vec![gpu.clone()], vm: None, laptop: false }, true);
+        assert!(!fixe.auto_cpufreq && !fixe.packages.contains(&"auto-cpufreq".to_string()));
+        for nonfree in [true, false] {
+            let p = plan(&Hardware { gpus: vec![gpu.clone()], vm: None, laptop: true }, nonfree);
+            assert!(p.auto_cpufreq, "auto-cpufreq est dans main : aussi sans non-free");
+            assert_eq!(p.packages.iter().filter(|x| *x == "auto-cpufreq").count(), 1);
+            assert!(p.summary.iter().any(|l| l.starts_with("Ordinateur portable : ")), "ligne du récapitulatif");
+        }
     }
 }

@@ -13,6 +13,7 @@ pub mod edid;
 pub mod ipc;
 pub mod login;
 pub mod paths;
+pub mod power;
 pub mod updates;
 pub mod wallhaven;
 

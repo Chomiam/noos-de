@@ -1527,6 +1527,26 @@ pub fn taskbar(app: &Rc<App>) -> adap::NavigationPage {
         });
     }
     g.add(&vitals);
+    let power = switch(
+        "battery-good-symbolic",
+        "Énergie",
+        "Batterie sur un portable, mode d'alimentation sur un PC fixe (clic : modes, molette : mode voisin)",
+        t.show_power,
+    );
+    {
+        let app = app.clone();
+        power.connect_active_notify(move |r| {
+            let v = r.is_active();
+            app.update(|c| {
+                c.taskbar.show_power = v;
+                // Retiré en mode édition puis réactivé ici : il revient dans la barre.
+                if v {
+                    c.taskbar.hidden.retain(|x| x != "power");
+                }
+            });
+        });
+    }
+    g.add(&power);
     content.append(&g);
 
     let layout = group("Disposition");

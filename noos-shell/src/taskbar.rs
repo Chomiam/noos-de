@@ -218,6 +218,9 @@ impl Taskbar {
                 if let Some(n) = shell.notify.borrow().as_ref() {
                     n.hide();
                 }
+                if let Some(p) = shell.power.borrow().as_ref() {
+                    p.hide();
+                }
             }
         };
         let status_button = |icon: &str, tip: &str| {
@@ -343,6 +346,12 @@ impl Taskbar {
         status_group.append(&vol_btn);
         status_group.append(&quick_btn);
 
+        // ── Énergie : batterie (portable) ou mode d'alimentation (PC fixe) ──
+        let power_btn: gtk::Widget = match shell.power.borrow().as_ref() {
+            Some(p) => p.button().upcast(),
+            None => gtk::Box::new(gtk::Orientation::Horizontal, 0).upcast(),
+        };
+
         // ── Icônes des applications actives ──
         let tray_inline = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         tray_inline.set_valign(gtk::Align::Center);
@@ -460,6 +469,7 @@ impl Taskbar {
             ("tasks", tasks.clone().upcast()),
             ("tray", tray_box.clone().upcast()),
             ("status", status_group.clone().upcast()),
+            ("power", power_btn.clone()),
             ("clock", clock_btn.clone().upcast()),
             ("notifications", bell_btn.clone().upcast()),
             ("showdesktop", show_desktop.clone().upcast()),
@@ -680,6 +690,7 @@ impl Taskbar {
         let off = |id: &str| match id {
             "search" => !cfg.taskbar.show_search,
             "vitals" => !cfg.taskbar.show_vitals,
+            "power" => !cfg.taskbar.show_power,
             "taskview" => !cfg.desktops.taskbar_button,
             _ => false,
         };

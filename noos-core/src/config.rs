@@ -131,6 +131,8 @@ pub struct Taskbar {
     pub tray_expanded: bool,
     /// Widget « Ressources » à gauche de la barre (processeur, mémoire, disque…).
     pub show_vitals: bool,
+    /// Icône « Énergie » (batterie sur un portable, mode d'alimentation sur un PC fixe).
+    pub show_power: bool,
     /// Barre des tâches sur tous les écrans (sinon seulement l'écran principal).
     pub all_outputs: bool,
     /// Écrans secondaires : seulement les fenêtres de cet écran.
@@ -138,7 +140,7 @@ pub struct Taskbar {
     /// Bord de l'écran : `bottom` (par défaut) ou `top`.
     pub position: String,
     /// Disposition (mode édition) : éléments de chaque zone, dans l'ordre. Identifiants :
-    /// `vitals`, `start`, `search`, `taskview`, `tasks`, `tray`, `status`, `clock`,
+    /// `vitals`, `start`, `search`, `taskview`, `tasks`, `tray`, `status`, `power`, `clock`,
     /// `notifications`, `showdesktop`.
     pub zone_left: Vec<String>,
     pub zone_center: Vec<String>,
@@ -166,7 +168,7 @@ impl Taskbar {
 impl Taskbar {
     pub const DEFAULT_LEFT: &'static [&'static str] = &["vitals"];
     pub const DEFAULT_CENTER: &'static [&'static str] = &["start", "search", "taskview", "tasks"];
-    pub const DEFAULT_RIGHT: &'static [&'static str] = &["tray", "status", "clock", "notifications", "showdesktop"];
+    pub const DEFAULT_RIGHT: &'static [&'static str] = &["tray", "status", "power", "clock", "notifications", "showdesktop"];
     /// Barre supérieure (fine) : sélecteur de bureaux au centre.
     pub const DEFAULT_TOP_CENTER: &'static [&'static str] = &["desktops"];
 
@@ -199,10 +201,13 @@ impl NoosConfig {
             }
         }
         for (k, d) in defaults.iter().enumerate() {
-            for id in d.iter() {
+            for (i, id) in d.iter().enumerate() {
                 if !seen.iter().any(|s| s == id) {
                     seen.push(id.to_string());
-                    z[k].push(id.to_string());
+                    // Nouvel élément (ex. « power ») : à côté de son voisin par défaut s'il est
+                    // dans cette zone, sinon à la fin.
+                    let at = d[..i].iter().rev().find_map(|prev| z[k].iter().position(|x| x == prev).map(|p| p + 1));
+                    z[k].insert(at.unwrap_or(z[k].len()), id.to_string());
                 }
             }
         }
@@ -229,6 +234,7 @@ impl Default for Taskbar {
             show_search: true,
             tray_expanded: false,
             show_vitals: true,
+            show_power: true,
             all_outputs: true,
             windows_on_own_output: false,
             position: "bottom".into(),
@@ -706,6 +712,18 @@ mod tests {
         fs::write(&f, "[taskbar]\npinned = [\"org.noos.Terminal\"]\n").unwrap();
         assert_eq!(NoosConfig::load_from(&f).unwrap().taskbar.pinned, ["org.noos.Terminal"]);
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn nouvel_element_pres_de_son_voisin() {
+        // Configuration d'avant l'icône « power » : elle arrive juste après « status ».
+        let mut cfg = NoosConfig::default();
+        cfg.taskbar.zone_right = ["tray", "status", "clock", "notifications", "showdesktop"].map(String::from).to_vec();
+        assert_eq!(cfg.bar_zones()[2], ["tray", "status", "power", "clock", "notifications", "showdesktop"]);
+        // « status » déplacé ailleurs : « power » suit « tray ».
+        cfg.taskbar.zone_right = ["clock", "tray"].map(String::from).to_vec();
+        cfg.taskbar.zone_left = ["status", "vitals"].map(String::from).to_vec();
+        assert_eq!(cfg.bar_zones()[2], ["clock", "notifications", "showdesktop", "tray", "power"]);
     }
 
     #[test]

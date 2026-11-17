@@ -283,6 +283,67 @@ Les paquets Debian sont comparés sans droits root : `apt-get update` dans
 - clé de signature : `packaging/apt/generate-key.sh` (une fois), clé publique committée dans
   `packaging/apt/noos-archive-keyring.asc`.
 
+## Énergie : batterie et modes d'alimentation
+
+Élément `power` de la barre des tâches (zone de droite, après réseau / son / réglages ;
+déplaçable et retirable en mode édition, interrupteur « Énergie » dans Paramètres ›
+Personnalisation › Barre des tâches, `[taskbar] show_power`). Code : `noos-shell/src/power.rs`,
+logique partagée `noos-core/src/power.rs` (tests unitaires).
+
+- **Portable** : batterie **dessinée** (cairo) selon le niveau et l'état — remplissage
+  proportionnel, vert avec un éclair en charge, prise en badge quand elle est branchée sans
+  charger, orange sous 20 %, rouge sous 10 % ; le niveau glisse en douceur quand il change.
+  Info-bulle : « Batterie : 78 % · 2 h 15 restantes » ou « Pleine charge dans 40 min ».
+  Notification « Batterie presque vide » à 10 % (une fois par décharge).
+  Source : UPower par D-Bus (`DisplayDevice` : `Percentage`, `State`, `TimeToEmpty`,
+  `TimeToFull`, `EnergyRate`), mis à jour par le signal `PropertiesChanged` (pas de boucle) ;
+  la connexion au bus système est gardée (sinon GIO la ferme et les signaux se perdent).
+  Sans UPower : lecture de `/sys/class/power_supply/BAT*` toutes les 60 s.
+- **PC fixe** : jauge dont l'aiguille montre le mode actif (vert = Économie, neutre =
+  Équilibré, orange = Performances), animée quand le mode change, y compris ailleurs
+  (Paramètres). Masquée s'il n'y a ni batterie ni gestionnaire de modes.
+- **Clic** : panneau dans le style des réglages rapides — pourcentage en grand, barre,
+  autonomie, santé de la batterie (`Capacity` d'UPower : « 91 % · bonne »), consommation en
+  watts, cycles, modèle ; trois tuiles Économie / Équilibré / Performances (avec l'avertissement
+  `PerformanceDegraded` de power-profiles-daemon), raccourci « Paramètres d'alimentation »
+  (`noos-settings power`). **Molette** sur l'icône : mode voisin.
+
+Gestionnaires de modes, essayés dans l'ordre :
+
+1. **power-profiles-daemon** (`org.freedesktop.UPower.PowerProfiles`, ancien nom
+   `net.hadess.PowerProfiles`) : propriété `ActiveProfile` (écriture autorisée par polkit à la
+   session active), suivie par `PropertiesChanged`.
+2. **auto-cpufreq** (paquet `auto-cpufreq` de sid, installé sur les **portables** par
+   l'installateur) : les deux démons se disputent le gouverneur du processeur, donc sur
+   portable power-profiles-daemon est **masqué** et auto-cpufreq activé
+   (`/usr/libexec/noos-power-helper laptop-setup`, `desktop-setup` pour revenir en arrière).
+   Le menu pilote auto-cpufreq par `pkexec noos-power-helper profile <mode>` (action polkit
+   `org.noos.power.helper`, sans mot de passe pour la session active, comme
+   power-profiles-daemon) : Économie = `auto-cpufreq --force=powersave`, Équilibré =
+   `--force=reset` (réglage automatique selon la charge et le secteur), Performances =
+   `--force=performance`. Le choix forcé est lu dans `/opt/auto-cpufreq/override.pickle`
+   (dossier surveillé) ; le paquet Debian ne crée pas `/opt/auto-cpufreq`, l'assistant le fait
+   (sans lui, `--force` échoue). Paramètres › Alimentation utilise le même assistant.
+
+Installation existante (portable) : rien n'est fait automatiquement par le paquet (le
+postinst ne peut pas installer d'autre paquet, et masquer power-profiles-daemon ne doit pas se
+faire en silence). À la main :
+
+```bash
+sudo apt install auto-cpufreq
+sudo /usr/libexec/noos-power-helper laptop-setup
+```
+
+Détection d'un portable (installateur, `noos_core::power::is_laptop`) : batterie système dans
+`/sys/class/power_supply` (pas celles des souris : `scope=Device`), ou châssis portable
+(`/sys/class/dmi/id/chassis_type` 8, 9, 10, 14, 31, 32) ; jamais dans une machine virtuelle.
+Le récapitulatif de l'installateur affiche « Ordinateur portable : économie d'énergie
+automatique (auto-cpufreq) ».
+
+Démo (captures) : `NOOS_POWER_DEMO=battery|charging|low|critical|full|plugged|desktop`
+(+ `NOOS_POWER_OPEN=1` : panneau ouvert après 2 s) ; avec `noos-installer`, une valeur autre
+que `desktop` simule un portable.
+
 ## Disques (`noos-disk`)
 
 Gestionnaire de disques façon Windows, sur udisks2 : disques internes, clés USB, cartes mémoire
@@ -447,7 +508,7 @@ L'organisation reprend celle de Windows 11 : compte et recherche dans la barre l
 |---|---|
 | Système › Écran | Moniteurs, échelle, résolution, fréquence, orientation, VRR, HDR. Les changements s'appliquent à chaud, avec retour automatique aux anciens réglages au bout de 15 s sans confirmation |
 | Système › Notifications | Ne pas déranger, son, durée des bannières, notification de test |
-| Système › Alimentation | Profil d'alimentation (power-profiles-daemon / tuned-ppd), extinction de l'écran et veille après inactivité, inhibition en plein écran |
+| Système › Alimentation | Profil d'alimentation (power-profiles-daemon / tuned-ppd, ou auto-cpufreq sur portable), extinction de l'écran et veille après inactivité, inhibition en plein écran |
 | Système › Informations | Processeur, mémoire, carte graphique, renommer le PC |
 | Personnalisation | Thèmes rapides, arrière-plan (images du jour Bing, avec changement quotidien automatique et bouton « Jours précédents » : l'archive de Bing s'arrête à 15 jours ; fonds Wallhaven au hasard ou par recherche, 24 par page, bouton « Charger plus d'images » jusqu'à la dernière page — retour à la page 1 à chaque nouvelle recherche, graine conservée pour que le hasard ne repasse pas les mêmes images), couleurs, thèmes libAdapta, barre des tâches (hauteur 28 à 96 px, icônes des applis actives regroupées dans « ^ » ou étalées), polices |
 | Bluetooth et appareils | Bluetooth (BlueZ) : appareils associés en tuiles (état, batterie, connecter / renommer / supprimer), assistant « Ajouter un appareil », visibilité ; liens vers Imprimantes et scanners, Souris, Clavier (voir « Bluetooth et appareils ») |
