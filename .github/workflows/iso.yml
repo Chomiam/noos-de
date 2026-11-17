@@ -54,5 +54,5 @@ jobs:
           sha256sum *.iso > SHA256SUMS
           notes="$GITHUB_WORKSPACE/noos-iso/release-notes.md"
           [ -f "$notes" ] || { echo "Préversion de NOOS (Debian sid)." > notes.md; notes=notes.md; }
-          gh release create "$TAG" *.iso SHA256SUMS --prerelease --target "$GITHUB_SHA" \
+          gh release create "$TAG" *.iso SHA256SUMS -R "$GITHUB_REPOSITORY" --prerelease --target "$GITHUB_SHA" \
             --title "${TITLE:-NOOS $TAG}" --notes-file "$notes"
