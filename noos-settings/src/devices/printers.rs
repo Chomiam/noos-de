@@ -369,6 +369,14 @@ pub fn page(app: &Rc<App>) -> adap::NavigationPage {
         add_btn.connect_clicked(move |_| add_dialog(&app, load.clone()));
     }
 
+    // Tests : `NOOS_PRINT_OPEN=<file CUPS>` ouvre la fiche d'une vraie imprimante.
+    if let Ok(q) = std::env::var("NOOS_PRINT_OPEN") {
+        let app = app.clone();
+        glib::timeout_add_local_once(Duration::from_millis(300), move || {
+            let p = printer_page(&app, &q);
+            app.push(&p);
+        });
+    }
     // Démos.
     match cups::demo_mode().as_str() {
         "add" | "driver" | "fail" | "none" => {
@@ -391,6 +399,7 @@ pub fn page(app: &Rc<App>) -> adap::NavigationPage {
 const PRINT_PACKAGES: &[&str] = &[
     "cups",
     "cups-browsed",
+    "cups-bsd",
     "cups-filters",
     "avahi-daemon",
     "avahi-utils",
@@ -477,6 +486,29 @@ fn marker_name(m: &cups::Marker) -> String {
     };
     let what = if m.kind.contains("toner") || n.contains("toner") { "Toner" } else { "Encre" };
     format!("{what} {}", color.to_lowercase())
+}
+
+/// « EPSON EPSON ET-4800 Series » (marque répétée par CUPS) → « EPSON ET-4800 Series ».
+fn model_text(model: &str) -> String {
+    let mut w = model.split_whitespace();
+    match (w.next(), w.next()) {
+        (Some(a), Some(b)) if a.eq_ignore_ascii_case(b) => model.splitn(2, ' ').nth(1).unwrap_or(model).trim().to_string(),
+        (None, _) => "Inconnu".into(),
+        _ => model.to_string(),
+    }
+}
+
+/// Adresse lisible : « Réseau — EPSON ET-4800 Series (annoncée sur le réseau, IPPS) ».
+fn connection_text(uri: &str) -> String {
+    let kind = cups::connection(uri);
+    if let Some(rest) = uri.strip_prefix("dnssd://") {
+        let service = cups::percent_decode(rest.split(['/', '?']).next().unwrap_or(rest));
+        let name = service.split("._").next().unwrap_or(&service);
+        let proto = if service.contains("._ipps.") { "IPPS, chiffré" } else { "IPP" };
+        return format!("{kind} — « {name} » annoncée sur le réseau ({proto})");
+    }
+    let clean = cups::percent_decode(uri.split('?').next().unwrap_or(uri));
+    format!("{kind} — {clean}")
 }
 
 pub fn printer_page(app: &Rc<App>, name: &str) -> adap::NavigationPage {
@@ -572,8 +604,8 @@ pub fn printer_page(app: &Rc<App>, name: &str) -> adap::NavigationPage {
         r.set_subtitle_selectable(true);
         r
     };
-    info.add(&info_row("printer-symbolic", "Modèle et pilote", if pr.model.is_empty() { "Inconnu" } else { &pr.model }));
-    info.add(&info_row("network-wired-symbolic", "Connexion", &format!("{} — {}", pr.connection(), cups::percent_decode(&pr.uri))));
+    info.add(&info_row("printer-symbolic", "Modèle et pilote", &model_text(&pr.model)));
+    info.add(&info_row("network-wired-symbolic", "Connexion", &connection_text(&pr.uri)));
     if !pr.location.is_empty() {
         info.add(&info_row("mark-location-symbolic", "Emplacement", &pr.location));
     }
@@ -1335,6 +1367,17 @@ mod tests {
         let f = manual_found("socket://10.0.0.5:9100").unwrap();
         assert!(!f.driverless);
         assert!(manual_found("deux mots").is_none());
+    }
+
+    #[test]
+    fn textes() {
+        assert_eq!(model_text("EPSON EPSON ET-4800 Series"), "EPSON ET-4800 Series");
+        assert_eq!(model_text("HP LaserJet Pro"), "HP LaserJet Pro");
+        assert_eq!(
+            connection_text("dnssd://EPSON%20ET-4800%20Series._ipps._tcp.local/?uuid=cfe9"),
+            "Réseau — « EPSON ET-4800 Series » annoncée sur le réseau (IPPS, chiffré)"
+        );
+        assert_eq!(connection_text("usb://Brother/HL%20L2350?serial=1"), "USB — usb://Brother/HL L2350");
     }
 
     #[test]

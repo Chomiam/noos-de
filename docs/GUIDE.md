@@ -435,7 +435,13 @@ Droits : groupe `bluetooth` (installateur, postinst une fois). Audio : `libspa-0
   Skanpage, Skanlite ou XSane) ;
 - CUPS absent : « Installer » (paquets de `debian/control`) ; arrêté : « Démarrer le service ».
 
-Paquets (`debian/control`, `noos-iso/packages-system.txt`) : `cups`, `cups-browsed`,
+Sur Debian, `lpadmin`, `lpinfo`, `cupsenable`… sont dans `/usr/sbin` (hors du PATH des
+utilisateurs) : appelés par leur chemin complet. Les files créées automatiquement par
+cups-browsed (`implicitclass://`) n'ont pas d'état dans `lpoptions` : lu par `lpstat -p`. Sans
+`lpq` (cups-bsd), la file d'attente vient de `lpstat -o`. Un même scanner réseau vu par plusieurs
+moteurs SANE (escl, epson2, airscan) n'est affiché qu'une fois.
+
+Paquets (`debian/control`, `noos-iso/packages-system.txt`) : `cups`, `cups-browsed`, `cups-bsd`,
 `cups-filters`, `avahi-daemon`, `avahi-utils`, `libnss-mdns`, `ipp-usb`, pilotes Gutenprint,
 HP (hpcups) et Brother (brlaser), `sane-utils`, `sane-airscan` ; `printer-driver-all` et
 `simple-scan` en Recommends. Services activés par l'installateur et par postinst (une fois,
@@ -452,6 +458,7 @@ Démos (sans BlueZ ni CUPS) :
 | `NOOS_PRINT_DEMO=printer` | fiche de l'imprimante Epson (file d'attente, niveaux d'encre) |
 | `NOOS_PRINT_DEMO=add` / `driver` / `fail` / `none` | assistant d'ajout / choix du pilote d'une imprimante USB / échec d'un ajout sans pilote / aucune imprimante trouvée |
 | `NOOS_PRINT_DEMO=missing` | CUPS non installé |
+| `NOOS_PRINT_OPEN=<file CUPS>` | fiche d'une vraie imprimante (sans démo) |
 
 ```bash
 tools/preview/run_app.sh bt.png 4 "env NOOS_BT_DEMO=pair noos-settings bluetooth"

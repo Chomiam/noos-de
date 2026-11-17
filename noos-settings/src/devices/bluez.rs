@@ -497,6 +497,17 @@ impl Bluetooth {
 
     async fn reload(self: &Rc<Self>) {
         let Some(conn) = self.conn.borrow().clone() else { return };
+        // Pas de puce Bluetooth : bluetoothd ne démarre pas (ConditionPathIsDirectory) et
+        // l'activation D-Bus attendrait 25 s pour rien. Un adaptateur branché plus tard démarre
+        // le service : NameOwnerChanged relance la lecture.
+        if !std::path::Path::new("/sys/class/bluetooth").exists() {
+            let changed = self.model.borrow().availability != Availability::NoAdapter;
+            *self.model.borrow_mut() = Model { availability: Availability::NoAdapter, ..Default::default() };
+            if changed {
+                self.notify();
+            }
+            return;
+        }
         let reply = conn
             .call_future(Some(BUS), "/", "org.freedesktop.DBus.ObjectManager", "GetManagedObjects", None, None, gio::DBusCallFlags::NONE, 5000)
             .await;

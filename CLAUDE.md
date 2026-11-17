@@ -170,6 +170,7 @@ compositeur y écrit (`[desktops] names`).
 | `NOOS_FIREWALL_DEMO=1\|in\|done` | pare-feu fictif (sans démon) : page Paramètres › Pare-feu (`noos-settings firewall`) et fenêtre d'autorisation `noos-firewall-prompt` (sortie / entrée d'abord / écran « Révoquer ») ; `NOOS_FIREWALL_DIALOG=port\|app` ouvre le dialogue d'ajout |
 | `NOOS_BT_DEMO=1\|add\|pair\|pin\|off\|none\|service` | noos-settings › Bluetooth et appareils (`noos-settings bluetooth`) sans BlueZ : appareils fictifs / assistant « Ajouter un appareil » / association avec code à confirmer / code PIN / désactivé / sans adaptateur / service arrêté |
 | `NOOS_PRINT_DEMO=1\|printer\|add\|driver\|fail\|none\|missing` | noos-settings › Imprimantes et scanners (`noos-settings printers`) sans CUPS : imprimantes et scanners fictifs / fiche d'imprimante / assistant d'ajout / choix du pilote / échec / rien trouvé / CUPS absent |
+| `NOOS_PRINT_OPEN=<file CUPS>` | noos-settings printers : ouvre la fiche d'une vraie imprimante (ex. `EPSON_ET_4800_Series`) |
 | `NOOS_PKG_ELEVATE=sudo\|none` | noos-pkg : élévation par `sudo -n` ou aucune (tests), au lieu de pkexec |
 
 ### Règles de sécurité (erreurs déjà commises)

@@ -122,11 +122,13 @@ Depends: ${shlibs:Depends},
          libspa-0.2-bluetooth,
 # Imprimantes (Paramètres › Imprimantes et scanners) : CUPS, découverte réseau (Avahi / mDNS,
 # cups-browsed), `driverless` et filtres (cups-filters), imprimantes USB sans pilote
-# (ipp-usb), pilotes libres courants (HP, Brother, Gutenprint) ; avahi-browse trouve la page
+# (ipp-usb), file d'attente (lpq : cups-bsd), pilotes libres courants (HP, Brother,
+# Gutenprint) ; avahi-browse trouve la page
 # Web des imprimantes annoncées (dnssd://). Pas de system-config-printer : tout passe par
 # les outils de CUPS (lpadmin, lpinfo).
          cups,
          cups-browsed,
+         cups-bsd,
          cups-filters,
          avahi-daemon,
          avahi-utils,

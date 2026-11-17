@@ -20,11 +20,24 @@ pub fn demo_mode() -> String {
 }
 
 pub fn have(bin: &str) -> bool {
-    noos_pkg::exec::have(bin)
+    noos_pkg::exec::have(bin) || sbin(bin).is_some()
+}
+
+/// Debian installe `lpadmin`, `lpinfo`, `cupsenable`… dans /usr/sbin, absent du PATH des
+/// utilisateurs : chemin complet.
+fn sbin(bin: &str) -> Option<String> {
+    ["/usr/sbin", "/sbin"].iter().map(|d| format!("{d}/{bin}")).find(|p| std::path::Path::new(p).exists())
+}
+
+fn tool(bin: &str) -> String {
+    if bin.contains('/') || noos_pkg::exec::have(bin) {
+        return bin.to_string();
+    }
+    sbin(bin).unwrap_or_else(|| bin.to_string())
 }
 
 fn run(argv: &[&str]) -> Result<String, String> {
-    let out = Command::new(argv[0])
+    let out = Command::new(tool(argv[0]))
         .args(&argv[1..])
         .env("LC_ALL", "C.UTF-8")
         .output()
@@ -52,7 +65,8 @@ pub fn admin(argv: &[&str]) -> Result<String, String> {
     match run(argv) {
         Err(e) if denied(&e) => {
             let mut full: Vec<String> = noos_pkg::exec::privilege_prefix();
-            full.extend(argv.iter().map(|s| s.to_string()));
+            full.push(tool(argv[0]));
+            full.extend(argv[1..].iter().map(|s| s.to_string()));
             let refs: Vec<&str> = full.iter().map(String::as_str).collect();
             run(&refs).map_err(|e| explain(&e))
         }
@@ -291,6 +305,29 @@ fn printer_from(name: &str, o: &HashMap<String, String>, default: &str) -> Print
     }
 }
 
+/// `lpstat -p <file>` : « printer X is idle. », « printer X now printing X-3. »,
+/// « printer X disabled since … ».
+pub fn parse_lpstat_state(s: &str) -> State {
+    if s.contains(" disabled") {
+        State::Stopped
+    } else if s.contains("now printing") {
+        State::Printing
+    } else {
+        State::Idle
+    }
+}
+
+/// `lpstat -o <file>` (sans `lpq`, paquet cups-bsd) : « X-12  alex  1024  Tue 17 Nov … ».
+pub fn parse_lpstat_jobs(s: &str, printer: &str) -> Vec<Job> {
+    s.lines()
+        .filter_map(|l| {
+            let t: Vec<&str> = l.split_whitespace().collect();
+            let id = t.first()?.strip_prefix(printer)?.strip_prefix('-')?.to_string();
+            Some(Job { title: format!("Document n° {id}"), owner: t.get(1)?.to_string(), size: t.get(2)?.parse().ok()?, active: false, id })
+        })
+        .collect()
+}
+
 /// `lpstat -d` → nom de l'imprimante par défaut.
 pub fn parse_default(s: &str) -> String {
     s.lines().find_map(|l| l.split_once("system default destination:").map(|(_, n)| n.trim().to_string())).unwrap_or_default()
@@ -308,6 +345,13 @@ pub fn printers() -> Vec<Printer> {
         .map(|n| {
             let o = run(&["lpoptions", "-p", n]).map(|s| parse_options(&s)).unwrap_or_default();
             let mut p = printer_from(n, &o, &default);
+            // Files créées par cups-browsed (implicitclass) : pas de printer-state dans
+            // lpoptions ; `lpstat -p` le donne toujours.
+            if !o.contains_key("printer-state") {
+                if let Ok(st) = run(&["lpstat", "-p", n]) {
+                    p.state = parse_lpstat_state(&st);
+                }
+            }
             p.jobs = jobs(n).len();
             p
         })
@@ -353,7 +397,14 @@ pub fn jobs(printer: &str) -> Vec<Job> {
     if demo() {
         return demo_printers().into_iter().find(|p| p.name == printer).map(|p| demo_jobs(&p)).unwrap_or_default();
     }
-    run(&["lpq", "-P", printer]).map(|s| parse_lpq(&s)).unwrap_or_default()
+    if have("lpq") {
+        return run(&["lpq", "-P", printer]).map(|s| parse_lpq(&s)).unwrap_or_default();
+    }
+    let mut v = run(&["lpstat", "-o", printer]).map(|s| parse_lpstat_jobs(&s, printer)).unwrap_or_default();
+    if let Some(first) = v.first_mut() {
+        first.active = run(&["lpstat", "-p", printer]).is_ok_and(|s| parse_lpstat_state(&s) == State::Printing);
+    }
+    v
 }
 
 pub fn cancel_job(printer: &str, id: &str) -> Result<(), String> {
@@ -419,7 +470,8 @@ pub struct Found {
 impl Found {
     pub fn title(&self) -> String {
         let t = if !self.info.is_empty() && self.info != "Unknown" { &self.info } else { &self.model };
-        if t.is_empty() || t == "Unknown" { self.uri.clone() } else { t.clone() }
+        let t = t.trim_end_matches(" (driverless)").trim();
+        if t.is_empty() || t == "Unknown" { self.uri.clone() } else { t.to_string() }
     }
 
     pub fn connection(&self) -> &'static str {
@@ -457,7 +509,11 @@ pub fn parse_lpinfo(s: &str) -> Vec<Found> {
         }
     }
     // Seuls les vrais appareils (une adresse complète), pas les moteurs (« socket », « lpd »).
-    out.retain(|f| f.uri.contains(":/") || f.uri.contains("://"));
+    out.retain(|f| {
+        (f.uri.contains(":/") || f.uri.contains("://"))
+            && (f.class == "network" || f.class == "direct")
+            && !["testfile:", "cups-brf:", "cups-pdf:", "beh:"].iter().any(|p| f.uri.starts_with(p))
+    });
     for f in &mut out {
         f.driverless = looks_driverless(f);
     }
@@ -505,8 +561,12 @@ pub fn discover(configured: &[Printer]) -> Result<Vec<Found>, String> {
             }
         }
     }
-    // Déjà installées : écartées.
-    found.retain(|f| !configured.iter().any(|p| p.uri == f.uri));
+    // Déjà installées (y compris les files créées automatiquement par cups-browsed, dont
+    // l'adresse diffère : même nom ou même modèle) : écartées.
+    found.retain(|f| {
+        let t = f.title().to_lowercase();
+        !configured.iter().any(|p| p.uri == f.uri || p.title().to_lowercase() == t || (!f.model.is_empty() && p.model.to_lowercase().ends_with(&f.model.to_lowercase())))
+    });
     // Une même imprimante annoncée en IPP et en « socket » : on garde la meilleure entrée.
     found.sort_by_key(|f| (!f.driverless, f.class != "direct", f.title().to_lowercase()));
     let mut seen: Vec<String> = vec![];
@@ -659,7 +719,8 @@ pub fn web_page(uri: &str) -> Option<String> {
             // dnssd://Nom%20de%20service._ipp._tcp.local/?uuid=… : résolu par Avahi.
             let service = percent_decode(hostname);
             let name = service.split("._").next()?.to_string();
-            resolve_dnssd(&name)
+            let kind = if service.contains("._ipps._tcp") { "_ipps._tcp" } else { "_ipp._tcp" };
+            resolve_dnssd(&name, kind)
         }
         _ => None,
     }
@@ -667,11 +728,11 @@ pub fn web_page(uri: &str) -> Option<String> {
 
 /// Résout un service DNS-SD annoncé (`avahi-browse -rpt`) : `adminurl` s'il est annoncé,
 /// sinon `http://<hôte>/`.
-fn resolve_dnssd(name: &str) -> Option<String> {
+fn resolve_dnssd(name: &str, kind: &str) -> Option<String> {
     if !have("avahi-browse") {
         return None;
     }
-    let out = run(&["avahi-browse", "-rptk", "_ipp._tcp"]).ok()?;
+    let out = run(&["avahi-browse", "-rptk", kind]).ok()?;
     parse_avahi(&out, name)
 }
 
@@ -736,12 +797,48 @@ pub fn parse_scanners(s: &str) -> Vec<Scanner> {
             } else {
                 ("Scanner", desc)
             };
+            let ip = desc.split(" ip=").nth(1).map(|s| s.trim().to_string());
             let name = name.split(" ip=").next().unwrap_or(name).trim();
-            Some(Scanner { device: device.to_string(), name: name.to_string(), kind: kind.to_string() })
+            let kind = if device.contains(":net:") { "Réseau" } else { kind };
+            Some((Scanner { device: device.to_string(), name: name.to_string(), kind: kind.to_string() }, ip))
         })
         // Les webcams (v4l) ne sont pas des scanners.
-        .filter(|s| s.kind != "Webcam")
+        .filter(|(s, _)| s.kind != "Webcam")
+        .fold(Vec::<(Scanner, Vec<String>)>::new(), |mut acc, (s, ip)| {
+            // Même appareil vu par plusieurs moteurs (escl et epson2 de SANE, sane-airscan) :
+            // même adresse IP ou même modèle ; l'entrée airscan (nom complet) est gardée.
+            let mut keys = vec![scanner_key(&s.name)];
+            keys.extend(ip.into_iter().chain(scanner_host(&s.device)));
+            match acc.iter_mut().find(|(_, k)| k.iter().any(|x| keys.contains(x))) {
+                Some((o, k)) => {
+                    k.extend(keys);
+                    if s.device.starts_with("airscan:") {
+                        *o = s;
+                    }
+                }
+                None => acc.push((s, keys)),
+            }
+            acc
+        })
+        .into_iter()
+        .map(|(s, _)| s)
         .collect()
+}
+
+/// Adresse d'un scanner réseau d'après son périphérique SANE (`epson2:net:192.168.1.10`,
+/// `escl:https://192.168.1.10:443`).
+fn scanner_host(device: &str) -> Option<String> {
+    if let Some(h) = device.split("://").nth(1) {
+        return h.split([':', '/']).next().map(str::to_string).filter(|h| !h.is_empty());
+    }
+    device.split(":net:").nth(1).map(|h| h.trim().to_string())
+}
+
+/// « Epson ET-4800 Series platen,adf scanner » → « epson et-4800 series ».
+fn scanner_key(name: &str) -> String {
+    let n = name.to_lowercase();
+    let cut = [" platen", " adf", " flatbed", " scanner", " sheetfed"].iter().filter_map(|w| n.find(w)).min().unwrap_or(n.len());
+    n[..cut].trim().to_string()
 }
 
 pub fn scanners() -> Result<Vec<Scanner>, String> {
@@ -916,6 +1013,28 @@ Device: uri = usb://Brother/DCP-L2530DW%20series?serial=U6\n        class = dire
         assert_eq!(v.len(), 2);
         assert_eq!(v[0].name, "HP LaserJet Pro M404");
         assert_eq!(v[1].kind, "USB");
+    }
+
+    #[test]
+    fn reel_debian() {
+        // Sorties relevées sur Debian sid (EPSON ET-4800, file créée par cups-browsed).
+        let s = "device `epson2:net:192.168.1.10' is a Epson PID flatbed scanner\ndevice `escl:https://192.168.1.10:443' is a Epson ET-4800 Series platen,adf scanner\ndevice `airscan:e0:EPSON ET-4800 Series' is a eSCL EPSON ET-4800 Series ip=192.168.1.10\n";
+        let v = parse_scanners(&format!("<html>\n<body></body></HTML>{s}"));
+        assert_eq!(v.len(), 1);
+        assert!(v[0].device.starts_with("airscan:"));
+        let l = "Device: uri = testfile:/tmp/lpr-testfile.out\n        class = direct\n        info = Unknown\n        make-and-model = Unknown\n\
+Device: uri = cups-brf:/\n        class = file\n        info = CUPS-BRF\n        make-and-model = Virtual Braille BRF Printer\n\
+Device: uri = ipps://EPSON%20ET-4800%20Series._ipps._tcp.local/\n        class = network\n        info = EPSON ET-4800 Series (driverless)\n        make-and-model = EPSON ET-4800 Series\n        device-id = MFG:EPSON;MDL:ET-4800 Series;CMD:PWGRaster,AppleRaster,PWG,URF,JPEG;\n";
+        let f = parse_lpinfo(l);
+        assert_eq!(f.len(), 1);
+        assert!(f[0].driverless);
+        assert_eq!(f[0].title(), "EPSON ET-4800 Series");
+        assert_eq!(parse_lpstat_state("printer EPSON is idle.  enabled since Tue Nov 17 2026\n"), State::Idle);
+        assert_eq!(parse_lpstat_state("printer EPSON disabled since Tue Nov 17 2026 -\n\tPaused\n"), State::Stopped);
+        let j = parse_lpstat_jobs("EPSON_ET_4800_Series-12 chomiam 1024 Tue Nov 17 10:00:00 2026\n", "EPSON_ET_4800_Series");
+        assert_eq!((j[0].id.as_str(), j[0].size), ("12", 1024));
+        let avahi = "=;eno1;IPv4;EPSON\\032ET-4800\\032Series;_ipps._tcp;local;EPSONF1F248.local;192.168.1.10;631;\"TLS=1.2\" \"adminurl=http://EPSONF1F248.local.:80/PRESENTATION/BONJOUR\"\n";
+        assert_eq!(parse_avahi(avahi, "EPSON ET-4800 Series").as_deref(), Some("http://EPSONF1F248.local.:80/PRESENTATION/BONJOUR"));
     }
 
     #[test]

@@ -22,6 +22,7 @@ libspa-0.2-bluetooth
 # Imprimantes (voir debian/control) et scanners
 cups
 cups-browsed
+cups-bsd
 cups-filters
 avahi-daemon
 avahi-utils
