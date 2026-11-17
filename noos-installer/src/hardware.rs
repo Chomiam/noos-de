@@ -172,7 +172,7 @@ pub fn plan(hw: &Hardware, nonfree: bool) -> Plan {
         ],
     );
     if nonfree {
-        push(&mut p.packages, &["firmware-linux", "firmware-misc-nonfree", "firmware-realtek", "firmware-iwlwifi", "firmware-atheros", "firmware-brcm80211", "firmware-sof-signed"]);
+        push(&mut p.packages, &["firmware-linux", "firmware-misc-nonfree", "firmware-realtek", "firmware-iwlwifi", "firmware-atheros", "firmware-brcm80211", "firmware-mediatek", "firmware-sof-signed"]);
         p.summary.push("Codecs complets : H.264/H.265, AAC, MP3, photos HEIC d'iPhone (ffmpeg, GStreamer) ; firmwares Wi-Fi, son et graphiques".into());
     } else {
         p.summary.push("Codecs de Debian (H.264/H.265, AAC, MP3…) ; contrib / non-free désactivés : pas de pilote NVIDIA ni de firmwares non libres".into());
@@ -194,7 +194,13 @@ pub fn plan(hw: &Hardware, nonfree: bool) -> Plan {
             }
             Vendor::Intel => {
                 push(&mut p.packages, &["mesa-vulkan-drivers"]);
-                push(&mut p.packages, if nonfree { &["intel-media-va-driver-non-free"] } else { &["intel-media-va-driver"] });
+                // firmware-intel-graphics (DMC, GuC/HuC) : séparé de firmware-misc-nonfree dans
+                // sid ; sans lui, i915 coupe la gestion d'énergie de la carte.
+                if nonfree {
+                    push(&mut p.packages, &["intel-media-va-driver-non-free", "firmware-intel-graphics"]);
+                } else {
+                    push(&mut p.packages, &["intel-media-va-driver"]);
+                }
                 p.summary.push(format!("{} : pilote libre Intel (Mesa), décodage vidéo matériel", g.name));
             }
             Vendor::Nvidia(generation) => match (generation, nonfree) {
@@ -289,6 +295,7 @@ mod tests {
 
         let p = plan(&Hardware { gpus: vec![gpu(0x8086, 0x3e91), gpu(0x10de, 0x1f82)], vm: None }, true);
         assert!(p.packages.contains(&"intel-media-va-driver-non-free".to_string()) && p.packages.contains(&"switcheroo-control".to_string()));
+        assert!(p.packages.contains(&"firmware-intel-graphics".to_string()));
 
         let p = plan(&Hardware { gpus: vec![gpu(0x1002, 0x73bf)], vm: None }, false);
         assert!(!p.packages.contains(&"firmware-amd-graphics".to_string()));

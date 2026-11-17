@@ -280,6 +280,11 @@ compositeur y écrit (`[desktops] names`).
   ≥ 126 (sid : 128) : systemd le lance par `/run/polkit/agent-helper.socket` ; l'agent
   (`noos-shell/src/polkit.rs`) y écrit l'utilisateur puis le cookie, sinon « Incorrect
   permissions … (needs to be setuid root) » et aucune élévation ne passe.
+- **Initramfs sans busybox** : le `mount` de klibc ne connaît pas `relatime` et le passe au
+  système de fichiers → `efivarfs: Unknown parameter 'relatime'` / « mount … Invalid argument »
+  (script `00_mount_efivarfs` de mdadm, tiré par udisks2). `busybox` en dépendance. Firmware
+  Intel (DMC, GuC) = `firmware-intel-graphics`, séparé de `firmware-misc-nonfree`. L'ISO live
+  embarque les firmwares Wi-Fi (installation réseau sur portable).
 - **Rendu logiciel (llvmpipe, VM sans 3D)** : attendre la fin du dessin (`glFinish`) avant
   d'afficher, sinon tuiles noires / restes d'images.
 - **Verrouillage** (`noos-comp/src/lock.rs`) : tant que le verrou est actif, seules les surfaces

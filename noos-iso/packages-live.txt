@@ -12,3 +12,13 @@ gdisk
 parted
 libtimezonemap1
 grub-common
+# Firmwares non libres (non-free-firmware) : Wi-Fi indispensable à l'installation réseau sur
+# un portable, cartes graphiques Intel (DMC : économie d'énergie) et AMD
+firmware-iwlwifi
+firmware-realtek
+firmware-atheros
+firmware-brcm80211
+firmware-mediatek
+firmware-intel-graphics
+firmware-amd-graphics
+firmware-misc-nonfree

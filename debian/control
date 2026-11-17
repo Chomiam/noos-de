@@ -44,6 +44,14 @@ Depends: ${shlibs:Depends},
 # Image.Text du script Plymouth : sans ce greffon, plymouthd plante (SIGSEGV).
          plymouth-label,
          initramfs-tools,
+# mount de busybox dans l'initramfs (celui de klibc refuse « relatime » : erreur de montage
+# d'efivarfs au démarrage)
+         busybox,
+         wireless-regdb,
+# Audio temps réel (PipeWire), batterie, téléphones Android (MTP)
+         rtkit,
+         upower,
+         libmtp-runtime,
          polkitd,
          pkexec,
          sudo,

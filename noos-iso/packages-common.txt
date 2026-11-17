@@ -22,6 +22,16 @@ plymouth
 # Texte du thème Plymouth (Image.Text) : sans lui, plymouthd plante.
 plymouth-label
 initramfs-tools
+# mount de busybox dans l'initramfs : celui de klibc ne connaît pas « relatime » (script
+# efivarfs de mdadm → « mount: … Invalid argument » au démarrage)
+busybox
+# Base de réglementation radio du Wi-Fi (sinon cfg80211 : « failed to load regulatory.db »)
+wireless-regdb
+# Priorité temps réel de PipeWire (audio sans craquements en jeu), batterie (UPower),
+# téléphones Android en MTP (mtp-probe, règle udev de libmtp)
+rtkit
+upower
+libmtp-runtime
 # Pilotes graphiques libres (Mesa) et bibliothèques chargées dynamiquement par GTK
 # (invisibles pour ldd) : OpenGL / GLES / EGL, Vulkan, images.
 libgl1-mesa-dri
