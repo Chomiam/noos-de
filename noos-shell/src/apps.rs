@@ -163,27 +163,31 @@ pub fn all() -> Vec<gio::AppInfo> {
     apps
 }
 
-/// Recherche simple : nom, description, mots-clés.
+/// Recherche simple : nom, description, mots-clés (sans tenir compte des accents).
 pub fn search(query: &str) -> Vec<gio::AppInfo> {
-    let q = query.trim().to_lowercase();
+    let fold = crate::search::fold;
+    let q = fold(query.trim());
     if q.is_empty() {
         return all();
     }
     let mut scored: Vec<(u8, gio::AppInfo)> = all()
         .into_iter()
         .filter_map(|a| {
-            let name = a.display_name().to_lowercase();
+            let name = fold(&a.display_name());
             let score = if name.starts_with(&q) {
                 0
             } else if name.contains(&q) {
                 1
             } else {
-                let desc = a.description().map(|d| d.to_lowercase()).unwrap_or_default();
+                let desc = a.description().map(|d| fold(&d)).unwrap_or_default();
                 let keywords = a
                     .downcast_ref::<gio_unix::DesktopAppInfo>()
-                    .map(|d| d.keywords().iter().map(|k| k.to_lowercase()).collect::<Vec<_>>().join(" "))
+                    .map(|d| d.keywords().iter().map(|k| fold(k)).collect::<Vec<_>>().join(" "))
                     .unwrap_or_default();
-                if desc.contains(&q) || keywords.contains(&q) { 2 } else { return None }
+                // Description et mots-clés : début de mot seulement (« rap » ne doit pas
+                // trouver « wrapper »).
+                let word_start = |hay: &str| hay.split(|c: char| !c.is_alphanumeric()).any(|w| w.starts_with(&q)) || (q.contains(' ') && hay.contains(&q));
+                if word_start(&desc) || word_start(&keywords) { 2 } else { return None }
             };
             Some((score, a))
         })

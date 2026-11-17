@@ -32,7 +32,8 @@ pub struct Taskbar {
     desk_box: gtk::Box,
     status_group: gtk::Box,
     tray_box2: gtk::Box,
-    search_label: gtk::Label,
+    /// Champ de la pastille de recherche (caché sur un dock vertical).
+    search_label: gtk::Text,
     clock_date: gtk::Label,
     vitals: Rc<noos_widget_vitals::Vitals>,
     main: gtk::Box,
@@ -140,23 +141,8 @@ impl Taskbar {
             });
         }
 
-        // ── Recherche ──
-        let search = gtk::Button::new();
-        let search_box = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        search_box.append(&gtk::Image::from_icon_name("system-search-symbolic"));
-        let search_label = gtk::Label::new(Some("Rechercher"));
-        search_label.add_css_class("dim-label");
-        search_box.append(&search_label);
-        search_box.add_css_class("search-pill");
-        search.set_child(Some(&search_box));
-        {
-            let shell = shell.clone();
-            search.connect_clicked(move |_| {
-                if let Some(s) = shell.start.borrow().as_ref() {
-                    s.toggle(Some(""));
-                }
-            });
-        }
+        // ── Recherche : un vrai champ de saisie (search.rs) ──
+        let (search, search_label) = crate::search::pill(shell, &window, monitor, top);
 
         let tasks = gtk::Box::new(gtk::Orientation::Horizontal, 4);
         let main = gtk::Box::new(gtk::Orientation::Horizontal, 4);

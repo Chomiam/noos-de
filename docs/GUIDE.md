@@ -261,6 +261,46 @@ coins. Des widgets se posent librement sur le bureau : horloge, ressources, note
 gardé), calendrier. Les mêmes réglages sont dans Paramètres › Personnalisation › Barre des
 tâches.
 
+## Recherche (barre des tâches et menu Démarrer)
+
+La pastille « Rechercher » de la barre est un **vrai champ de saisie**, comme sous Windows 11 :
+on clique et on tape tout de suite dedans. Les résultats s'affichent en direct dans un panneau
+collé à la barre (au-dessus du dock en bas, au-dessous d'une barre en haut, y compris la barre
+fine), centré sur la pastille :
+
+- **Calcul** : `2+3*4`, `(12+3)*4,5`, `2^10`, `12 × 3`, `10 ÷ 4` (virgule ou point décimal) ;
+  Entrée copie le résultat ;
+- **Applications** (.desktop : nom, puis début des mots de la description et des mots-clés) ;
+- **Paramètres** : pages de `noos-settings` (Wi-Fi, Pare-feu, Arrière-plan…), ouvertes par
+  `noos-settings <page>` ;
+- **Fichiers et dossiers** : fichiers récents (`recently-used.xbel`) puis dossier personnel
+  (5 niveaux, sans les dossiers cachés ni `node_modules` / `target`…), indexé en arrière-plan
+  au plus toutes les 2 minutes. Champ vide : fichiers récents.
+
+Clavier : ↑ ↓ (et Page préc. / suiv.) pour choisir, Entrée pour ouvrir, Échap pour fermer (le
+clavier revient à la fenêtre d'avant). Un clic ailleurs ferme aussi la recherche ; le champ est
+alors vidé. Les accents ne comptent pas (« parametres » trouve « Paramètres »).
+
+**Super** ouvre le menu Démarrer, dont le champ a le clavier : on tape aussitôt, avec les mêmes
+résultats et les mêmes touches. Sur un dock vertical (gauche / droite), la pastille n'est
+qu'une loupe et ouvre cette recherche du menu Démarrer.
+
+Fonctionnement (`noos-shell/src/search.rs`) : la barre est en `KeyboardMode::None` (un clic sur
+une icône ne prend pas le clavier à la fenêtre active). Le pointeur au-dessus de la pastille la
+passe en `OnDemand`, si bien que le clic suivant lui donne le clavier (`focus_layer_under` du
+compositeur, journal « clic : clavier donné au panneau ») ; la recherche finie, elle repasse en
+`None`. Le panneau de résultats (`noos-search`) n'a jamais le clavier : le champ de la barre
+pilote sa sélection. Si la barre n'a pas reçu le clavier 600 ms après le clic (autre
+compositeur), la recherche se fait dans le menu Démarrer.
+
+Démo sans clic : `NOOS_SEARCH_DEMO=texte` (saisie simulée dans la pastille du dock, une lettre
+toutes les 80 ms), `NOOS_SEARCH_DEMO='texte;down;down'` (flèches), `NOOS_SEARCH_DEMO=start:texte`
+(dans le menu Démarrer) :
+
+```bash
+tools/preview/shell_shot.sh recherche.png 6 NOOS_SEARCH_DEMO='(12+3)*4,5'
+```
+
 ## Mises à jour
 
 Un service de la session (`noos-update-check.timer`) recherche les mises à jour en
@@ -707,7 +747,7 @@ Dans un terminal, `pkexec` garde sa propre invite texte (comme sous GNOME) ; ajo
 
 | Raccourci | Action |
 |---|---|
-| Super | Menu Démarrer |
+| Super | Menu Démarrer (taper aussitôt pour rechercher) |
 | Super+E / Super+I / Super+Entrée | Explorateur / Paramètres / Terminal (noos-term) |
 | Super+← / → | Moitié gauche / droite, puis 2/3 et 1/3 en répétant |
 | Super+↑ / ↓ | Maximiser / restaurer-réduire ; depuis une moitié : quart du haut / du bas |
@@ -757,7 +797,7 @@ décodage inverse, l'image doit rester identique) ou `NOOS_HDR_PREVIEW=pq` (sign
 ## Effets de transparence (Mica)
 
 Quand les effets de transparence sont activés, le compositeur floute le fond d'écran sous la
-barre des tâches, le menu Démarrer, les réglages rapides et le centre de notifications. C'est le
+barre des tâches, le menu Démarrer, le panneau de recherche, les réglages rapides et le centre de notifications. C'est le
 « Mica » de Windows 11 : le flou est calculé une seule fois par fond d'écran, réduit 8× sur le
 processeur, puis affiché sous les panneaux avec des coins arrondis. Le coût par image est nul.
 Ce qui passe derrière (les fenêtres) n'est pas flouté : ce serait l'« acrylique », plus coûteux.

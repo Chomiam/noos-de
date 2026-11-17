@@ -36,6 +36,7 @@ const BLUR_LAYERS: &[(&str, bool)] = &[
     ("noos-startmenu", true),
     ("noos-quicksettings", true),
     ("noos-notification-center", true),
+    ("noos-search", true),
 ];
 
 struct Wallpaper {
