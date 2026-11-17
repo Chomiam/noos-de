@@ -260,6 +260,11 @@ fn apply_ssh(cfg: &SystemConfig) -> anyhow::Result<()> {
     }
     let old = std::fs::read_to_string(conf::SSHD_DROPIN).ok();
     write(conf::SSHD_DROPIN, &conf::sshd_dropin(&cfg.ssh))?;
+    // `sshd -t` exige /run/sshd, que systemd ne crée que service lancé (RuntimeDirectory).
+    if !Path::new("/run/sshd").exists() {
+        use std::os::unix::fs::DirBuilderExt;
+        let _ = std::fs::DirBuilder::new().mode(0o755).create("/run/sshd");
+    }
     if let Err(e) = cmd(&["sshd", "-t"]) {
         match old {
             Some(o) => write(conf::SSHD_DROPIN, &o)?,
