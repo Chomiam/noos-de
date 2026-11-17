@@ -1,0 +1,30 @@
+[package]
+name = "noos-share"
+description = "Partage de fichiers en réseau local de NOOS : Samba (SMB), SSH / SFTP, WebDAV (rclone) — modèle, génération des configurations, état des services, script privilégié"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "noos_share"
+path = "src/lib.rs"
+
+# Script privilégié (pkexec, action polkit org.noos.share.helper) : écrit la configuration de
+# Samba et de sshd, (dés)active les services, synchronise les règles du pare-feu NOOS.
+[[bin]]
+name = "noos-share-helper"
+path = "src/bin/noos-share-helper.rs"
+
+# Serveur WebDAV de l'utilisateur (service systemd utilisateur noos-webdav) : lance rclone.
+[[bin]]
+name = "noos-webdav"
+path = "src/bin/noos-webdav.rs"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+anyhow.workspace = true
+noos-firewall = { path = "../noos-firewall" }
+bcrypt = "0.17"
+libc = "0.2"

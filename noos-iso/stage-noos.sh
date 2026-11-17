@@ -21,7 +21,7 @@ BINS=(noos-comp noos-shell noos-file noos-settings noos-software noos-pkg noos-s
 cd "$ROOT"
 args=()
 for b in "${BINS[@]}"; do args+=(-p "$b"); done
-cargo build --release "${args[@]}"
+cargo build --release "${args[@]}" -p noos-share
 
 rm -rf "$DEST"
 mkdir -p "$PREFIX/bin" "$PREFIX/lib" "$PREFIX/share/noos/install" "$PREFIX/share/applications"
@@ -30,6 +30,9 @@ for b in "${BINS[@]}"; do
 done
 # Démon du pare-feu (deuxième binaire du crate noos-firewall).
 install -m755 target/release/noos-firewalld "$PREFIX/bin/noos-firewalld"
+# Partage de fichiers : serveur WebDAV de l'utilisateur et script privilégié.
+install -m755 target/release/noos-webdav "$PREFIX/bin/noos-webdav"
+install -Dm755 target/release/noos-share-helper "$PREFIX/libexec/noos-share-helper"
 for f in target/libadapta-build/src/libadapta-1.so*; do
     [ -d "$f" ] || cp -P "$f" "$PREFIX/lib/"
 done
@@ -50,6 +53,7 @@ install -Dm644 /dev/stdin "$SYS/etc/ld.so.conf.d/noos.conf" <<<"/opt/noos/lib"
 "$ROOT/noos-save/install-system.sh" "$SYS" /opt/noos
 "$ROOT/noos-disk/install-system.sh" "$SYS" /opt/noos
 "$ROOT/noos-firewall/install-system.sh" "$SYS" /opt/noos
+"$ROOT/noos-share/install-system.sh" "$SYS" /opt/noos
 install -Dm755 "$ROOT/noos-disk/noos-disk-helper" "$PREFIX/libexec/noos-disk-helper"
 install -Dm755 "$ROOT/noos-save/noos-save-helper" "$PREFIX/libexec/noos-save-helper"
 # Thème GRUB : sources dans /usr/share/noos-grub (l'installateur le copie dans /boot).

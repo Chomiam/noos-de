@@ -24,6 +24,16 @@ libpam-gnome-keyring
 gcr
 gvfs
 gvfs-backends
+# Partage de fichiers en réseau local : Samba + annonces (wsdd2, Avahi, noms .local), SSH / SFTP,
+# WebDAV (rclone, openssl) ; wsdd = découverte des PC Windows dans l'Explorateur (gvfs)
+samba
+wsdd2
+wsdd
+avahi-daemon
+libnss-mdns
+openssh-server
+rclone
+openssl
 flatpak
 appstream
 # AppImage (Logiciels) : runtimes FUSE 2 et 3, lecture de l'icône et du .desktop

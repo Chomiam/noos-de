@@ -44,6 +44,15 @@ if [ "$1" = configure ]; then
         systemctl restart noos-firewall.service >/dev/null 2>&1 || true
     fi
 
+    # Partage de fichiers, une seule fois (/etc/noos/sharing.toml) : dossier personnel partagé
+    # sur le réseau local, avec authentification (mot de passe de partage choisi ensuite par
+    # l'utilisateur dans Paramètres : sans lui, personne ne peut se connecter). Un serveur SSH
+    # déjà utilisé garde son état ; un openssh-server qui vient d'arriver reste désactivé.
+    if [ ! -e /var/lib/noos/sharing ]; then
+        /opt/noos/libexec/noos-share-helper init >/dev/null 2>&1 || true
+        touch /var/lib/noos/sharing
+    fi
+
     # Profils d'énergie, une seule fois (l'utilisateur peut les couper).
     if [ ! -e /var/lib/noos/power-profiles ]; then
         systemctl enable power-profiles-daemon.service >/dev/null 2>&1 || true

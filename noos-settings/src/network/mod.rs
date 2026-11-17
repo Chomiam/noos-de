@@ -1,9 +1,11 @@
 //! Réseau et Internet : état de la connexion avec débit en direct, Wi-Fi, propriétés et
 //! adresse IP, DNS (fournisseurs, confidentialité, DNS over TLS), VPN WireGuard, point
-//! d'accès mobile et diagnostic. Tout passe par NetworkManager (`nm.rs`).
+//! d'accès mobile et diagnostic. Tout passe par NetworkManager (`nm.rs`). Partage de fichiers
+//! (Samba, SSH et SFTP, WebDAV) : `sharing.rs`.
 
 pub mod dns;
 pub mod nm;
+pub mod sharing;
 pub mod vpn;
 pub mod wifi;
 
@@ -24,6 +26,7 @@ struct Overview {
     dns: Option<nm::DnsState>,
     vpns: Vec<Connection>,
     speed: Option<u32>,
+    sharing: sharing::Summary,
 }
 
 fn overview() -> Overview {
@@ -38,6 +41,7 @@ fn overview() -> Overview {
         info,
         dns,
         speed,
+        sharing: sharing::summary(),
     }
 }
 
@@ -160,6 +164,7 @@ fn render_root(app: &Rc<App>, holder: &gtk::Box, ov: &Overview) {
     }
     g.add(&link(app, "system-search-symbolic", "Diagnostic", "Trouver pourquoi Internet ne fonctionne pas", diagnostics));
     holder.append(&g);
+    holder.append(&sharing::links(app, &ov.sharing));
 
     let g = group("Cartes réseau");
     for d in &ov.devices {

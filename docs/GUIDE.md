@@ -16,6 +16,7 @@
 | `noos-pkg/` | Bibliothèque + CLI `noos-pkg` : apt et Flatpak, sources APT regroupées, rapprochement AppStream (DEP-11) |
 | `noos-firewall/` | **Pare-feu applicatif** : démon `noos-firewalld` (root, nftables + NFQUEUE), CLI `noos-firewall`, bibliothèque partagée (règles, protocole) |
 | `noos-firewall-prompt/` | Fenêtre d'autorisation du pare-feu (agent de session, GTK4 + libAdapta) |
+| `noos-share/` | **Partage de fichiers** en réseau local : modèle et fichiers générés (Samba, sshd, Avahi, règles du pare-feu), état des services, `noos-share-helper` (pkexec), `noos-webdav` (service utilisateur, rclone) |
 | `noos-keys/` | **Porte-clés** : mots de passe du Secret Service (gnome-keyring, oo7), trousseaux, clés SSH |
 | `noos-term/` | **Terminal** (VTE) : onglets, menu clic droit, thèmes, taille du texte, barre latérale d'alias (ex. `claude`) |
 | `noos-snip/` | **Outil Capture d'écran** (Win+Maj+S) : rectangle, fenêtre, plein écran, forme libre, annotation |
@@ -136,6 +137,20 @@ Sans machine Linux : onglet **Actions › ISO › Run workflow** sur GitHub (art
   automatique près du haut et du bas ; Ctrl ou Maj ajoute à la sélection existante.
 - « Ouvrir avec », corbeille complète (restaurer, supprimer définitivement, vider), Suppr /
   Maj+Suppr, F2, Ctrl+A, Ctrl+F, Ctrl+1 / Ctrl+2, page « dossier vide ».
+- **Réseau** (`src/network.rs`, barre latérale, adresse `network:///`) : appareils découverts par
+  gvfs (`network:///` : PC Windows par WSD — programme `wsdd` du paquet du même nom —, Mac, NAS,
+  SFTP, WebDAV annoncés en mDNS), partages ouverts (bouton Déconnecter), serveurs récents
+  (`~/.local/share/noos/recent-servers`), lien vers les réglages de partage de ce PC.
+  **Se connecter à un serveur** : `smb://`, `sftp://`, `dav(s)://`, `ftp://`, ou `\\PC\partage`
+  tapé comme sous Windows (converti en `smb://PC/partage`) ; aussi depuis la barre d'adresse.
+  Un emplacement distant est **monté avant d'être affiché** (`gio::MountOperation`) : fenêtre
+  d'identifiants libAdapta (compte, domaine, mot de passe, invité si permis, **« Retenir le mot
+  de passe »** = `PasswordSave::Permanently`, enregistré par gvfs dans le trousseau) et questions
+  de gvfs (certificat inconnu : empreinte SHA-1). Piège : le gestionnaire par défaut de
+  `GMountOperation` répond « non traité » aussitôt ; nos gestionnaires arrêtent l'émission du
+  signal (`stop_signal_emission_by_name`). `ask-question` n'est pas généré par gtk-rs :
+  `connect_local`. Dans un `dbus-run-session`, gvfs attend un trousseau verrouillé (pas de
+  fenêtre) : tester les montages dans une vraie session.
 
 ## Photos (noos-photoview)
 
@@ -305,6 +320,58 @@ d'éjection.
   bouclier apparaît quand un VPN est actif et son menu change de profil en un clic ;
 - **Wi-Fi** (mot de passe enregistré, adresse MAC aléatoire), **adresse IP fixe**, **point
   d'accès mobile** et **diagnostic** guidé.
+- **Partage de fichiers** (`src/network/sharing.rs`, crate `noos-share`) : trois pages, voir
+  « Partage de fichiers en réseau local ».
+
+## Partage de fichiers en réseau local (noos-share)
+
+Paramètres › Réseau et Internet › **Partage de fichiers (Samba)**, **SSH et SFTP**, **WebDAV**
+(`noos-settings samba|ssh|webdav`). Chaque page : interrupteur principal, adresses à utiliser
+depuis un autre appareil (copier, **QR code**), dossiers partagés (ajout, retrait, lecture seule
+ou écriture), appareils connectés (`ss`, noms par `getent`), état des services et du pare-feu.
+
+| Service | Logiciel | Par défaut | Réglages |
+|---|---|---|---|
+| Samba (SMB) | `samba` ; annonces `wsdd2` (Windows, lié à smbd) et Avahi (Mac, Linux, téléphones) | **actif**, dossier personnel de chaque compte (`[homes]`) en lecture et écriture, **personne ne peut se connecter tant que l'utilisateur n'a pas choisi un mot de passe de partage** | dossiers supplémentaires (réservés au compte qui les ajoute), nom du PC, groupe de travail, visibilité WSD, chiffrement SMB 3 (si possible / toujours), mot de passe de partage |
+| SSH / SFTP | `openssh-server` | désactivé (nouvelle installation) ; un serveur SSH déjà utilisé garde son état | port, connexion par mot de passe, clés autorisées (`~/.ssh/authorized_keys` : coller, importer un .pub, retirer ; empreintes SHA-256), empreintes des clés de ce PC |
+| WebDAV | `rclone serve webdav` (service **utilisateur** `noos-webdav`) | désactivé | dossiers (un par entrée à la racine), nom d'utilisateur, mot de passe (htpasswd **bcrypt**), HTTPS (certificat auto-signé P-256 créé par `openssl`, empreintes SHA-256 et SHA-1), port (≥ 1024) |
+
+**Sécurité.** Jamais d'invité (`map to guest = never`, `restrict anonymous = 2`, pas de SMB 1 ni
+NetBIOS). Mot de passe Samba distinct de la session (`unix password sync = no`) : demandé par
+l'interface, passé à `smbpasswd -s -a` par l'entrée standard du script privilégié, jamais sur une
+ligne de commande. Réseau local seulement : `hosts allow` (plages privées, IPv6 lien local et
+ULA) et règles de port du pare-feu NOOS en zone « Réseau local » (étiquettes « Partage NOOS · … »,
+recréées à chaque application ; démon arrêté — installation, chroot — : `rules.json` modifié
+directement). SSH : `PermitRootLogin no`, `KbdInteractiveAuthentication no` ; désactiver le mot
+de passe sans clé demande confirmation.
+
+**Fichiers.** Configuration système `/etc/noos/sharing.toml` (écrite seulement par
+`/opt/noos/libexec/noos-share-helper`, action polkit `org.noos.share.helper`, auth_admin_keep) :
+- smb.conf : bloc `# >>> NOOS … # <<< NOOS` **à la fin**, qui rouvre `[global]` et `[homes]`
+  (Samba garde la dernière valeur : les réglages invités de Debian sont remplacés sans toucher au
+  reste). Piège : les sections lues avant ce bloc ne reprennent pas un `hosts allow` du `[global]`
+  rouvert → répété dans `[homes]` et chaque partage. Vérifié par `testparm` avant écriture ;
+  copie d'origine `smb.conf.avant-noos`. Outil : `cargo run -p noos-share --example gen-smb --
+  /usr/share/samba/smb.conf > smb-test.conf && testparm -s smb-test.conf` ;
+- `/etc/ssh/sshd_config.d/90-noos.conf` (lu avant `sshd_config`, la première valeur l'emporte),
+  vérifié par `sshd -t`, remis en place en cas d'échec ;
+- annonces Avahi `/etc/avahi/services/noos-sftp.service`, `noos-webdav-<compte>.service` ;
+- comptes ayant un mot de passe Samba : `/var/lib/noos/sharing/samba-users` (la base de Samba
+  n'est pas lisible sans root) ;
+- WebDAV : `~/.config/noos/webdav/` (`webdav.toml`, `htpasswd`, `cert.pem`, `key.pem` en 0600) ;
+  configuration rclone dans `$XDG_RUNTIME_DIR` : `alias` (écriture) ou `union` du même dossier
+  deux fois en `:ro` (rclone refuse une union à un seul membre) réunis par un `combine`.
+
+**Script privilégié** : `noos-share-helper init [--fresh]` (postinst « une seule fois »,
+installateur), `apply` (TOML sur l'entrée standard), `samba-password` / `samba-forget` (compte
+de `PKEXEC_UID`), `hostname <nom>` (hostnamectl, ligne `127.0.1.1` de /etc/hosts, Samba, Avahi,
+wsdd2), `webdav <port> https|http|off` (règle du pare-feu et annonce du compte appelant).
+`noos-webdav --password` (entrée standard), `--fingerprint`, `--cert`, `--dry-run`.
+
+**Démonstration** (captures, aucune commande) : `NOOS_SHARE_DEMO=1` (`nopass` : pas de mot de
+passe, `off` : tout désactivé, `missing` : paquets absents), `NOOS_SHARE_QR=1` (premier QR code
+ouvert), `NOOS_FILE_NET_DEMO=1` + `NOOS_FILE_DEMO='network:///;connect'` (ou `;auth`) pour
+l'Explorateur.
 
 ## Logiciels (noos-software / noos-pkg)
 

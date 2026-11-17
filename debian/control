@@ -115,11 +115,26 @@ Depends: ${shlibs:Depends},
          xwayland,
 # Pare-feu applicatif NOOS (noos-firewalld) : nftables + NFQUEUE (netlink, sans
 # libnetfilter-queue) ; pkcheck (polkitd) pour les modifications
-         nftables
+         nftables,
+# Partage de fichiers en réseau local (Paramètres › Réseau et Internet) : Samba (SMB), annonce
+# aux PC Windows (wsdd2, lié à smbd), annonces mDNS (Avahi) et noms .local (libnss-mdns),
+# SSH / SFTP (désactivé tant que l'utilisateur ne l'active pas), WebDAV (rclone serve webdav,
+# service utilisateur ; openssl pour son certificat).
+         samba,
+         wsdd2,
+         avahi-daemon,
+         libnss-mdns,
+         openssh-server,
+         rclone,
+         openssl,
+# Explorateur : emplacements réseau (smb://, sftp://, dav://, network:///) ; wsdd = découverte
+# des PC Windows par gvfs (client WSD, sans service)
+         gvfs,
+         gvfs-backends,
+         wsdd
 Recommends: grim,
             bluez,
             gcr,
-            gvfs,
             xdg-user-dirs,
             firefox | firefox-esr,
 # Thème GTK3 qui suit les couleurs de la palette NOOS

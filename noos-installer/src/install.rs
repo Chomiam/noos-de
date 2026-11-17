@@ -665,6 +665,9 @@ fn install(ctx: &Ctx, c: &Choices) -> anyhow::Result<()> {
     ctx.try_run("chroot", &[TARGET, "flatpak", "remote-modify", "--system", "--no-filter", "--enable", "flathub"]);
     // Thème GRUB NOOS (grub.cfg est régénéré à l'étape GRUB).
     ctx.try_run("chroot", &[TARGET, "/usr/share/noos-grub/install.sh"]);
+    // Partage de fichiers (si le paquet ne l'a pas déjà fait) : dossier personnel partagé en
+    // réseau local avec authentification, SSH désactivé (nouvelle installation).
+    ctx.try_run("chroot", &[TARGET, "/opt/noos/libexec/noos-share-helper", "init", "--fresh"]);
     // Instantanés Btrfs (snapper) : configuration de / et instantanés avant / après apt.
     ctx.line("Configuration des instantanés du système (Sauvegarder et Restaurer)…");
     ctx.try_run("chroot", &[TARGET, "/opt/noos/libexec/noos-save-helper", "setup"]);

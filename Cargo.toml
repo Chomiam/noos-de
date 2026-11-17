@@ -26,6 +26,7 @@ members = [
     "noos-installer",
     "noos-firewall",
     "noos-firewall-prompt",
+    "noos-share",
 ]
 
 [workspace.package]

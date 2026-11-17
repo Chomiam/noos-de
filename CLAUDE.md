@@ -39,6 +39,7 @@ donne le contexte de travail.
 | `noos-pkg/` | Paquets : backend **apt** (`backends/apt.rs` : `apt-cache`, `dpkg-query`, `apt-get -s`, DEP-11) + **sources APT** (`backends/aptsources.rs` : une ligne et deb822, activer / supprimer / composants) + Flatpak ; `sources.rs` regroupe (Debian sid, NOOS, experimental, contrib/non-free manquants) (plus d'ufw : remplacé par `noos-firewall`) |
 | `noos-firewall/` | **Pare-feu applicatif** : démon `noos-firewalld` (root, service `noos-firewall`) — table nftables `inet noos` + NFQUEUE (crate `nfq`, sans libnetfilter-queue) ; programme par `/proc/net/*` → inode → `/proc/<pid>` ; socket `/run/noos-firewall/control.sock` (`SO_PEERCRED` + `pkcheck` `org.noos.firewall.manage`) ; règles `/etc/noos/firewall/` ; CLI `noos-firewall` ; `install-host.sh` (installation depuis le dépôt) |
 | `noos-firewall-prompt/` | Fenêtre d'autorisation (agent de session, `/etc/xdg/autostart`) ; page Paramètres = `noos-settings/src/security.rs` |
+| `noos-share/` | **Partage de fichiers** : Samba (bloc NOOS à la fin de smb.conf, `[homes]` + dossiers, wsdd2, Avahi), SSH (`sshd_config.d/90-noos.conf`), WebDAV (`noos-webdav` = service utilisateur rclone) ; `/etc/noos/sharing.toml` écrit par `noos-share-helper` (pkexec, `org.noos.share.helper`) ; règles du pare-feu « Partage NOOS · … » en zone LAN. Pages `noos-settings/src/network/sharing.rs` ; Explorateur : `noos-file/src/network.rs` (page Réseau, montage gvfs, identifiants + trousseau) |
 | `noos-photoview/` | « Photos » : visionneuse d'images (zoom centré sur le pointeur, ambilight, bande de miniatures, diaporama, EXIF) ; appli par défaut des images (`/etc/xdg/noos-mimeapps.list`) |
 | `noos-login/` | Écran de connexion (greeter greetd, compte `_greetd`), lancé par `noos-greeter` = `noos-comp --kiosk noos-login` |
 | `noos-installer/` | Installateur plein écran : Btrfs @/@home, **debootstrap sid** puis apt dans le chroot (avancement `APT::Status-Fd`), contrib/non-free au choix, i386, paquet `noos` du dépôt APT (sinon copie de l'ISO), GRUB (shim signé en UEFI, `EFI/debian`, entrée NVRAM « NOOS ») |
@@ -168,6 +169,8 @@ compositeur y écrit (`[desktops] names`).
 | `NOOS_HDR_PREVIEW=roundtrip\|pq` | noos-comp imbriqué : écran simulé compatible HDR ; HDR actif = conversion PQ puis décodage inverse (image identique attendue) / signal PQ brut |
 | `NOOS_FIREWALL_DEMO=1\|in\|done` | pare-feu fictif (sans démon) : page Paramètres › Pare-feu (`noos-settings firewall`) et fenêtre d'autorisation `noos-firewall-prompt` (sortie / entrée d'abord / écran « Révoquer ») ; `NOOS_FIREWALL_DIALOG=port\|app` ouvre le dialogue d'ajout |
 | `NOOS_PKG_ELEVATE=sudo\|none` | noos-pkg : élévation par `sudo -n` ou aucune (tests), au lieu de pkexec |
+| `NOOS_SHARE_DEMO=1\|nopass\|off\|missing` (+ `NOOS_SHARE_QR=1`) | noos-settings › Partage (`noos-settings samba\|ssh\|webdav`) : services, dossiers, connexions, clés fictifs (sans mot de passe / tout désactivé / paquets absents) ; premier QR code ouvert |
+| `NOOS_FILE_NET_DEMO=1` | noos-file : appareils, partages et serveurs fictifs dans la page Réseau (`NOOS_FILE_DEMO='network:///;connect'` ou `;auth` : dialogue « Se connecter à un serveur » / fenêtre d'identifiants) |
 
 ### Règles de sécurité (erreurs déjà commises)
 
@@ -326,6 +329,15 @@ compositeur y écrit (`[desktops] names`).
   que GTK 4 n'affiche plus, et le thème cherche aussi dans `/usr/share/pixmaps` (un nom « existe »
   mais mène au XPM) → vérifier le fichier trouvé par `IconTheme::lookup_icon` (`shown_icon`).
   Jamais `gio::AppInfo::executable()` : plante sur une entrée sans `Exec` → `commandline()`.
+- **Partage de fichiers** (`noos-share`) : smb.conf garde le fichier Debian, NOOS ajoute un
+  bloc final qui rouvre `[global]` / `[homes]` (dernière valeur gagnante) ; `hosts allow` répété
+  dans chaque section (les sections déjà lues ne reprennent pas le `[global]` rouvert, vu avec
+  `testparm`). `wsdd2` = serveur WSD (unité liée à smbd) ; `wsdd` = client que gvfs lance pour
+  découvrir les PC Windows (sans lui : « Failed to spawn the wsdd daemon »). OpenSSH 10 affiche
+  `sshd -T` en `Port`, `PasswordAuthentication` (casse). Montages gvfs depuis noos-file :
+  arrêter l'émission de `ask-password` / `ask-question` (sinon réponse « non traité »
+  immédiate) ; dans `dbus-run-session`, gvfs bloque sur le trousseau. rclone : pas d'`union` à
+  un seul membre (même dossier deux fois en `:ro`).
 - **Configuration illisible** : `NoosConfig::save()` garde une copie `noos.toml.illisible`
   avant d'écraser un fichier qui ne se lit plus.
 

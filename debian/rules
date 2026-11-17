@@ -25,14 +25,15 @@ override_dh_auto_configure:
 
 override_dh_auto_build:
 	ninja -C target/libadapta-build
-	cargo build --release --locked $(foreach b,$(BINS),-p $(b))
+	cargo build --release --locked $(foreach b,$(BINS),-p $(b)) -p noos-share
 
 # Les tests sont lancés par la CI (cargo test), pas pendant la construction du paquet.
 override_dh_auto_test:
 
 override_dh_auto_install:
 	install -d $(D)/opt/noos/bin $(D)/opt/noos/lib $(D)/opt/noos/share/noos $(D)/opt/noos/share/applications
-	for b in $(BINS) noos-firewalld; do install -m755 target/release/$$b $(D)/opt/noos/bin/$$b; done
+	for b in $(BINS) noos-firewalld noos-webdav; do install -m755 target/release/$$b $(D)/opt/noos/bin/$$b; done
+	install -Dm755 target/release/noos-share-helper $(D)/opt/noos/libexec/noos-share-helper
 	for f in target/libadapta-build/src/libadapta-1.so*; do [ -d "$$f" ] || cp -P "$$f" $(D)/opt/noos/lib/; done
 	cp -r data/. $(D)/opt/noos/share/noos/
 	install -m644 noos-session/org.noos.*.desktop $(D)/opt/noos/share/applications/
@@ -56,6 +57,8 @@ override_dh_auto_install:
 	./noos-disk/install-system.sh $(D) /opt/noos
 	# Pare-feu applicatif (service noos-firewall, règle polkit, fenêtre d'autorisation).
 	./noos-firewall/install-system.sh $(D) /opt/noos
+	# Partage de fichiers (règle polkit du script privilégié, service utilisateur WebDAV).
+	./noos-share/install-system.sh $(D) /opt/noos
 	# Thème GRUB : sources ici, copiées dans /boot/grub/themes/noos par postinst.
 	install -d $(D)/usr/share/noos-grub
 	install -m644 noos-grub/noos/* $(D)/usr/share/noos-grub/

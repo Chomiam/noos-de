@@ -378,5 +378,14 @@ button.da-tile .da-tile-app { font-weight: 700; }
 .net-speed.net-fastest { color: #3ccf72; }
 .net-down { color: #4cc2ff; } .net-up { color: #ff8fb1; }
 .net-graph { background: alpha(@window_fg_color, 0.03); border-radius: 6px; }
+/* ── Partage de fichiers ── */
+.win11 list.boxed-list > row.share-warn { background-color: alpha(#ffb43c, 0.10); border-color: alpha(#ffb43c, 0.35); }
+row.share-warn .win11-row-icon { color: #ffb43c; }
+row.share-empty .win11-row-icon { color: alpha(@window_fg_color, 0.45); }
+row.share-empty .title { color: alpha(@window_fg_color, 0.75); }
+row.share-address-row .subtitle, .share-address { font-family: monospace; font-size: 0.95em; }
+.share-qr { border-radius: 8px; }
+.net-badge.net-idle-badge { background: alpha(@window_fg_color, 0.08); color: alpha(@window_fg_color, 0.65); }
+.share-key-input { padding: 8px; font-size: 0.9em; }
 .swatch { min-width: 30px; min-height: 30px; border-radius: 99px; padding: 0; }
 "#;

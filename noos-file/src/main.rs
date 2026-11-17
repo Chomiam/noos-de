@@ -7,9 +7,11 @@
 //! - volet de détails (Alt+P) et aperçu rapide (Espace) (`preview.rs`) ;
 //! - glisser-déposer (déplacer, Ctrl : copier), « Ouvrir avec » ;
 //! - copies et déplacements suivis (progression, vitesse, temps restant, annulation) (`transfers.rs`) ;
-//! - corbeille : restaurer, supprimer définitivement, vider.
+//! - corbeille : restaurer, supprimer définitivement, vider ;
+//! - Réseau : appareils découverts, partages ouverts, « Se connecter à un serveur » (`network.rs`).
 
 mod home;
+mod network;
 mod preview;
 mod rubberband;
 mod thumbs;
@@ -147,8 +149,9 @@ fn human_size(bytes: i64) -> String {
     glib::format_size(bytes.max(0) as u64).to_string()
 }
 
+/// Page virtuelle (Accueil ou Réseau) : pas de liste de fichiers.
 fn is_home(f: &gio::File) -> bool {
-    f.uri() == HOME_URI
+    f.uri() == HOME_URI || network::is_network(f)
 }
 
 fn is_trash(f: &gio::File) -> bool {
@@ -535,6 +538,7 @@ impl Explorer {
         }
         places.push(("Ce PC".into(), themed("drive-harddisk-symbolic"), gio::File::for_path("/")));
         let n_places = places.len();
+        places.push(("Réseau".into(), themed("network-workgroup-symbolic"), gio::File::for_uri(network::NETWORK_URI)));
         places.push(("Corbeille".into(), themed("user-trash-symbolic"), gio::File::for_uri(TRASH_URI)));
         // Disques et clés USB (udisks2) : montés ou non ; éjection des périphériques externes.
         let volumes = drive_volumes();
@@ -587,8 +591,8 @@ impl Explorer {
                 }
             }
             row.set_child(Some(&h));
-            // Séparateurs : après « Dossier personnel » et avant « Ce PC ».
-            if i == 2 || label == "Ce PC" {
+            // Séparateurs : après « Dossier personnel », avant « Ce PC » et « Réseau ».
+            if i == 2 || label == "Ce PC" || label == "Réseau" {
                 row.add_css_class("section-start");
             }
             if let Some(v) = vol {
@@ -776,7 +780,7 @@ impl Explorer {
             }));
         }
         // NOOS_FILE_DEMO=<chemin>[;details][;list][;select=0,2][;look][;zoom=3][;sort=size][;copy=<source>]
-        //                [;menu][;mount][;trash]
+        //                [;menu][;mount][;trash][;connect][;auth]   (network:/// : page Réseau)
         if let Ok(spec) = std::env::var("NOOS_FILE_DEMO") {
             let ex = self.clone();
             after(300, Box::new(move || {
@@ -815,6 +819,13 @@ impl Explorer {
                             });
                         }
                         None if part == "list" => ex.activate("view", Some(&"details".to_variant())),
+                        // Réseau : « Se connecter à un serveur » / fenêtre d'identifiants (exemple).
+                        None if part == "connect" => {
+                            glib::timeout_add_local_once(std::time::Duration::from_millis(1200), || network::connect_dialog("\\\\SALON\\Photos"));
+                        }
+                        None if part == "auth" => {
+                            glib::timeout_add_local_once(std::time::Duration::from_millis(1200), network::demo_credentials);
+                        }
                         None if part == "look" => {
                             let ex = ex.clone();
                             glib::timeout_add_local_once(std::time::Duration::from_millis(2200), move || ex.quick_look());
@@ -992,13 +1003,21 @@ impl Explorer {
     // ───────────────────────── Navigation ─────────────────────────
 
     fn navigate(&self, file: gio::File, push_history: bool) {
+        // Partage distant pas encore ouvert : montage (identifiants), puis navigation.
+        if network::needs_mount(&file) {
+            network::open(file);
+            return;
+        }
         let previous = self.current.replace(file.clone());
         if push_history && !previous.equal(&file) {
             self.back.borrow_mut().push(previous);
             self.forward.borrow_mut().clear();
         }
         self.selection.unselect_all();
-        if is_home(&file) {
+        if network::is_network(&file) {
+            self.view_stack.set_visible_child_name("home");
+            network::fill(&self.home_box);
+        } else if is_home(&file) {
             self.view_stack.set_visible_child_name("home");
             let nav: home::Nav = Rc::new(|f| {
                 if let Some(ex) = explorer() {
@@ -1187,8 +1206,12 @@ impl Explorer {
     }
 
     fn label_of(f: &gio::File) -> String {
-        if is_home(f) {
+        if network::is_network(f) {
+            "Réseau".into()
+        } else if is_home(f) {
             "Accueil".into()
+        } else if network::is_remote(f) {
+            network::remote_label(f)
         } else if f.equal(&gio::File::for_path(glib::home_dir())) {
             "Dossier personnel".into()
         } else if f.uri() == TRASH_URI {
@@ -1209,6 +1232,9 @@ impl Explorer {
             }
         }
         chain.reverse();
+        if network::is_remote(file) && !network::is_network(file) {
+            chain.insert(0, gio::File::for_uri(network::NETWORK_URI));
+        }
         // Raccourcit le chemin sous le dossier personnel : « Dossier personnel › Documents ».
         let home = gio::File::for_path(glib::home_dir());
         if let Some(pos) = chain.iter().position(|f| f.equal(&home)) {
@@ -1274,7 +1300,9 @@ impl Explorer {
                 self.crumbs.append(&sep);
             }
         }
-        let full = if is_home(file) {
+        let full = if network::is_network(file) {
+            "Réseau".into()
+        } else if is_home(file) {
             "Accueil".into()
         } else {
             file.path().map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|| file.uri().to_string())
@@ -1326,7 +1354,7 @@ impl Explorer {
             let _ = bar;
         });
         if is_home(&current) {
-            self.status.set_text("Accueil");
+            self.status.set_text(if network::is_network(&current) { "Réseau" } else { "Accueil" });
             self.empty_page.set_visible(false);
             return;
         }

@@ -1,0 +1,16 @@
+[Unit]
+Description=Partage WebDAV de NOOS (rclone serve webdav)
+Documentation=https://github.com/Chomiam/noos-de/blob/main/docs/GUIDE.md
+After=network-online.target
+ConditionPathExists=%h/.config/noos/webdav/webdav.toml
+
+[Service]
+ExecStart=/opt/noos/bin/noos-webdav
+Restart=on-failure
+RestartSec=5
+# Le serveur ne voit que ce que voit l'utilisateur ; il n'a besoin d'aucun privilège.
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=default.target
