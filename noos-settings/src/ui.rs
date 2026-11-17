@@ -153,10 +153,13 @@ pub fn page(app: &Rc<App>, crumbs: &[&str], title: &str) -> (adap::NavigationPag
 
     let clamp = adap::Clamp::builder().maximum_size(1000).tightening_threshold(700).child(&content).build();
     let scroll = gtk::ScrolledWindow::builder().child(&clamp).hscrollbar_policy(gtk::PolicyType::Never).vexpand(true).build();
-    // Tests (captures) : `NOOS_SETTINGS_SCROLL=<px>` fait défiler la page après son affichage.
+    // Tests (captures) : `NOOS_SETTINGS_SCROLL=<px>` fait défiler la page après son affichage
+    // (au bout de `NOOS_SETTINGS_SCROLL_DELAY` ms, 1500 par défaut : plus pour un contenu chargé
+    // par le réseau).
     if let Some(y) = std::env::var("NOOS_SETTINGS_SCROLL").ok().and_then(|v| v.parse::<f64>().ok()) {
         let s = scroll.clone();
-        glib::timeout_add_local_once(std::time::Duration::from_millis(1500), move || s.vadjustment().set_value(y));
+        let delay = std::env::var("NOOS_SETTINGS_SCROLL_DELAY").ok().and_then(|v| v.parse().ok()).unwrap_or(1500);
+        glib::timeout_add_local_once(std::time::Duration::from_millis(delay), move || s.vadjustment().set_value(y));
     }
     let tv = adap::ToolbarView::new();
     let hb = adap::HeaderBar::new();

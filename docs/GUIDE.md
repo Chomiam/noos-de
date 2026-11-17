@@ -380,7 +380,7 @@ L'organisation reprend celle de Windows 11 : compte et recherche dans la barre l
 | Système › Notifications | Ne pas déranger, son, durée des bannières, notification de test |
 | Système › Alimentation | Profil d'alimentation (power-profiles-daemon / tuned-ppd), extinction de l'écran et veille après inactivité, inhibition en plein écran |
 | Système › Informations | Processeur, mémoire, carte graphique, renommer le PC |
-| Personnalisation | Thèmes rapides, arrière-plan (dont les images du jour Bing, avec changement quotidien automatique), couleurs, thèmes libAdapta, barre des tâches (hauteur 28 à 96 px, icônes des applis actives regroupées dans « ^ » ou étalées), polices |
+| Personnalisation | Thèmes rapides, arrière-plan (images du jour Bing, avec changement quotidien automatique et bouton « Jours précédents » : l'archive de Bing s'arrête à 15 jours ; fonds Wallhaven au hasard ou par recherche, 24 par page, bouton « Charger plus d'images » jusqu'à la dernière page — retour à la page 1 à chaque nouvelle recherche, graine conservée pour que le hasard ne repasse pas les mêmes images), couleurs, thèmes libAdapta, barre des tâches (hauteur 28 à 96 px, icônes des applis actives regroupées dans « ^ » ou étalées), polices |
 | Confidentialité › Pare-feu | Détection firewalld / ufw / nftables / iptables, bouclier vert / rouge / orange, ouverture et fermeture de ports, installation d'un pare-feu |
 
 Une page s'ouvre directement avec `noos-settings <page>` (`display`, `power`, `firewall`, `taskbar`, `colors`…).

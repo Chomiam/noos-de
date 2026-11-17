@@ -154,7 +154,8 @@ compositeur y écrit (`[desktops] names`).
 | `NOOS_DRIVES_OPEN=1` / `NOOS_AUTOPLAY_DEMO=1` | noos-shell : menu « Retirer en toute sécurité » ouvert / fenêtre « Lecture automatique » du premier disque externe |
 | `NOOS_SHADER_CATALOG=<fichier ou URL>` | catalogue d'animations à utiliser (ex. `data/shaders/catalog/index.json` avant de pousser) |
 | `NOOS_DEMO_NAME="Alex Martin"` | nom affiché (menu Démarrer, Paramètres) à la place du vrai : captures publiques |
-| `NOOS_SETTINGS_SCROLL=px` | noos-settings : défile la page ouverte (captures) |
+| `NOOS_SETTINGS_SCROLL=px` (+ `NOOS_SETTINGS_SCROLL_DELAY=ms`) | noos-settings : défile la page ouverte (captures), au bout de 1500 ms par défaut (plus quand le contenu vient du réseau) |
+| `NOOS_WALLHAVEN_SEARCH=mot` / `NOOS_WALLHAVEN_PAGES=n` / `NOOS_BING_PAGES=2` | noos-settings › Arrière-plan (`noos-settings background`) : recherche Wallhaven préremplie, n pages chargées d'affilée, jours précédents de Bing affichés |
 | `NOOS_FILE_MENU_DEMO=x,y` | noos-file ouvre le menu contextuel de la vue en icônes en (x, y) ; y < 0 = depuis le bas |
 | `NOOS_FILE_RUBBER_DEMO=x0,y0,x1,y1` | noos-file trace un cadre de sélection (vue en icônes) de (x0, y0) à (x1, y1) et le laisse affiché ; nombre d'éléments sélectionnés sur stderr |
 | `NOOS_FILE_SELECT_DEMO=0,1,2` | noos-file sélectionne ces éléments puis rejoue un clic dans le vide (coin inférieur droit) |

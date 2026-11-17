@@ -1,7 +1,8 @@
 //! Images du jour de Bing comme fonds d'écran (liste, miniatures, téléchargement UHD).
 //!
 //! API publique : `https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=8&mkt=fr-FR`
-//! (les 8 derniers jours). Téléchargements avec `curl`, rangés dans
+//! (8 images par requête). `idx` (jours en arrière) plafonne à 7 : au mieux 15 jours en deux
+//! requêtes (`idx=0&n=8` puis `idx=7&n=8`), voir [`list_page`]. Téléchargements avec `curl`, rangés dans
 //! `~/.local/share/noos/wallpapers/bing/` ; on garde les 30 plus récents.
 
 use std::{path::PathBuf, process::Command};
@@ -67,7 +68,25 @@ fn curl(url: &str, out: Option<&PathBuf>) -> anyhow::Result<Vec<u8>> {
 
 /// Les `n` (≤ 8) dernières images du jour.
 pub fn list(n: u32) -> anyhow::Result<Vec<BingImage>> {
-    let url = format!("https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n={}&mkt={}", n.min(8), market());
+    fetch(0, n)
+}
+
+/// Nombre de pages de 8 images que Bing accepte de servir (l'archive s'arrête à 15 jours).
+pub const PAGES: u32 = 2;
+
+/// Page `page` (0 = les 8 derniers jours, 1 = les 7 jours d'avant ; au-delà, rien).
+/// Bing ne remonte pas plus loin que `idx=7` : la 2e page recouvre le dernier jour de la
+/// première (dédoublonner par date).
+pub fn list_page(page: u32) -> anyhow::Result<Vec<BingImage>> {
+    match page {
+        0 => fetch(0, 8),
+        1 => fetch(7, 8),
+        _ => Ok(Vec::new()),
+    }
+}
+
+fn fetch(idx: u32, n: u32) -> anyhow::Result<Vec<BingImage>> {
+    let url = format!("https://www.bing.com/HPImageArchive.aspx?format=js&idx={}&n={}&mkt={}", idx.min(7), n.min(8), market());
     let body = curl(&url, None)?;
     let archive: Archive = serde_json::from_slice(&body).context("réponse Bing illisible")?;
     Ok(archive

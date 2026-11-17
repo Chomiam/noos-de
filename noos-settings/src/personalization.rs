@@ -825,7 +825,66 @@ fn your_wallpapers(app: &Rc<App>) -> gtk::Widget {
     v.upcast()
 }
 
-/// Wallhaven : fonds au hasard adaptés à l'écran, ou recherche par mots-clés.
+/// Bouton « Charger plus » sous une galerie (pagination Bing / Wallhaven).
+fn more_button(label: &str) -> gtk::Button {
+    let b = gtk::Button::with_label(label);
+    b.add_css_class("pill");
+    b.set_halign(gtk::Align::Center);
+    b.set_margin_top(4);
+    b.set_visible(false);
+    b
+}
+
+/// Vignette cliquable d'un fond Wallhaven (aperçu puis application).
+fn wallhaven_tile(app: &Rc<App>, wp: noos_core::wallhaven::Wallpaper) -> gtk::Button {
+    let button = gtk::Button::new();
+    button.add_css_class("flat");
+    button.set_tooltip_text(Some(&format!("{} · {}", wp.resolution.replace('x', " × "), wp.page_url)));
+    let pic = gtk::Picture::new();
+    pic.set_can_shrink(true);
+    pic.set_content_fit(gtk::ContentFit::Cover);
+    pic.add_css_class("wallpaper-preview");
+    pic.set_overflow(gtk::Overflow::Hidden);
+    button.set_child(Some(&thumb(&pic)));
+    {
+        let (wp, pic) = (wp.clone(), pic.clone());
+        glib::spawn_future_local(async move {
+            if let Ok(path) = in_background(move || wp.thumbnail().map_err(|e| e.to_string())).await {
+                load_thumb(&pic, path);
+            }
+        });
+    }
+    let app = app.clone();
+    button.connect_clicked(move |_| {
+        let thumb = noos_core::paths::cache_dir().join(format!("wallpapers/wallhaven/{}.jpg", wp.id));
+        let w2 = wp.clone();
+        preview_wallpaper(
+            &app,
+            "Aperçu du fond d'écran",
+            &format!("Wallhaven · {}", wp.resolution.replace('x', " × ")),
+            thumb.exists().then_some(thumb),
+            Some(wp.page_url.clone()),
+            true,
+            Box::new(move || w2.download_preview().map_err(|e| format!("{e:#}"))),
+        );
+    });
+    button
+}
+
+/// Recherche Wallhaven en cours : mots-clés, page suivante, graine du hasard.
+#[derive(Default)]
+struct WallhavenState {
+    query: String,
+    next_page: u32,
+    seed: Option<String>,
+    shown: usize,
+    /// Incrémenté à chaque nouvelle recherche : une réponse d'une recherche précédente est ignorée.
+    generation: u64,
+    /// Tests (captures) : pages restant à charger d'affilée (`NOOS_WALLHAVEN_PAGES`).
+    demo_pages: u32,
+}
+
+/// Wallhaven : fonds au hasard adaptés à l'écran, ou recherche par mots-clés, page par page.
 fn wallhaven_section(app: &Rc<App>) -> gtk::Widget {
     let v = gtk::Box::new(gtk::Orientation::Vertical, 10);
     let g = group("Fonds d'écran Wallhaven");
@@ -838,6 +897,10 @@ fn wallhaven_section(app: &Rc<App>) -> gtk::Widget {
 
     let search = gtk::SearchEntry::new();
     search.set_placeholder_text(Some("Rechercher : montagne, océan, ville la nuit, espace…"));
+    // Tests (captures) : `NOOS_WALLHAVEN_SEARCH=<mots>` préremplit la recherche.
+    if let Ok(q) = std::env::var("NOOS_WALLHAVEN_SEARCH") {
+        search.set_text(&q);
+    }
     v.append(&search);
     let status = gtk::Label::new(Some("Détection de l'écran…"));
     status.add_css_class("dim-label");
@@ -852,80 +915,117 @@ fn wallhaven_section(app: &Rc<App>) -> gtk::Widget {
     gallery.set_row_spacing(10);
     gallery.set_homogeneous(true);
     v.append(&gallery);
+    let more = more_button("Charger plus d'images");
+    v.append(&more);
 
+    let state = Rc::new(RefCell::new(WallhavenState {
+        next_page: 1,
+        demo_pages: std::env::var("NOOS_WALLHAVEN_PAGES").ok().and_then(|n| n.parse().ok()).unwrap_or(1),
+        ..Default::default()
+    }));
     // Taille de l'écran (le plus grand si plusieurs), orientation comprise.
     let screen: Rc<std::cell::Cell<(u32, u32)>> = Rc::new(std::cell::Cell::new((1920, 1080)));
-    let load: Rc<dyn Fn()> = {
-        let (app, gallery, status, search, screen) = (app.clone(), gallery.clone(), status.clone(), search.clone(), screen.clone());
-        Rc::new(move || {
-            gallery.remove_all();
+    // `load(true)` : nouvelle recherche (page 1) ; `load(false)` : page suivante.
+    let load: Rc<dyn Fn(bool)> = {
+        let (app, gallery, status, search, screen, more, state) =
+            (app.clone(), gallery.clone(), status.clone(), search.clone(), screen.clone(), more.clone(), state.clone());
+        Rc::new(move |reset| {
             let (w, h) = screen.get();
-            let query = search.text().trim().to_string();
-            status.set_text(&format!("Recherche… (écran {w} × {h}, format {})", noos_core::wallhaven::ratio(w, h).replace('x', ":")));
-            let (app, gallery, status) = (app.clone(), gallery.clone(), status.clone());
+            let (query, page, seed, generation) = {
+                let mut st = state.borrow_mut();
+                if reset {
+                    st.query = search.text().trim().to_string();
+                    st.next_page = 1;
+                    st.seed = None;
+                    st.shown = 0;
+                    st.generation += 1;
+                }
+                (st.query.clone(), st.next_page, st.seed.clone(), st.generation)
+            };
+            if reset {
+                gallery.remove_all();
+                more.set_visible(false);
+                status.set_text(&format!("Recherche… (écran {w} × {h}, format {})", noos_core::wallhaven::ratio(w, h).replace('x', ":")));
+            } else {
+                more.set_sensitive(false);
+                more.set_label(&format!("Chargement de la page {page}…"));
+            }
+            let (app, gallery, status, more, state) = (app.clone(), gallery.clone(), status.clone(), more.clone(), state.clone());
             glib::spawn_future_local(async move {
                 let q = query.clone();
-                let list = match in_background(move || noos_core::wallhaven::search(&q, w, h).map_err(|e| format!("{e:#}"))).await {
-                    Ok(l) => l,
+                let result =
+                    in_background(move || noos_core::wallhaven::search(&q, w, h, page, seed.as_deref()).map_err(|e| format!("{e:#}"))).await;
+                if state.borrow().generation != generation {
+                    return; // une autre recherche a été lancée entre-temps
+                }
+                more.set_sensitive(true);
+                more.set_label("Charger plus d'images");
+                let result = match result {
+                    Ok(r) => r,
                     Err(e) => {
-                        status.set_text(&e);
+                        if reset {
+                            status.set_text(&e);
+                        } else {
+                            // Le bouton reste là : on peut réessayer la même page.
+                            app.toast(&format!("Wallhaven : {e}"));
+                        }
                         return;
                     }
                 };
+                let next = {
+                    let mut st = state.borrow_mut();
+                    st.next_page = result.current + 1;
+                    if result.seed.is_some() {
+                        st.seed = result.seed.clone();
+                    }
+                    st.shown += result.wallpapers.len();
+                    st.shown
+                };
                 let what = if query.is_empty() { "Sélection au hasard".to_string() } else { format!("« {query} »") };
-                status.set_text(&if list.is_empty() {
+                status.set_text(&if next == 0 {
                     format!("{what} : aucun résultat à au moins {w} × {h}")
                 } else {
-                    format!("{what} · au moins {w} × {h} · cliquez pour l'appliquer")
+                    format!(
+                        "{what} · au moins {w} × {h} · {next} sur {} · page {} sur {} · cliquez pour l'appliquer",
+                        result.total, result.current, result.last
+                    )
                 });
-                for wp in list.into_iter().take(24) {
-                    let button = gtk::Button::new();
-                    button.add_css_class("flat");
-                    button.set_tooltip_text(Some(&format!("{} · {}", wp.resolution.replace('x', " × "), wp.page_url)));
-                    let pic = gtk::Picture::new();
-                    pic.set_can_shrink(true);
-                    pic.set_content_fit(gtk::ContentFit::Cover);
-                    pic.add_css_class("wallpaper-preview");
-                    pic.set_overflow(gtk::Overflow::Hidden);
-                    button.set_child(Some(&thumb(&pic)));
-                    gallery.insert(&button, -1);
-                    {
-                        let (wp, pic) = (wp.clone(), pic.clone());
-                        glib::spawn_future_local(async move {
-                            if let Ok(path) = in_background(move || wp.thumbnail().map_err(|e| e.to_string())).await {
-                                load_thumb(&pic, path);
-                            }
-                        });
-                    }
-                    let app = app.clone();
-                    button.connect_clicked(move |_| {
-                        let thumb = noos_core::paths::cache_dir().join(format!("wallpapers/wallhaven/{}.jpg", wp.id));
-                        let w2 = wp.clone();
-                        preview_wallpaper(
-                            &app,
-                            "Aperçu du fond d'écran",
-                            &format!("Wallhaven · {}", wp.resolution.replace('x', " × ")),
-                            thumb.exists().then_some(thumb),
-                            Some(wp.page_url.clone()),
-                            true,
-                            Box::new(move || w2.download_preview().map_err(|e| format!("{e:#}"))),
-                        );
-                    });
+                let has_next = result.has_next() && !result.wallpapers.is_empty();
+                for wp in result.wallpapers {
+                    gallery.insert(&wallhaven_tile(&app, wp), -1);
+                }
+                // Dernière page : plus de bouton.
+                more.set_visible(has_next);
+                let demo = {
+                    let mut st = state.borrow_mut();
+                    st.demo_pages = st.demo_pages.saturating_sub(1);
+                    st.demo_pages > 0
+                };
+                if demo && has_next {
+                    more.emit_clicked();
                 }
             });
         })
     };
     {
+        let (load, search, state) = (load.clone(), search.clone(), state.clone());
+        more.connect_clicked(move |_| {
+            // Mots-clés changés sans Entrée : c'est une nouvelle recherche, depuis la page 1.
+            let changed = search.text().trim() != state.borrow().query;
+            load(changed);
+        });
+    }
+    {
         let load = load.clone();
-        shuffle.connect_clicked(move |_| load());
+        shuffle.connect_clicked(move |_| load(true));
     }
     {
         let (load, load2, search2) = (load.clone(), load.clone(), search.clone());
-        search.connect_activate(move |_| load());
+        search.connect_activate(move |_| load(true));
         // Échap dans le champ : retour à la sélection au hasard.
         search2.connect_stop_search(move |e| {
             e.set_text("");
-            load2();
+            load2(true);
         });
     }
     {
@@ -938,13 +1038,14 @@ fn wallhaven_section(app: &Rc<App>) -> gtk::Widget {
                     screen.set(if rotated { (h, w) } else { (w, h) });
                 }
             }
-            load();
+            load(true);
         });
     }
     v.upcast()
 }
 
-/// Images du jour de Bing : galerie des 8 derniers jours + changement quotidien automatique.
+/// Images du jour de Bing : galerie des 8 derniers jours (puis des 7 d'avant, limite de Bing)
+/// + changement quotidien automatique.
 fn bing_section(app: &Rc<App>) -> gtk::Widget {
     let cfg = app.cfg();
     let v = gtk::Box::new(gtk::Orientation::Vertical, 10);
@@ -1001,23 +1102,76 @@ fn bing_section(app: &Rc<App>) -> gtk::Widget {
     status.add_css_class("dim-label");
     v.append(&status);
     v.append(&gallery);
+    let more = more_button("Jours précédents");
+    v.append(&more);
+    // Bing ne sert que ~15 jours d'archive : au-delà, rien à charger.
+    let limit = gtk::Label::new(Some(
+        "Bing ne propose que les images des 15 derniers jours. Celles que vous appliquez restent dans « Vos fonds d'écran ».",
+    ));
+    limit.add_css_class("dim-label");
+    limit.add_css_class("caption");
+    limit.set_wrap(true);
+    limit.set_xalign(0.0);
+    limit.set_visible(false);
+    v.append(&limit);
 
-    let load: Rc<dyn Fn()> = {
-        let (app, gallery, status) = (app.clone(), gallery.clone(), status.clone());
-        Rc::new(move || {
-            gallery.remove_all();
-            status.set_text("Chargement des images…");
-            status.set_visible(true);
-            let (app, gallery, status) = (app.clone(), gallery.clone(), status.clone());
+    // (page suivante, dates déjà affichées, génération : une réponse périmée est ignorée)
+    let state: Rc<RefCell<(u32, std::collections::HashSet<String>, u64)>> = Rc::default();
+    let load: Rc<dyn Fn(bool)> = {
+        let (app, gallery, status, more, limit, state) =
+            (app.clone(), gallery.clone(), status.clone(), more.clone(), limit.clone(), state.clone());
+        Rc::new(move |reset| {
+            let (page, generation) = {
+                let mut st = state.borrow_mut();
+                if reset {
+                    *st = (0, Default::default(), st.2 + 1);
+                }
+                (st.0, st.2)
+            };
+            if reset {
+                gallery.remove_all();
+                more.set_visible(false);
+                limit.set_visible(false);
+                status.set_text("Chargement des images…");
+                status.set_visible(true);
+            } else {
+                more.set_sensitive(false);
+                more.set_label("Chargement…");
+            }
+            let (app, gallery, status, more, limit, state) =
+                (app.clone(), gallery.clone(), status.clone(), more.clone(), limit.clone(), state.clone());
             glib::spawn_future_local(async move {
-                let images = match in_background(|| noos_core::bing::list(8).map_err(|e| format!("{e:#}"))).await {
+                let result = in_background(move || noos_core::bing::list_page(page).map_err(|e| format!("{e:#}"))).await;
+                if state.borrow().2 != generation {
+                    return;
+                }
+                more.set_sensitive(true);
+                more.set_label("Jours précédents");
+                let images = match result {
                     Ok(i) => i,
-                    Err(e) => {
+                    Err(e) if reset => {
                         status.set_text(&format!("Impossible de joindre Bing : {e}"));
+                        return;
+                    }
+                    Err(e) => {
+                        app.toast(&format!("Bing indisponible : {e}"));
                         return;
                     }
                 };
                 status.set_visible(false);
+                // Les pages de Bing se recouvrent d'un jour : pas de doublon.
+                let images: Vec<_> = {
+                    let mut st = state.borrow_mut();
+                    st.0 = page + 1;
+                    images.into_iter().filter(|i| st.1.insert(i.date.clone())).collect()
+                };
+                let last = page + 1 >= noos_core::bing::PAGES;
+                more.set_visible(!last);
+                limit.set_visible(last);
+                // Tests (captures) : `NOOS_BING_PAGES=2` affiche aussi les jours précédents.
+                if reset && !last && std::env::var("NOOS_BING_PAGES").is_ok_and(|n| n.parse::<u32>().is_ok_and(|n| n > 1)) {
+                    more.emit_clicked();
+                }
                 for img in images {
                     let button = gtk::Button::new();
                     button.add_css_class("flat");
@@ -1063,9 +1217,13 @@ fn bing_section(app: &Rc<App>) -> gtk::Widget {
     };
     {
         let load = load.clone();
-        refresh.connect_clicked(move |_| load());
+        refresh.connect_clicked(move |_| load(true));
     }
-    load();
+    {
+        let load = load.clone();
+        more.connect_clicked(move |_| load(false));
+    }
+    load(true);
     v.upcast()
 }
 

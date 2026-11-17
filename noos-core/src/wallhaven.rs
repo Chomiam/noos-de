@@ -20,9 +20,44 @@ pub struct Wallpaper {
     pub thumb_url: String,
 }
 
+/// Une page de résultats (24 images au plus).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Page {
+    pub wallpapers: Vec<Wallpaper>,
+    /// Numéro de cette page (à partir de 1).
+    pub current: u32,
+    /// Dernière page disponible (1 si inconnue).
+    pub last: u32,
+    /// Nombre total de résultats.
+    pub total: u64,
+    /// Graine du tirage au hasard : à renvoyer pour les pages suivantes, sinon Wallhaven
+    /// retire au hasard à chaque page et des images reviennent.
+    pub seed: Option<String>,
+}
+
+impl Page {
+    pub fn has_next(&self) -> bool {
+        self.current < self.last
+    }
+}
+
 #[derive(Deserialize)]
 struct Response {
     data: Vec<Raw>,
+    #[serde(default)]
+    meta: Option<Meta>,
+}
+
+#[derive(Deserialize)]
+struct Meta {
+    #[serde(default)]
+    current_page: Option<u32>,
+    #[serde(default)]
+    last_page: Option<u32>,
+    #[serde(default)]
+    total: Option<u64>,
+    #[serde(default)]
+    seed: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -102,23 +137,46 @@ fn encode(q: &str) -> String {
         .collect()
 }
 
-pub fn parse(json: &[u8]) -> anyhow::Result<Vec<Wallpaper>> {
+pub fn parse(json: &[u8]) -> anyhow::Result<Page> {
     let r: Response = serde_json::from_slice(json).context("réponse Wallhaven illisible")?;
-    Ok(r.data
+    let wallpapers: Vec<Wallpaper> = r
+        .data
         .into_iter()
         .map(|w| Wallpaper { id: w.id, resolution: w.resolution, page_url: w.url, full_url: w.path, thumb_url: w.thumbs.small })
-        .collect())
+        .collect();
+    let meta = r.meta.unwrap_or(Meta { current_page: None, last_page: None, total: None, seed: None });
+    let current = meta.current_page.unwrap_or(1).max(1);
+    Ok(Page {
+        current,
+        last: meta.last_page.unwrap_or(current).max(current),
+        total: meta.total.unwrap_or(wallpapers.len() as u64),
+        seed: meta.seed.filter(|s| !s.is_empty()),
+        wallpapers,
+    })
 }
 
-/// Recherche (mots-clés vides = sélection au hasard) adaptée à l'écran `width` × `height`.
-pub fn search(query: &str, width: u32, height: u32) -> anyhow::Result<Vec<Wallpaper>> {
+/// Adresse de la recherche : page `page` (≥ 1), graine `seed` du tirage au hasard.
+pub fn search_url(query: &str, width: u32, height: u32, page: u32, seed: Option<&str>) -> String {
     let q = translate(query);
     let sorting = if q.is_empty() { "random" } else { "relevance" };
-    let url = format!(
-        "{API}?categories=100&purity=100&sorting={sorting}&atleast={width}x{height}&ratios={}&q={}",
+    let mut url = format!(
+        "{API}?categories=100&purity=100&sorting={sorting}&atleast={width}x{height}&ratios={}&q={}&page={}",
         ratio(width, height),
-        encode(&q)
+        encode(&q),
+        page.max(1)
     );
+    if let Some(seed) = seed.filter(|_| q.is_empty()) {
+        url.push_str("&seed=");
+        url.push_str(&encode(seed));
+    }
+    url
+}
+
+/// Recherche (mots-clés vides = sélection au hasard) adaptée à l'écran `width` × `height`,
+/// page `page` (à partir de 1). Pour les pages suivantes d'une sélection au hasard, passer la
+/// graine renvoyée par la première page.
+pub fn search(query: &str, width: u32, height: u32, page: u32, seed: Option<&str>) -> anyhow::Result<Page> {
+    let url = search_url(query, width, height, page, seed);
     let out = Command::new("curl")
         .args(["-fsSL", "--max-time", "20", "-A", "NOOS"])
         .arg(&url)
@@ -197,8 +255,30 @@ mod tests {
     #[test]
     fn parses_response() {
         let json = br#"{"data":[{"id":"jxwyrw","url":"https://wallhaven.cc/w/jxwyrw","path":"https://w.wallhaven.cc/full/jx/wallhaven-jxwyrw.jpg","resolution":"3840x2160","thumbs":{"large":"l","original":"o","small":"https://th.wallhaven.cc/small/jx/jxwyrw.jpg"}}],"meta":{}}"#;
-        let w = &parse(json).unwrap()[0];
+        let p = parse(json).unwrap();
+        let w = &p.wallpapers[0];
         assert_eq!(w.resolution, "3840x2160");
         assert!(w.full_url.ends_with(".jpg"));
+        assert_eq!((p.current, p.last, p.seed.as_deref()), (1, 1, None));
+        assert!(!p.has_next());
+    }
+
+    #[test]
+    fn parses_pagination() {
+        let json = br#"{"data":[],"meta":{"current_page":2,"last_page":344,"per_page":24,"total":8256,"query":"mountain","seed":null}}"#;
+        let p = parse(json).unwrap();
+        assert_eq!((p.current, p.last, p.total), (2, 344, 8256));
+        assert!(p.has_next());
+        let json = br#"{"data":[],"meta":{"current_page":1,"last_page":6115,"total":146752,"seed":"duKCKb"}}"#;
+        assert_eq!(parse(json).unwrap().seed.as_deref(), Some("duKCKb"));
+    }
+
+    #[test]
+    fn page_and_seed_in_url() {
+        let u = search_url("montagne", 1920, 1080, 3, Some("abc"));
+        assert!(u.contains("q=mountain&page=3") && !u.contains("seed"), "{u}");
+        let u = search_url("", 1920, 1080, 2, Some("abc"));
+        assert!(u.contains("sorting=random") && u.ends_with("&page=2&seed=abc"), "{u}");
+        assert!(search_url("", 1920, 1080, 0, None).ends_with("&page=1"));
     }
 }
