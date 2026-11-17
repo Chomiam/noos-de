@@ -7,6 +7,8 @@ remove)
 purge)
     # Repères « une seule fois » de postinst ; la configuration de l'utilisateur reste.
     rm -rf /var/lib/noos
+    # Règles du pare-feu (créées par le démon).
+    rm -rf /etc/noos/firewall
     ;;
 esac
 #DEBHELPER#

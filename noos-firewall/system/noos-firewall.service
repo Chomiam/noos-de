@@ -1,0 +1,30 @@
+[Unit]
+Description=Pare-feu applicatif NOOS (nftables + NFQUEUE)
+Documentation=https://github.com/Chomiam/noos-de/blob/main/docs/GUIDE.md
+# Le filtrage est en place avant que le réseau ne monte.
+Wants=network-pre.target
+Before=network-pre.target
+# Deux pare-feu filtrent l'un après l'autre (un paquet doit passer les deux) : un seul à la fois.
+Conflicts=ufw.service firewalld.service
+
+[Service]
+Type=simple
+ExecStartPre=-/usr/sbin/modprobe -q nfnetlink_queue
+ExecStart=/opt/noos/bin/noos-firewalld
+Restart=on-failure
+RestartSec=2
+# Socket de contrôle /run/noos-firewall/control.sock ; règles dans /etc/noos/firewall.
+RuntimeDirectory=noos-firewall
+RuntimeDirectoryMode=0755
+ConfigurationDirectory=noos/firewall
+ConfigurationDirectoryMode=0755
+ProtectSystem=full
+ReadWritePaths=/etc/noos/firewall
+ProtectHome=read-only
+PrivateTmp=yes
+NoNewPrivileges=yes
+# Arrêt du service : la table reste (entrées fermées, sorties autorisées par « bypass »).
+# Pour tout ouvrir : noos-firewall off, ou Paramètres › Pare-feu › Désactiver.
+
+[Install]
+WantedBy=multi-user.target

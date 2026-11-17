@@ -267,39 +267,6 @@ fn run() -> anyhow::Result<()> {
             };
             execute(plan)?;
         }
-        "fw-status" => {
-            let st = noos_pkg::firewall::status();
-            println!("{}", serde_json::to_string_pretty(&st)?);
-        }
-        "fw-rules" => {
-            let b = noos_pkg::firewall::detect();
-            let (ports, services, raw) = noos_pkg::firewall::read_rules_privileged(b)?;
-            println!("ports: {:?}\nservices: {:?}\n---\n{raw}", ports.iter().map(|p| p.label()).collect::<Vec<_>>(), services);
-        }
-        "fw-enable" | "fw-disable" => execute(noos_pkg::firewall::set_active(noos_pkg::firewall::detect(), args.cmd == "fw-enable")?)?,
-        "fw-open" | "fw-close" => {
-            let port = args.rest.first().ok_or_else(|| anyhow::anyhow!("port manquant"))?;
-            let proto = args.rest.get(1).map(String::as_str).unwrap_or("tcp");
-            let b = noos_pkg::firewall::detect();
-            let zone = noos_pkg::firewall::status().zone;
-            let plan = if args.cmd == "fw-open" {
-                let p = match proto {
-                    "udp" => noos_pkg::firewall::Proto::Udp,
-                    "both" => noos_pkg::firewall::Proto::Both,
-                    _ => noos_pkg::firewall::Proto::Tcp,
-                };
-                noos_pkg::firewall::open_port(b, port, p, zone.as_deref())?
-            } else {
-                let rule = noos_pkg::firewall::PortRule { port: port.clone(), proto: if proto == "both" { String::new() } else { proto.to_string() } };
-                noos_pkg::firewall::close_port(b, &rule, zone.as_deref())?
-            };
-            execute(plan)?;
-        }
-        "fw-install" => {
-            let (name, plan) = noos_pkg::firewall::install_plan(&SystemInfo::detect()).ok_or_else(|| anyhow::anyhow!("distribution non reconnue"))?;
-            println!("Pare-feu recommandé : {name}");
-            execute(plan)?;
-        }
         other => anyhow::bail!("commande inconnue : {other} (voir l'en-tête de noos-pkg.rs)"),
     }
     Ok(())

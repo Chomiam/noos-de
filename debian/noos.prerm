@@ -4,6 +4,9 @@ if [ "$1" = remove ]; then
     systemctl disable --now noos-snapshots-grub.path >/dev/null 2>&1 || true
     systemctl disable noos-snapshot-boot.service >/dev/null 2>&1 || true
     systemctl --global disable noos-update-check.timer >/dev/null 2>&1 || true
+    # Pare-feu : service arrêté et table retirée (sinon les entrées resteraient fermées).
+    systemctl disable --now noos-firewall.service >/dev/null 2>&1 || true
+    /opt/noos/bin/noos-firewall off >/dev/null 2>&1 || nft delete table inet noos >/dev/null 2>&1 || true
 fi
 #DEBHELPER#
 exit 0

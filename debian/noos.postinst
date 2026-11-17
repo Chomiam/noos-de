@@ -30,6 +30,20 @@ if [ "$1" = configure ]; then
         /opt/noos/libexec/noos-save-helper setup >/dev/null 2>&1 || true
     fi
 
+    # Pare-feu NOOS, activé une seule fois (l'utilisateur peut l'arrêter). Le service est en
+    # conflit avec ufw / firewalld (systemd les arrête au démarrage de noos-firewall) ; sans
+    # fenêtre d'autorisation connectée, les sorties restent autorisées (session en cours intacte).
+    if [ ! -e /var/lib/noos/firewall ]; then
+        systemctl enable noos-firewall.service >/dev/null 2>&1 || true
+        if [ -d /run/systemd/system ]; then
+            systemctl start noos-firewall.service >/dev/null 2>&1 || true
+        fi
+        touch /var/lib/noos/firewall
+    elif [ -d /run/systemd/system ] && systemctl is-active --quiet noos-firewall.service; then
+        # Mise à jour : nouveau démon.
+        systemctl restart noos-firewall.service >/dev/null 2>&1 || true
+    fi
+
     # Profils d'énergie, une seule fois (l'utilisateur peut les couper).
     if [ ! -e /var/lib/noos/power-profiles ]; then
         systemctl enable power-profiles-daemon.service >/dev/null 2>&1 || true

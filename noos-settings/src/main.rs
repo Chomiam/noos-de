@@ -75,7 +75,8 @@ const SEARCH: &[(&str, &str, usize, Option<Builder>)] = &[
     ("Disposition des écrans", "plusieurs écrans moniteurs disposition principal second écran multi", 0, Some(system::display)),
     ("VRR / FreeSync", "vrr freesync gsync variable jeux", 6, None),
     ("Mode Jeu", "mode jeu gaming", 6, None),
-    ("Pare-feu", "pare-feu firewall ports sécurité ufw firewalld", 7, Some(security::firewall_page)),
+    ("Pare-feu", "pare-feu firewall ports sécurité nftables connexions bloquées", 7, Some(security::firewall_page)),
+    ("Applications autorisées par le pare-feu", "pare-feu autoriser bloquer application programme règle révoquer internet", 7, Some(security::firewall_page)),
     ("Ouvrir un port", "port ouvrir pare-feu serveur", 7, Some(security::firewall_page)),
     ("Mises à jour", "mise à jour updates logiciels", 8, None),
 ];

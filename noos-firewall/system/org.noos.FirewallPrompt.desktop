@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Pare-feu NOOS
+Comment=Fenêtre d'autorisation des connexions réseau
+Icon=security-high
+Exec=/opt/noos/bin/noos-firewall-prompt
+OnlyShowIn=NOOS;
+NoDisplay=true
+X-GNOME-Autostart-Phase=Applications

@@ -112,7 +112,10 @@ Depends: ${shlibs:Depends},
          wireguard-tools,
 # Applis X11 (Steam, jeux, Electron en X11) : Xwayland, lancé et géré par le compositeur
 # (gestionnaire de fenêtres X11 intégré à noos-comp)
-         xwayland
+         xwayland,
+# Pare-feu applicatif NOOS (noos-firewalld) : nftables + NFQUEUE (netlink, sans
+# libnetfilter-queue) ; pkcheck (polkitd) pour les modifications
+         nftables
 Recommends: grim,
             bluez,
             gcr,

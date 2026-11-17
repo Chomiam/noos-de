@@ -15,7 +15,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DEST="${1:-$ROOT/noos-iso/out/stage}"
 PREFIX="$DEST/opt/noos"
-BINS=(noos-comp noos-shell noos-file noos-settings noos-software noos-pkg noos-snip noos-term noos-keys noos-save noos-photoview noos-texteditor noos-lock noos-archive noos-disk noos-login noos-installer)
+BINS=(noos-comp noos-shell noos-file noos-settings noos-software noos-pkg noos-snip noos-term noos-keys noos-save noos-photoview noos-texteditor noos-lock noos-archive noos-disk noos-login noos-installer noos-firewall noos-firewall-prompt)
 
 "$ROOT/scripts/build-libadapta.sh"
 cd "$ROOT"
@@ -28,6 +28,8 @@ mkdir -p "$PREFIX/bin" "$PREFIX/lib" "$PREFIX/share/noos/install" "$PREFIX/share
 for b in "${BINS[@]}"; do
     install -m755 "target/release/$b" "$PREFIX/bin/$b"
 done
+# Démon du pare-feu (deuxième binaire du crate noos-firewall).
+install -m755 target/release/noos-firewalld "$PREFIX/bin/noos-firewalld"
 for f in target/libadapta-build/src/libadapta-1.so*; do
     [ -d "$f" ] || cp -P "$f" "$PREFIX/lib/"
 done
@@ -47,6 +49,7 @@ install -Dm644 /dev/stdin "$SYS/etc/ld.so.conf.d/noos.conf" <<<"/opt/noos/lib"
 # Sauvegarder et Restaurer : script privilégié, crochets apt, règle polkit.
 "$ROOT/noos-save/install-system.sh" "$SYS" /opt/noos
 "$ROOT/noos-disk/install-system.sh" "$SYS" /opt/noos
+"$ROOT/noos-firewall/install-system.sh" "$SYS" /opt/noos
 install -Dm755 "$ROOT/noos-disk/noos-disk-helper" "$PREFIX/libexec/noos-disk-helper"
 install -Dm755 "$ROOT/noos-save/noos-save-helper" "$PREFIX/libexec/noos-save-helper"
 # Thème GRUB : sources dans /usr/share/noos-grub (l'installateur le copie dans /boot).

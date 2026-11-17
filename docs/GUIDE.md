@@ -14,6 +14,8 @@
 | `noos-settings/` | Paramètres : personnalisation, barre des tâches, écrans (HDR/VRR), jeux, entrées |
 | `noos-software/` | **Logiciels** : vitrine Flathub, recherche multi-sources, mises à jour, dépôts |
 | `noos-pkg/` | Bibliothèque + CLI `noos-pkg` : apt et Flatpak, sources APT regroupées, rapprochement AppStream (DEP-11) |
+| `noos-firewall/` | **Pare-feu applicatif** : démon `noos-firewalld` (root, nftables + NFQUEUE), CLI `noos-firewall`, bibliothèque partagée (règles, protocole) |
+| `noos-firewall-prompt/` | Fenêtre d'autorisation du pare-feu (agent de session, GTK4 + libAdapta) |
 | `noos-keys/` | **Porte-clés** : mots de passe du Secret Service (gnome-keyring, oo7), trousseaux, clés SSH |
 | `noos-term/` | **Terminal** (VTE) : onglets, menu clic droit, thèmes, taille du texte, barre latérale d'alias (ex. `claude`) |
 | `noos-snip/` | **Outil Capture d'écran** (Win+Maj+S) : rectangle, fenêtre, plein écran, forme libre, annotation |
@@ -381,9 +383,90 @@ L'organisation reprend celle de Windows 11 : compte et recherche dans la barre l
 | Système › Alimentation | Profil d'alimentation (power-profiles-daemon / tuned-ppd), extinction de l'écran et veille après inactivité, inhibition en plein écran |
 | Système › Informations | Processeur, mémoire, carte graphique, renommer le PC |
 | Personnalisation | Thèmes rapides, arrière-plan (images du jour Bing, avec changement quotidien automatique et bouton « Jours précédents » : l'archive de Bing s'arrête à 15 jours ; fonds Wallhaven au hasard ou par recherche, 24 par page, bouton « Charger plus d'images » jusqu'à la dernière page — retour à la page 1 à chaque nouvelle recherche, graine conservée pour que le hasard ne repasse pas les mêmes images), couleurs, thèmes libAdapta, barre des tâches (hauteur 28 à 96 px, icônes des applis actives regroupées dans « ^ » ou étalées), polices |
-| Confidentialité › Pare-feu | Détection firewalld / ufw / nftables / iptables, bouclier vert / rouge / orange, ouverture et fermeture de ports, installation d'un pare-feu |
+| Confidentialité › Pare-feu | Pare-feu applicatif NOOS : activation, mode, règles par application, ports, demandes en attente, journal (voir « Pare-feu ») |
 
 Une page s'ouvre directement avec `noos-settings <page>` (`display`, `power`, `firewall`, `taskbar`, `colors`…).
+
+## Pare-feu (noos-firewall)
+
+Pare-feu applicatif façon Windows Defender : chaque **nouvelle connexion** (sortante ou entrante)
+qu'aucune règle ne couvre est retenue par le noyau pendant que la session décide ; ufw et firewalld
+ne sont plus utilisés par NOOS (le service est en conflit avec eux : `Conflicts=` systemd).
+
+**Fonctionnement**
+
+- Table nftables `inet noos` générée en entier par le démon (`noos-firewall/src/nft.rs`) et
+  appliquée atomiquement (`nft -f -`). Entrée : politique `drop`, établi / `lo` / interfaces de
+  confiance (`virbr*`, `docker*`, `podman*`…) / ICMP utiles / DHCP / découverte du réseau local
+  (mDNS, SSDP, réseau local seulement) / règles de ports, puis `queue num 1` **sans bypass** (démon
+  arrêté = entrées fermées). Sortie : règles de ports puis `queue num 0 bypass` (démon arrêté =
+  sorties autorisées, le réseau ne casse pas).
+- `noos-firewalld` (root) lit la file NFQUEUE (crate `nfq`, netlink en Rust pur : pas de
+  `libnetfilter-queue1`), analyse les en-têtes IPv4/IPv6 + TCP/UDP (`packet.rs`), retrouve le
+  socket dans `/proc/net/{tcp,udp}{,6}` puis le processus (`/proc/<pid>/fd` → `socket:[inode]`) et
+  le programme (`/proc/<pid>/exe`, cmdline, Flatpak par `/.flatpak-info`, AppImage par `$APPIMAGE`)
+  — `procnet.rs`.
+- Décision (`daemon.rs`) : règle par programme la plus précise (adresse + port > port > programme ;
+  compte > tous ; blocage à égalité), sinon services du système (comptes < 1000) autorisés en
+  sortie, sinon selon le **mode** : *Interactif* (demander), *Sorties autorisées* (façon Windows,
+  entrées demandées), *Silencieux* (rien demandé), *Tout autoriser*. Une entrée vers un port où
+  rien n'écoute est jetée sans demander. Les réémissions et connexions simultanées d'un même
+  programme rejoignent la même demande.
+- Sortie refusée : le paquet revient avec la marque `0x4e4f0001` (verdict *repeat*) et la table le
+  rejette tout de suite (`reject … admin-prohibited`) : l'appli échoue immédiatement au lieu
+  d'attendre.
+- nftables ne reconnaît pas un exécutable : les **règles par programme** sont appliquées par le
+  démon au verdict ; les **règles de ports** (ports, plages, listes, protocole, sens, zone « réseau
+  local », interface, adresse distante) sont de vraies règles nftables.
+- Sans réponse avant `timeout_secs` (30 s) : `default_action` (Bloquer) pour cette fois, retenue
+  60 s pour ne pas redemander en boucle. **Aucune fenêtre d'autorisation connectée** (paquet tout
+  juste installé, session pas encore ouverte) : après 3 s, sorties selon `no_agent_action`
+  (Autoriser), entrées bloquées.
+- Persistance : `/etc/noos/firewall/config.toml` et `rules.json` (root, 0644 ; copie `.illisible`
+  si un fichier est abîmé). Règles livrées : `/opt/noos/bin/*` et `/usr/lib/apt/methods/*`
+  autorisés en sortie.
+
+**Sécurité du canal démon ↔ session** : socket Unix `/run/noos-firewall/control.sock` (0666), une
+requête JSON par ligne (`proto.rs`). L'appelant est identifié par `SO_PEERCRED` (UID / PID donnés
+par le noyau). Sans mot de passe : lire l'état, décider pour **ses propres** connexions sortantes,
+modifier ses propres règles sortantes, bloquer une fois. Tout le reste (entrées, ports, réglages,
+règles d'autres comptes ou de tous, services du système) passe par polkit :
+`pkcheck --action-id org.noos.firewall.manage --process pid,début,uid --allow-user-interaction`
+(`auth_admin_keep`, fenêtre de mot de passe de l'agent polkit du shell). Les administrateurs
+(groupe `sudo`) voient les demandes et le journal de tous les comptes. Toutes les valeurs reçues
+(ports, interfaces, adresses) sont validées avant d'entrer dans la table.
+
+**Fenêtre d'autorisation** (`noos-firewall-prompt`, lancée par `/etc/xdg/autostart`) : nom et
+icône de l'appli (fichier .desktop), chemin, hôte (résolution inverse), port + service
+(`/etc/services`), protocole, sens, interface, compte ; « Retenir ce choix » + portée (programme,
+programme + port, programme + adresse et port, ou port pour tous en entrée) ; Autoriser (bouclier
+si le mot de passe sera demandé) / Bloquer ; compte à rebours. Après une décision permanente :
+« Révoquer » ou « Gérer le pare-feu ».
+
+**Paramètres › Confidentialité et sécurité › Pare-feu** : bouclier d'état, activer / désactiver,
+bandeau si ufw / firewalld sont encore actifs (bouton pour les couper), autorisations en attente,
+comportement (mode, tout bloquer en entrée, sans réponse, délai, sans fenêtre, services du système,
+ping, découverte du réseau, interfaces de confiance, journal), **Applications** (activer, modifier,
+révoquer, ajouter avec sélecteur de programme), **Ports** (ouvrir / fermer, plages et listes, TCP /
+UDP, sens, zone, interface, adresse, préréglages Minecraft / Steam / SSH / KDE Connect / Sunshine),
+**connexions bloquées** (regroupées, bouton « Autoriser »).
+
+**Commandes** : `noos-firewall status | rules | log [N] | pending | ruleset | check | open PORTS
+[tcp|udp|any] [lan] | close ID | delete ID | off` ; `noos-firewalld --print-ruleset`. Secours si le
+réseau ne passe plus : `sudo /opt/noos/bin/noos-firewall off` (retire la table jusqu'au prochain
+démarrage du service) ou `sudo systemctl disable --now noos-firewall`.
+
+**Installer depuis le dépôt** (sans le paquet) :
+```bash
+cargo build --release -p noos-firewall -p noos-firewall-prompt -p noos-settings
+sudo ./noos-firewall/install-host.sh       # --uninstall pour retirer
+```
+
+**Tests sans root** : `cargo test -p noos-firewall` (analyse des paquets, tables des sockets,
+correspondance des règles, décisions du démon, génération de la table, persistance) ; la table
+générée est vérifiée par `nft -c` dans un espace de noms réseau à soi (`unshare -rn`),
+aussi par `noos-firewall check`. Aperçu : `NOOS_FIREWALL_DEMO=1` (page Paramètres et fenêtre
+d'autorisation fictives ; `in` = demande entrante d'abord, `done` = écran « Révoquer »).
 
 ## Terminal (noos-term)
 

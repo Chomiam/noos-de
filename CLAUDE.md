@@ -36,7 +36,9 @@ donne le contexte de travail.
 | `noos-settings/`, `noos-file/`, `noos-term/`, `noos-snip/`, `noos-keys/`, `noos-software/` + `noos-pkg/` | Applications |
 | `noos-pkg/src/deb.rs` | Fichiers `.deb` : fiche (`dpkg-deb -f`), simulation sans root (`apt-get -s install <fichier>`), installation `apt-get install <chemin>` (pkexec) ; Logiciels est l'appli par défaut des `.deb` |
 | `noos-pkg/src/appimage.rs` | AppImage : lecture sans exécution (`unsquashfs -offset`), installation dans `~/Applications` + lanceur `appimage-<id>.desktop` (`X-NOOS-AppImage`) ; Logiciels ouvre les `.AppImage` (type MIME `application/vnd.appimage`) |
-| `noos-pkg/` | Paquets : backend **apt** (`backends/apt.rs` : `apt-cache`, `dpkg-query`, `apt-get -s`, DEP-11) + **sources APT** (`backends/aptsources.rs` : une ligne et deb822, activer / supprimer / composants) + Flatpak ; `sources.rs` regroupe (Debian sid, NOOS, experimental, contrib/non-free manquants) ; pare-feu ufw |
+| `noos-pkg/` | Paquets : backend **apt** (`backends/apt.rs` : `apt-cache`, `dpkg-query`, `apt-get -s`, DEP-11) + **sources APT** (`backends/aptsources.rs` : une ligne et deb822, activer / supprimer / composants) + Flatpak ; `sources.rs` regroupe (Debian sid, NOOS, experimental, contrib/non-free manquants) (plus d'ufw : remplacé par `noos-firewall`) |
+| `noos-firewall/` | **Pare-feu applicatif** : démon `noos-firewalld` (root, service `noos-firewall`) — table nftables `inet noos` + NFQUEUE (crate `nfq`, sans libnetfilter-queue) ; programme par `/proc/net/*` → inode → `/proc/<pid>` ; socket `/run/noos-firewall/control.sock` (`SO_PEERCRED` + `pkcheck` `org.noos.firewall.manage`) ; règles `/etc/noos/firewall/` ; CLI `noos-firewall` ; `install-host.sh` (installation depuis le dépôt) |
+| `noos-firewall-prompt/` | Fenêtre d'autorisation (agent de session, `/etc/xdg/autostart`) ; page Paramètres = `noos-settings/src/security.rs` |
 | `noos-photoview/` | « Photos » : visionneuse d'images (zoom centré sur le pointeur, ambilight, bande de miniatures, diaporama, EXIF) ; appli par défaut des images (`/etc/xdg/noos-mimeapps.list`) |
 | `noos-login/` | Écran de connexion (greeter greetd, compte `_greetd`), lancé par `noos-greeter` = `noos-comp --kiosk noos-login` |
 | `noos-installer/` | Installateur plein écran : Btrfs @/@home, **debootstrap sid** puis apt dans le chroot (avancement `APT::Status-Fd`), contrib/non-free au choix, i386, paquet `noos` du dépôt APT (sinon copie de l'ISO), GRUB (shim signé en UEFI, `EFI/debian`, entrée NVRAM « NOOS ») |
@@ -164,6 +166,7 @@ compositeur y écrit (`[desktops] names`).
 | `NOOS_FILE_DEMO=<dossier>;details;list;select=0,2;look;zoom=3;sort=size;copy=<source>;menu;mount;trash` | noos-file : ouvre un dossier, volet de détails, vue Détails, sélection, aperçu rapide, zoom, tri, copie suivie |
 | `NOOS_VRR_DEMO=gpu:i915\|display\|supported` | noos-settings › Écran / Jeux : simule la cause d'indisponibilité du VRR (écran FreeSync 48–180 Hz fictif) |
 | `NOOS_HDR_PREVIEW=roundtrip\|pq` | noos-comp imbriqué : écran simulé compatible HDR ; HDR actif = conversion PQ puis décodage inverse (image identique attendue) / signal PQ brut |
+| `NOOS_FIREWALL_DEMO=1\|in\|done` | pare-feu fictif (sans démon) : page Paramètres › Pare-feu (`noos-settings firewall`) et fenêtre d'autorisation `noos-firewall-prompt` (sortie / entrée d'abord / écran « Révoquer ») ; `NOOS_FIREWALL_DIALOG=port\|app` ouvre le dialogue d'ajout |
 | `NOOS_PKG_ELEVATE=sudo\|none` | noos-pkg : élévation par `sudo -n` ou aucune (tests), au lieu de pkexec |
 
 ### Règles de sécurité (erreurs déjà commises)
@@ -302,6 +305,13 @@ compositeur y écrit (`[desktops] names`).
   noyau garde ces valeurs, les validations de Smithay les reprennent. Le blob fait exactement
   32 octets (`struct hdr_output_metadata`). Bureau SDR → texture → shader PQ (un seul élément :
   pas de scanout direct en HDR). Captures et partage d'écran restent en SDR (éléments d'origine).
+- **Pare-feu** (`noos-firewall`) : nftables ne reconnaît pas un exécutable → règles par programme
+  appliquées par le démon au verdict, règles de ports = vraies règles nft. File d'entrée **sans**
+  `bypass` (démon arrêté = entrées fermées), file de sortie **avec** (réseau intact). Sans fenêtre
+  d'autorisation connectée, sorties autorisées après 3 s (`no_agent_action`) : sinon une mise à
+  jour du paquet couperait Internet à la session en cours. `nft -c` sans root :
+  `unshare -rn nft -c -f -`. Ne jamais tester le démon sur la vraie machine sans
+  `noos-firewall check` d'abord ; secours : `sudo /opt/noos/bin/noos-firewall off`.
 - **Configuration illisible** : `NoosConfig::save()` garde une copie `noos.toml.illisible`
   avant d'écraser un fichier qui ne se lit plus.
 

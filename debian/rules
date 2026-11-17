@@ -12,7 +12,7 @@ export PKG_CONFIG_PATH := $(CURDIR)/target/libadapta-build/meson-uninstalled$(if
 
 BINS := noos-comp noos-shell noos-file noos-settings noos-software noos-pkg noos-snip noos-term \
         noos-keys noos-save noos-photoview noos-texteditor noos-lock noos-archive noos-disk \
-        noos-login noos-installer
+        noos-login noos-installer noos-firewall noos-firewall-prompt
 D := $(CURDIR)/debian/noos
 
 %:
@@ -32,7 +32,7 @@ override_dh_auto_test:
 
 override_dh_auto_install:
 	install -d $(D)/opt/noos/bin $(D)/opt/noos/lib $(D)/opt/noos/share/noos $(D)/opt/noos/share/applications
-	for b in $(BINS); do install -m755 target/release/$$b $(D)/opt/noos/bin/$$b; done
+	for b in $(BINS) noos-firewalld; do install -m755 target/release/$$b $(D)/opt/noos/bin/$$b; done
 	for f in target/libadapta-build/src/libadapta-1.so*; do [ -d "$$f" ] || cp -P "$$f" $(D)/opt/noos/lib/; done
 	cp -r data/. $(D)/opt/noos/share/noos/
 	install -m644 noos-session/org.noos.*.desktop $(D)/opt/noos/share/applications/
@@ -54,6 +54,8 @@ override_dh_auto_install:
 	# Sauvegarder et Restaurer (crochets apt, règle polkit, GRUB) et Disques.
 	./noos-save/install-system.sh $(D) /opt/noos
 	./noos-disk/install-system.sh $(D) /opt/noos
+	# Pare-feu applicatif (service noos-firewall, règle polkit, fenêtre d'autorisation).
+	./noos-firewall/install-system.sh $(D) /opt/noos
 	# Thème GRUB : sources ici, copiées dans /boot/grub/themes/noos par postinst.
 	install -d $(D)/usr/share/noos-grub
 	install -m644 noos-grub/noos/* $(D)/usr/share/noos-grub/
