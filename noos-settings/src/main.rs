@@ -7,6 +7,7 @@
 mod apps;
 mod default_apps;
 mod desktops;
+mod devices;
 mod display_hdr;
 mod lockscreen;
 mod login;
@@ -30,7 +31,7 @@ type Builder = fn(&Rc<App>) -> adap::NavigationPage;
 /// Catégories de la barre latérale : (titre, icône, classe de couleur, page).
 const CATEGORIES: &[(&str, &str, &str, Builder)] = &[
     ("Système", "computer-symbolic", "nav-blue", system::root),
-    ("Bluetooth et appareils", "bluetooth-symbolic", "nav-blue", other::devices),
+    ("Bluetooth et appareils", "bluetooth-symbolic", "nav-blue", devices::root),
     ("Réseau et Internet", "network-wireless-symbolic", "nav-teal", network::root),
     ("Personnalisation", "applications-graphics-symbolic", "nav-orange", personalization::root),
     ("Applications", "view-app-grid-symbolic", "nav-purple", apps::root),
@@ -54,7 +55,11 @@ const SEARCH: &[(&str, &str, usize, Option<Builder>)] = &[
     ("Veille et écran", "veille extinction écran minutes inactivité", 0, Some(system::power)),
     ("Informations système", "à propos processeur mémoire ram version noyau nom du pc", 0, Some(system::about)),
     ("Renommer ce PC", "nom hostname renommer", 0, None),
-    ("Souris", "souris pointeur vitesse défilement", 1, None),
+    ("Souris", "souris pointeur vitesse défilement", 1, Some(other::mouse)),
+    ("Bluetooth", "bluetooth casque écouteurs manette associer appairer jumeler appareil sans fil", 1, None),
+    ("Ajouter un appareil Bluetooth", "ajouter appareil bluetooth associer appairer jumeler code pin", 1, None),
+    ("Imprimantes et scanners", "imprimante imprimer scanner numériser cups file d'attente page de test pilote", 1, Some(devices::printers::page)),
+    ("Ajouter une imprimante", "ajouter imprimante ipp everywhere airprint pilote usb réseau", 1, Some(devices::printers::page)),
     ("Wi-Fi", "wifi wi-fi sans fil réseau mot de passe", 2, Some(network::wifi::page)),
     ("DNS", "dns serveur quad9 cloudflare adguard confidentialité chiffré tls", 2, Some(network::dns::page)),
     ("VPN", "vpn wireguard tunnel conf mullvad proton", 2, Some(network::vpn::page)),
@@ -64,7 +69,7 @@ const SEARCH: &[(&str, &str, usize, Option<Builder>)] = &[
     ("Partage de fichiers (Samba)", "partage fichiers dossier samba smb windows réseau local groupe de travail nom du pc", 2, Some(network::sharing::samba_page)),
     ("SSH et SFTP", "ssh sftp terminal à distance clé publique authorized_keys serveur", 2, Some(network::sharing::ssh_page)),
     ("WebDAV", "webdav dav https fichiers téléphone serveur rclone", 2, Some(network::sharing::webdav_page)),
-    ("Clavier", "clavier disposition azerty qwerty", 1, None),
+    ("Clavier", "clavier disposition azerty qwerty", 1, Some(other::keyboard)),
     ("Arrière-plan", "fond d'écran arrière-plan image wallpaper", 3, Some(personalization::background)),
     ("Couleurs", "couleur accent sombre clair transparence mode", 3, Some(personalization::colors)),
     ("Thèmes", "thème palette coins arrondis css boutons", 3, Some(personalization::themes)),
@@ -92,6 +97,10 @@ const PAGES: &[(&str, usize, Option<Builder>)] = &[
     ("notifications", 0, Some(system::notifications)),
     ("about", 0, Some(system::about)),
     ("devices", 1, None),
+    ("bluetooth", 1, None),
+    ("printers", 1, Some(devices::printers::page)),
+    ("mouse", 1, Some(other::mouse)),
+    ("keyboard", 1, Some(other::keyboard)),
     ("network", 2, None),
     ("wifi", 2, Some(network::wifi::page)),
     ("dns", 2, Some(network::dns::page)),

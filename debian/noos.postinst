@@ -59,6 +59,27 @@ if [ "$1" = configure ]; then
         touch /var/lib/noos/power-profiles
     fi
 
+    # Bluetooth et impression, une seule fois : services démarrés, administrateurs (groupe
+    # sudo) dans « lpadmin » (gérer les imprimantes sans mot de passe) et comptes humains
+    # dans « bluetooth » (BlueZ) ; effectif à la prochaine ouverture de session.
+    if [ ! -e /var/lib/noos/devices ]; then
+        for unit in bluetooth.service cups.service cups-browsed.service avahi-daemon.service; do
+            if [ -n "$(systemctl list-unit-files --no-legend "$unit" 2>/dev/null)" ]; then
+                systemctl enable "$unit" >/dev/null 2>&1 || true
+                if [ -d /run/systemd/system ]; then
+                    systemctl start "$unit" >/dev/null 2>&1 || true
+                fi
+            fi
+        done
+        for u in $(getent group sudo | cut -d: -f4 | tr ',' ' '); do
+            getent group lpadmin >/dev/null 2>&1 && usermod -aG lpadmin "$u" 2>/dev/null || true
+        done
+        getent passwd | awk -F: '$3 >= 1000 && $3 < 60000 { print $1 }' | while read -r u; do
+            getent group bluetooth >/dev/null 2>&1 && usermod -aG bluetooth "$u" 2>/dev/null || true
+        done
+        touch /var/lib/noos/devices
+    fi
+
     # Nouveaux comptes (useradd) : fish par défaut, une seule fois.
     if [ ! -e /var/lib/noos/useradd-fish ] && [ -x /usr/bin/fish ] && [ -f /etc/default/useradd ]; then
         if grep -q '^SHELL=' /etc/default/useradd; then

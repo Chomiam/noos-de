@@ -450,9 +450,87 @@ L'organisation reprend celle de Windows 11 : compte et recherche dans la barre l
 | Système › Alimentation | Profil d'alimentation (power-profiles-daemon / tuned-ppd), extinction de l'écran et veille après inactivité, inhibition en plein écran |
 | Système › Informations | Processeur, mémoire, carte graphique, renommer le PC |
 | Personnalisation | Thèmes rapides, arrière-plan (images du jour Bing, avec changement quotidien automatique et bouton « Jours précédents » : l'archive de Bing s'arrête à 15 jours ; fonds Wallhaven au hasard ou par recherche, 24 par page, bouton « Charger plus d'images » jusqu'à la dernière page — retour à la page 1 à chaque nouvelle recherche, graine conservée pour que le hasard ne repasse pas les mêmes images), couleurs, thèmes libAdapta, barre des tâches (hauteur 28 à 96 px, icônes des applis actives regroupées dans « ^ » ou étalées), polices |
+| Bluetooth et appareils | Bluetooth (BlueZ) : appareils associés en tuiles (état, batterie, connecter / renommer / supprimer), assistant « Ajouter un appareil », visibilité ; liens vers Imprimantes et scanners, Souris, Clavier (voir « Bluetooth et appareils ») |
 | Confidentialité › Pare-feu | Pare-feu applicatif NOOS : activation, mode, règles par application, ports, demandes en attente, journal (voir « Pare-feu ») |
 
-Une page s'ouvre directement avec `noos-settings <page>` (`display`, `power`, `firewall`, `taskbar`, `colors`…).
+Une page s'ouvre directement avec `noos-settings <page>` (`display`, `power`, `firewall`, `taskbar`, `colors`, `bluetooth`, `printers`…).
+
+## Bluetooth et appareils (Paramètres)
+
+Code : `noos-settings/src/devices/` (`bluez.rs` backend, `bt_add.rs` assistant et agent,
+`cups.rs` backend d'impression, `printers.rs` pages).
+
+**Bluetooth** — BlueZ par D-Bus (bus système, gio) : `GetManagedObjects` puis suivi par les
+signaux (`InterfacesAdded/Removed`, `PropertiesChanged`, démarrage / arrêt de bluetoothd). Un seul
+contrôleur par processus ; Paramètres enregistre un **agent d'appairage** `org.bluez.Agent1`
+(`KeyboardDisplay`, agent par défaut tant que Paramètres vit) :
+
+- code à 6 chiffres à confirmer (téléphones, casques récents), code PIN à saisir (anciens
+  appareils, 0000 / 1234 proposé), code à taper sur un clavier, autorisation d'une connexion
+  entrante (les appareils associés et de confiance sont acceptés sans question) ;
+- « Ajouter un appareil » : recherche (`StartDiscovery`, arrêtée à la fermeture et pendant
+  l'association), icône et type d'après la propriété `Icon` (ou la classe), force du signal,
+  appareils sans nom masqués par défaut ; `Pair` → `Trusted` → `Connect` ; écrans « prêt » ou
+  « échec » avec une explication claire des erreurs BlueZ (code refusé, hors de portée, profil
+  audio manquant…) ;
+- tuiles des appareils associés : connecté ou non, batterie (`Battery1`), menu « … » (connecter,
+  renommer = `Alias`, supprimer = `RemoveDevice`) ;
+- états : service arrêté (bouton « Démarrer le service », pkexec), BlueZ absent (« Installer »),
+  aucun adaptateur, bloqué par rfkill (l'interrupteur débloque par `/dev/rfkill`).
+
+Droits : groupe `bluetooth` (installateur, postinst une fois). Audio : `libspa-0.2-bluetooth`.
+
+**Imprimantes et scanners** — outils de CUPS en `LC_ALL=C` : `lpstat -e / -d / -r`,
+`lpoptions -p` (état, modèle, adresse, `marker-*` = niveaux d'encre), `lpq` (file d'attente),
+`lpinfo -l -v` + `driverless` (détection réseau / USB), `lpinfo -m` (pilotes), `lpadmin`,
+`cancel`, `cupsenable` / `cupsdisable`, `lp` (page de test `/usr/share/cups/data/testprint`).
+
+- liste avec état (prête, impression, en pause, problème traduit : bac vide, bourrage, encre
+  bientôt vide…), badge « Par défaut » ;
+- fiche d'une imprimante : page de test, définir par défaut, problèmes, file d'attente (annuler
+  un document ou tout), niveaux d'encre colorés, suspendre, partager, informations, **page Web de
+  l'imprimante** (hôte de l'URI ; `dnssd://` résolu par `avahi-browse`, `adminurl` annoncé si
+  présent) et **interface de CUPS** (`http://localhost:631/printers/<file>`), suppression ;
+- « Ajouter un appareil » : imprimantes IPP Everywhere / AirPrint ajoutées **en un clic**
+  (`lpadmin -m everywhere`), sinon choix du pilote (pilotes correspondants à l'identifiant IEEE
+  1284 ou au modèle, recommandé présélectionné, recherche dans tous les pilotes) ; ajout par
+  adresse (IP, nom d'hôte, URI) ; en cas d'échec sans pilote, « Choisir un pilote » ;
+- **droits** : CUPS accepte l'administration des membres de `lpadmin` sans mot de passe ; sinon
+  la commande est relancée par **pkexec** (jamais sudo) et une carte propose « M'ajouter au
+  groupe » ;
+- scanners : `scanimage -L` (eSCL / WSD par sane-airscan, USB), bouton « Numériser » (simple-scan,
+  Skanpage, Skanlite ou XSane) ;
+- CUPS absent : « Installer » (paquets de `debian/control`) ; arrêté : « Démarrer le service ».
+
+Sur Debian, `lpadmin`, `lpinfo`, `cupsenable`… sont dans `/usr/sbin` (hors du PATH des
+utilisateurs) : appelés par leur chemin complet. Les files créées automatiquement par
+cups-browsed (`implicitclass://`) n'ont pas d'état dans `lpoptions` : lu par `lpstat -p`. Sans
+`lpq` (cups-bsd), la file d'attente vient de `lpstat -o`. Un même scanner réseau vu par plusieurs
+moteurs SANE (escl, epson2, airscan) n'est affiché qu'une fois.
+
+Paquets (`debian/control`, `noos-iso/packages-system.txt`) : `cups`, `cups-browsed`, `cups-bsd`,
+`cups-filters`, `avahi-daemon`, `avahi-utils`, `libnss-mdns`, `ipp-usb`, pilotes Gutenprint,
+HP (hpcups) et Brother (brlaser), `sane-utils`, `sane-airscan` ; `printer-driver-all` et
+`simple-scan` en Recommends. Services activés par l'installateur et par postinst (une fois,
+`/var/lib/noos/devices`).
+
+Démos (sans BlueZ ni CUPS) :
+
+| Variable | Effet |
+|---|---|
+| `NOOS_BT_DEMO=1` | appareils associés fictifs (casque, souris, manette, téléphone) |
+| `NOOS_BT_DEMO=add` / `pair` / `pin` | assistant ouvert (recherche simulée) / association de l'iPhone avec code à confirmer / de l'enceinte avec code PIN |
+| `NOOS_BT_DEMO=off` / `none` / `service` | Bluetooth désactivé / aucun adaptateur / service arrêté |
+| `NOOS_PRINT_DEMO=1` | imprimantes (par défaut, impression en cours avec encre basse, en pause) et scanners fictifs |
+| `NOOS_PRINT_DEMO=printer` | fiche de l'imprimante Epson (file d'attente, niveaux d'encre) |
+| `NOOS_PRINT_DEMO=add` / `driver` / `fail` / `none` | assistant d'ajout / choix du pilote d'une imprimante USB / échec d'un ajout sans pilote / aucune imprimante trouvée |
+| `NOOS_PRINT_DEMO=missing` | CUPS non installé |
+| `NOOS_PRINT_OPEN=<file CUPS>` | fiche d'une vraie imprimante (sans démo) |
+
+```bash
+tools/preview/run_app.sh bt.png 4 "env NOOS_BT_DEMO=pair noos-settings bluetooth"
+tools/preview/run_app.sh imp.png 5 "env NOOS_PRINT_DEMO=1 noos-settings printers"
+```
 
 ## Pare-feu (noos-firewall)
 
