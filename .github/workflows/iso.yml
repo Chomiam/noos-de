@@ -48,9 +48,11 @@ jobs:
           TAG: ${{ inputs.release }}
           TITLE: ${{ inputs.title }}
         run: |
-          cd noos-iso/out
+          # noos-iso/out appartient à root (écrit par le conteneur) : SHA256SUMS à part.
+          mkdir -p "$RUNNER_TEMP/release" && cp noos-iso/out/*.iso "$RUNNER_TEMP/release/"
+          cd "$RUNNER_TEMP/release"
           sha256sum *.iso > SHA256SUMS
           notes="$GITHUB_WORKSPACE/noos-iso/release-notes.md"
-          [ -f "$notes" ] || { echo "Préversion de NOOS (Debian sid)." > /tmp/notes.md; notes=/tmp/notes.md; }
+          [ -f "$notes" ] || { echo "Préversion de NOOS (Debian sid)." > notes.md; notes=notes.md; }
           gh release create "$TAG" *.iso SHA256SUMS --prerelease --target "$GITHUB_SHA" \
             --title "${TITLE:-NOOS $TAG}" --notes-file "$notes"
