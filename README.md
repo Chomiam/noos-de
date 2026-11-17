@@ -66,7 +66,7 @@ Tout est écrit en **Rust**, de la première ligne du compositeur jusqu'à la de
   widgets sur le bureau (horloge, ressources, note, calendrier).
 - 🖥️ **Bureaux virtuels et plusieurs écrans** : vue des tâches, glissement animé, écran
   principal, disposition des moniteurs à la souris.
-- 🎮 **Pensé pour le jeu** : VRR, affichage direct en plein écran, 10 bits, détection HDR,
+- 🎮 **Pensé pour le jeu** : VRR, affichage direct en plein écran, 10 bits, HDR10 (expérimental),
   profils d'alimentation (en cours de validation sur du vrai matériel).
 - 📂 **Des applis maison** : Explorateur, Paramètres, Logiciels, Terminal, Éditeur de texte,
   Photos, Archives, Disques, Capture d'écran, Porte-clés, Sauvegarder et Restaurer

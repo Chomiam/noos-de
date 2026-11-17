@@ -432,6 +432,39 @@ Dans un terminal, `pkexec` garde sa propre invite texte (comme sous GNOME) ; ajo
 | Super+Maj+R | Recharger la configuration |
 | Ctrl+Alt+F1…F12 | Changer de terminal virtuel |
 
+## HDR10 (compositeur + Paramètres › Système › Écran)
+
+Activé par écran dans Paramètres › Système › Écran › « Utiliser le HDR » (appliqué tout de suite,
+retour automatique au SDR au bout de 15 s sans confirmation), enregistré dans `noos.toml` :
+
+```toml
+[[output]]
+name = "DP-1"
+hdr = true              # absent = [gaming] hdr (« HDR par défaut », Paramètres › Jeux)
+sdr_brightness = 203    # blanc du bureau en cd/m² (80 – 480, défaut 203 = BT.2408)
+```
+
+IPC : `{"type":"set-hdr","output":"DP-1","enabled":true,"sdr_brightness":250}` (immédiat, sans
+toucher à `noos.toml`). `get-outputs` donne `hdr_capable`, `hdr_active`, `hdr_unavailable` (raison
+lisible : EDID sans PQ, pilote sans `HDR_OUTPUT_METADATA` ou sans `BT2020_RGB`, mode imbriqué),
+`sdr_brightness`, `peak_brightness` (EDID).
+
+Fonctionnement (`noos-comp/src/hdr.rs`) — Smithay ne gère pas le HDR, le compositeur écrit lui-même
+les propriétés du connecteur par une validation atomique (`ALLOW_MODESET`, l'écran clignote une
+fois) : métadonnées HDR10 (`HDR_OUTPUT_METADATA`, EOTF PQ, primaires et luminances de l'EDID),
+`Colorspace` = `BT2020_RGB`, `max bpc` = 10, framebuffer 10 bits. À la connexion d'un écran, les
+propriétés sont remises en SDR si le HDR n'est pas demandé (un compositeur précédent a pu le
+laisser actif). Le bureau est dessiné comme en SDR dans une texture, puis un shader convertit :
+sRGB (gamma 2,2) → linéaire → BT.2020 → `sdr_brightness` cd/m² → PQ. Les captures d'écran et le
+partage d'écran restent en SDR.
+
+Limites : pas de protocole `wp_color_management_v1` (une appli ou un jeu HDR natif est traité
+comme du SDR), pas de scanout direct en HDR (tout passe par la conversion), pas de mappage des
+tons, journal `HDR : capacités du connecteur` dans `session.log`.
+
+Aperçu imbriqué : `NOOS_HDR_PREVIEW=roundtrip` (écran simulé compatible HDR ; conversion PQ puis
+décodage inverse, l'image doit rester identique) ou `NOOS_HDR_PREVIEW=pq` (signal PQ brut, délavé).
+
 ## Effets de transparence (Mica)
 
 Quand les effets de transparence sont activés, le compositeur floute le fond d'écran sous la
@@ -521,7 +554,7 @@ sessions (GNOME…).
   `vrr_capable` dans les propriétés du connecteur.
 
 **À faire :**
-- sortie **HDR** réelle : encodage PQ/BT.2020, `HDR_OUTPUT_METADATA`, protocole `wp-color-management` (aujourd'hui seule la détection EDID + pilote existe) ;
+- HDR : protocole `wp-color-management-v1` pour les applis et jeux HDR natifs, scanout direct en HDR, mappage des tons (voir « HDR10 ») ;
 - multi-GPU ;
 - changement de mode à chaud ;
 - décorations serveur pour les applis sans CSD ;

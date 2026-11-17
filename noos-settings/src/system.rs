@@ -534,21 +534,10 @@ fn render_display(app: &Rc<App>, holder: &gtk::Box, outputs: Rc<Vec<OutputInfo>>
         adv.add(&card("dialog-information-symbolic", "Pourquoi le VRR est-il indisponible ?", detail));
     }
 
-    let hdr = switch(
-        "weather-clear-symbolic",
-        "Utiliser le HDR",
-        if o.hdr_capable { "Expérimental : la sortie HDR n'est pas encore implémentée" } else { "Écran ou pilote sans HDR" },
-        oc.hdr.unwrap_or(cfg.gaming.hdr),
-    );
-    hdr.set_sensitive(o.hdr_capable);
     {
-        let (app, name) = (app.clone(), o.name.clone());
-        hdr.connect_active_notify(move |r| {
-            let v = r.is_active();
-            app.update(|c| c.output_mut(&name).hdr = Some(v));
-        });
+        let (holder, selected) = (holder.clone(), selected.clone());
+        crate::display_hdr::add_rows(app, &adv, &o, &cfg, Rc::new(move |app: &Rc<App>| reload_display(app, &holder, &selected)));
     }
-    adv.add(&hdr);
 
     let info = card("dialog-information-symbolic", "Informations sur l'écran", &format!(
         "{} × {} @ {} · format {} · {}",
@@ -556,7 +545,7 @@ fn render_display(app: &Rc<App>, holder: &gtk::Box, outputs: Rc<Vec<OutputInfo>>
         o.height,
         hz(o.refresh),
         o.format,
-        if o.hdr_capable { "HDR" } else { "SDR" }
+        if o.hdr_active { "HDR10" } else if o.hdr_capable { "SDR (compatible HDR)" } else { "SDR" }
     ));
     adv.add(&info);
     holder.append(&adv);
@@ -637,7 +626,7 @@ fn reload_display(app: &Rc<App>, holder: &gtk::Box, selected: &Rc<RefCell<usize>
 }
 
 /// Dialogue « Conserver ces paramètres d'affichage ? » avec compte à rebours.
-fn keep_or_revert(app: &Rc<App>, keep: impl Fn() + 'static, revert: impl Fn() + Send + Clone + 'static, after: impl Fn(&Rc<App>) + Clone + 'static) {
+pub(crate) fn keep_or_revert(app: &Rc<App>, keep: impl Fn() + 'static, revert: impl Fn() + Send + Clone + 'static, after: impl Fn(&Rc<App>) + Clone + 'static) {
     let d = adap::AlertDialog::new(Some("Conserver ces paramètres d'affichage ?"), Some("Rétablissement des paramètres précédents dans 15 secondes."));
     d.add_responses(&[("revert", "Rétablir"), ("keep", "Conserver les modifications")]);
     d.set_response_appearance("keep", adap::ResponseAppearance::Suggested);

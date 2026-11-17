@@ -222,6 +222,18 @@ impl NoosState {
                 Some(_) => Event::Error { message: "échelle hors limites (0,5 – 4)".into() },
                 None => Event::Error { message: format!("écran {output} inconnu") },
             },
+            Request::SetHdr { output, enabled, sdr_brightness } => {
+                let (min, max) = noos_core::config::SDR_BRIGHTNESS_RANGE;
+                let nits = sdr_brightness.unwrap_or_else(|| self.config.sdr_brightness_for(&output)).clamp(min, max);
+                match self.backend.set_hdr(&output, enabled, nits) {
+                    Ok(()) => {
+                        let outputs = self.backend.output_infos(&self.space, &self.config);
+                        self.ipc.broadcast(&Event::Outputs { outputs });
+                        Event::Ok
+                    }
+                    Err(message) => Event::Error { message },
+                }
+            }
             Request::SetTransform { output, transform } => {
                 if !self.backend.supports_transform() {
                     Event::Error { message: "orientation non disponible en mode imbriqué".into() }

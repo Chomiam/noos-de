@@ -45,6 +45,14 @@ pub enum Request {
     SetMode { output: String, width: i32, height: i32, refresh: i32 },
     /// Change l'échelle d'un écran immédiatement.
     SetScale { output: String, scale: f64 },
+    /// Active / désactive le HDR10 d'un écran immédiatement (sans toucher à `noos.toml`) ;
+    /// `sdr_brightness` : blanc du bureau en cd/m² (absent = valeur de la configuration).
+    SetHdr {
+        output: String,
+        enabled: bool,
+        #[serde(default)]
+        sdr_brightness: Option<u32>,
+    },
     /// Change l'orientation (`normal`, `90`, `180`, `270`).
     SetTransform { output: String, transform: String },
     /// Ouvre / ferme le menu Démarrer (équivalent de la touche Super).
@@ -151,6 +159,15 @@ pub struct OutputInfo {
     /// L'EDID annonce le HDR (EOTF PQ) ET le pilote expose `HDR_OUTPUT_METADATA`.
     pub hdr_capable: bool,
     pub hdr_active: bool,
+    /// Pourquoi le HDR est impossible (vide = possible) : EDID, pilote, mode imbriqué…
+    #[serde(default)]
+    pub hdr_unavailable: String,
+    /// Luminosité du blanc SDR appliquée en HDR (cd/m²).
+    #[serde(default)]
+    pub sdr_brightness: u32,
+    /// Luminance de crête annoncée par l'EDID (cd/m², 0 = inconnue).
+    #[serde(default)]
+    pub peak_brightness: u32,
     /// Orientation actuelle (`normal`, `90`, `180`, `270`).
     #[serde(default)]
     pub transform: String,
@@ -269,5 +286,18 @@ mod tests {
         assert_eq!(s, r#"{"type":"activate","id":3}"#);
         let e: Event = serde_json::from_str(r#"{"type":"toggle-start-menu"}"#).unwrap();
         assert_eq!(e, Event::ToggleStartMenu);
+    }
+
+    #[test]
+    fn set_hdr() {
+        let r: Request = serde_json::from_str(r#"{"type":"set-hdr","output":"DP-1","enabled":true}"#).unwrap();
+        assert_eq!(r, Request::SetHdr { output: "DP-1".into(), enabled: true, sdr_brightness: None });
+        // Anciennes réponses sans les champs HDR détaillés : toujours lisibles.
+        let o: OutputInfo = serde_json::from_str(
+            r#"{"name":"DP-1","make":"","model":"","width":1,"height":1,"refresh":60000,"scale":1.0,"modes":[],
+               "vrr_capable":false,"vrr_active":false,"hdr_capable":true,"hdr_active":false,"format":"AB30","nested":false}"#,
+        )
+        .unwrap();
+        assert!(o.hdr_unavailable.is_empty() && o.sdr_brightness == 0);
     }
 }

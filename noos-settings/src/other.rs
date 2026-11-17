@@ -83,8 +83,8 @@ pub fn gaming(app: &Rc<App>) -> adap::NavigationPage {
         ),
         (
             "weather-clear-symbolic",
-            "HDR (expérimental)",
-            "Détection des écrans HDR ; la sortie HDR elle-même reste à écrire",
+            "HDR par défaut",
+            "HDR10 sur les écrans compatibles qui n'ont pas leur propre réglage (Système › Écran)",
             gm.hdr,
             |c, v| c.gaming.hdr = v,
         ),

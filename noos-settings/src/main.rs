@@ -7,6 +7,7 @@
 mod apps;
 mod default_apps;
 mod desktops;
+mod display_hdr;
 mod lockscreen;
 mod login;
 mod network;

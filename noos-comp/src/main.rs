@@ -14,6 +14,7 @@ mod cursor;
 mod desktops;
 mod grabs;
 mod handlers;
+mod hdr;
 mod idle;
 mod lock;
 mod outputs;

@@ -10,9 +10,8 @@
 //! - **Scanout direct** : quand une fenêtre est en plein écran, seule elle est rendue ; le
 //!   `DrmCompositor` de Smithay la place alors directement sur le plan primaire, sans copie.
 //! - **10 bits** : on essaie d'abord les formats `ARGB2101010`.
-//! - **HDR** : détection (EDID + pilote). La sortie HDR elle-même demande un pipeline couleur
-//!   (encodage PQ, métadonnées `HDR_OUTPUT_METADATA`, protocole color-management) qui n'est
-//!   pas encore écrit.
+//! - **HDR10** : détection (EDID + pilote), puis sur demande métadonnées PQ, BT.2020, 10 bits
+//!   et conversion du bureau SDR en PQ (voir `crate::hdr`).
 
 use std::{collections::HashMap, path::Path, time::Duration};
 
@@ -95,7 +94,14 @@ struct Surface {
     vrr_reason: VrrReason,
     vrr_display: Option<VrrRange>,
     gpu_driver: String,
-    hdr_capable: bool,
+    connector: connector::Handle,
+    hdr_edid: Option<crate::hdr::EdidHdr>,
+    hdr_props: crate::hdr::ConnectorProps,
+    /// Pourquoi le HDR est impossible (None = écran et pilote compatibles).
+    hdr_unavailable: Option<String>,
+    /// Passe de conversion SDR → PQ : présente = HDR actif.
+    hdr: Option<crate::hdr::HdrPass>,
+    sdr_nits: u32,
     modes: Vec<ModeInfo>,
     drm_modes: Vec<smithay::reexports::drm::control::Mode>,
     make: String,
@@ -233,10 +239,65 @@ impl UdevData {
     pub fn apply_config(&mut self, config: &NoosConfig) {
         self.ten_bit = config.gaming.ten_bit;
         let Some(gpu) = self.gpu.as_mut() else { return };
+        let mut names = vec![];
         for surface in gpu.surfaces.values() {
-            if let Some(scale) = config.output(&surface.output.name()).and_then(|o| o.scale) {
+            let name = surface.output.name();
+            if let Some(scale) = config.output(&name).and_then(|o| o.scale) {
                 surface.output.change_current_state(None, None, Some(Scale::Fractional(scale)), None);
                 layer_map_for_output(&surface.output).arrange();
+            }
+            names.push(name);
+        }
+        for name in names {
+            let unavailable = self.hdr_unavailable(&name);
+            if let Err(e) = self.set_hdr(&name, config.hdr_for(&name), config.sdr_brightness_for(&name)) {
+                // Écran incompatible : déjà signalé à la connexion.
+                if !unavailable {
+                    crate::hdr::warn_failed(&name, &e);
+                }
+            }
+        }
+    }
+
+    fn hdr_unavailable(&self, name: &str) -> bool {
+        self.gpu
+            .as_ref()
+            .and_then(|g| g.surfaces.values().find(|s| s.output.name() == name))
+            .is_some_and(|s| s.hdr_unavailable.is_some())
+    }
+
+    /// Active / désactive le HDR10 d'un écran (métadonnées, BT.2020, 10 bits, conversion).
+    pub fn set_hdr(&mut self, name: &str, enabled: bool, sdr_nits: u32) -> Result<(), String> {
+        let gpu = self.gpu.as_mut().ok_or("aucun GPU")?;
+        let surface = gpu.surfaces.values_mut().find(|s| s.output.name() == name).ok_or("écran inconnu")?;
+        surface.sdr_nits = sdr_nits;
+        if let Some(pass) = surface.hdr.as_mut() {
+            pass.set_sdr_nits(sdr_nits);
+        }
+        if enabled == surface.hdr.is_some() {
+            return Ok(());
+        }
+        if enabled {
+            if let Some(reason) = &surface.hdr_unavailable {
+                return Err(reason.clone());
+            }
+            ensure_ten_bit(&gpu.output_manager, &gpu.renderer, &surface.drm_output)?;
+        }
+        let drm = gpu.output_manager.device();
+        crate::hdr::apply_connector(drm, surface.connector, &surface.hdr_props, surface.hdr_edid.as_ref().filter(|_| enabled))?;
+        surface.hdr = enabled.then(|| crate::hdr::HdrPass::new(sdr_nits, 0.0));
+        surface.render_scheduled = false;
+        info!(output = name, enabled, sdr_nits, "HDR10");
+        Ok(())
+    }
+
+    /// Après un changement de VT, un autre maître DRM a pu remettre l'écran en SDR.
+    fn reapply_hdr(&mut self) {
+        let Some(gpu) = self.gpu.as_mut() else { return };
+        let drm = gpu.output_manager.device();
+        for s in gpu.surfaces.values().filter(|s| s.hdr.is_some()) {
+            if let Err(e) = crate::hdr::apply_connector(drm, s.connector, &s.hdr_props, s.hdr_edid.as_ref()) {
+                crate::hdr::warn_failed(&s.output.name(), &e);
             }
         }
     }
@@ -251,7 +312,10 @@ impl UdevData {
                 let format = s.drm_output.format();
                 let name = s.output.name();
                 OutputInfo {
-                    hdr_active: false,
+                    hdr_active: s.hdr.is_some(),
+                    hdr_unavailable: s.hdr_unavailable.clone().unwrap_or_default(),
+                    sdr_brightness: s.sdr_nits,
+                    peak_brightness: s.hdr_edid.map(|e| e.max_nits.round() as u32).unwrap_or(0),
                     transform: crate::wm::transform_name(s.output.current_transform()).into(),
                     can_set_mode: true,
                     vrr_capable: s.vrr_support != VrrSupport::NotSupported,
@@ -259,7 +323,7 @@ impl UdevData {
                     vrr_reason: s.vrr_reason,
                     vrr_display: s.vrr_display,
                     gpu_driver: s.gpu_driver.clone(),
-                    hdr_capable: s.hdr_capable,
+                    hdr_capable: s.hdr_unavailable.is_none(),
                     width: mode.size.w,
                     height: mode.size.h,
                     refresh: mode.refresh,
@@ -367,6 +431,7 @@ pub fn run() -> anyhow::Result<()> {
                             s.render_scheduled = false;
                         }
                     }
+                    data.reapply_hdr();
                     state.loop_handle.insert_idle(|state| state.render_all());
                 }
             }
@@ -410,6 +475,30 @@ pub fn run() -> anyhow::Result<()> {
         let _ = state.display_handle.flush_clients();
     })?;
     Ok(())
+}
+
+/// Framebuffer 10 bits obligatoire en HDR (le PQ en 8 bits fait des bandes visibles).
+fn ten_bit_format(f: Fourcc) -> bool {
+    matches!(f, Fourcc::Abgr2101010 | Fourcc::Argb2101010 | Fourcc::Xbgr2101010 | Fourcc::Xrgb2101010)
+}
+
+fn ensure_ten_bit(manager: &NoosDrmOutputManager, renderer: &GlesRenderer, output: &NoosDrmOutput) -> Result<(), String> {
+    if ten_bit_format(output.format()) {
+        return Ok(());
+    }
+    let formats = renderer.egl_context().dmabuf_render_formats();
+    let mut last = String::from("aucun format 10 bits");
+    for code in [Fourcc::Abgr2101010, Fourcc::Argb2101010] {
+        let modifiers: Vec<_> = formats.iter().filter(|f| f.code == code).map(|f| f.modifier).collect();
+        if modifiers.is_empty() {
+            continue;
+        }
+        match output.with_compositor(|c| c.set_format(manager.allocator().clone(), code, modifiers)) {
+            Ok(()) => return Ok(()),
+            Err(e) => last = format!("{e:?}"),
+        }
+    }
+    Err(format!("framebuffer 10 bits impossible : {last}"))
 }
 
 fn led_flags(leds: smithay::input::keyboard::LedState) -> smithay::reexports::input::Led {
@@ -462,6 +551,8 @@ impl NoosState {
     }
 
     fn device_added(&mut self, node: DrmNode, path: &Path) -> anyhow::Result<()> {
+        // Le HDR exige un framebuffer 10 bits, même si « 10 bits » est décoché.
+        let want_hdr = self.config.gaming.hdr || self.config.outputs.iter().any(|o| o.hdr == Some(true));
         let handle: LoopHandle<'static, NoosState> = self.loop_handle.clone();
         let dh = self.display_handle.clone();
         let data = self.udev().unwrap();
@@ -498,7 +589,7 @@ impl NoosState {
         let render_formats: FormatSet = renderer.egl_context().dmabuf_render_formats().iter().copied().collect();
         let allocator = GbmAllocator::new(gbm.clone(), GbmBufferFlags::RENDERING | GbmBufferFlags::SCANOUT);
         let exporter = GbmFramebufferExporter::new(gbm.clone(), Some(render_node).into());
-        let color_formats = if data.ten_bit { FORMATS_10BIT } else { FORMATS_8BIT };
+        let color_formats = if data.ten_bit || want_hdr { FORMATS_10BIT } else { FORMATS_8BIT };
         let output_manager = DrmOutputManager::new(
             drm,
             allocator,
@@ -571,6 +662,8 @@ impl NoosState {
             .outputs()
             .map(|o| self.space.output_geometry(o).map(|g| g.size.w).unwrap_or(0))
             .sum();
+        let sdr_nits = self.config.sdr_brightness_for(&name);
+        let mut want_hdr = self.config.hdr_for(&name);
         let Some(gpu) = self.udev().and_then(|d| d.gpu.as_mut()) else { return };
         let drm = gpu.output_manager.device();
 
@@ -579,10 +672,28 @@ impl NoosState {
         let make = info.as_ref().and_then(|i| i.make()).unwrap_or_else(|| "Inconnu".into());
         let model = info.as_ref().and_then(|i| i.model()).unwrap_or_else(|| name.clone());
         let serial = info.as_ref().and_then(|i| i.serial()).unwrap_or_default();
-        let edid_hdr = info.as_ref().map(|i| i.hdr_static_metadata().pq).unwrap_or(false);
         let conn_props = properties(drm, connector.handle());
-        let driver_hdr = conn_props.iter().any(|(n, _)| n == "HDR_OUTPUT_METADATA");
-        let hdr_capable = edid_hdr && driver_hdr;
+        let hdr_edid = info.as_ref().map(crate::hdr::EdidHdr::from_info);
+        let hdr_props = crate::hdr::ConnectorProps::read(drm, connector.handle());
+        let hdr_unavailable = crate::hdr::unavailable_reason(hdr_edid.as_ref(), &hdr_props);
+        let hdr_capable = hdr_unavailable.is_none();
+        crate::hdr::log_props(&name, hdr_edid.as_ref(), &hdr_props);
+        if want_hdr {
+            if let Some(reason) = &hdr_unavailable {
+                warn!(name, "HDR demandé mais impossible : {reason}");
+                want_hdr = false;
+            }
+        }
+        // Avant le premier réglage du mode : métadonnées HDR10 si demandé, sinon retour au SDR
+        // (un compositeur précédent a pu laisser l'écran en HDR).
+        if hdr_props.hdr_metadata.is_some() || want_hdr {
+            if let Err(e) =
+                crate::hdr::apply_connector(drm, connector.handle(), &hdr_props, hdr_edid.as_ref().filter(|_| want_hdr))
+            {
+                crate::hdr::warn_failed(&name, &e);
+                want_hdr = false;
+            }
+        }
 
         // VRR : ce que l'écran annonce (EDID) et ce que le pilote expose, pour expliquer un refus.
         let vrr_display = edid_blob(drm, &conn_props).and_then(|e| noos_core::edid::vrr_range(&e));
@@ -649,6 +760,13 @@ impl NoosState {
                 return;
             }
         };
+        if want_hdr {
+            if let Err(e) = ensure_ten_bit(&gpu.output_manager, &gpu.renderer, &drm_output) {
+                crate::hdr::warn_failed(&name, &e);
+                let _ = crate::hdr::apply_connector(gpu.output_manager.device(), connector.handle(), &hdr_props, None);
+                want_hdr = false;
+            }
+        }
         let vrr_support = drm_output
             .with_compositor(|c| c.vrr_supported(connector.handle()))
             .unwrap_or(VrrSupport::NotSupported);
@@ -663,7 +781,7 @@ impl NoosState {
             mode = %format!("{}x{}@{:.2}", wl_mode.size.w, wl_mode.size.h, wl_mode.refresh as f64 / 1000.0),
             format = %drm_output.format(),
             vrr = ?vrr_support, vrr_reason = ?vrr_reason, vrr_display = ?vrr_display, driver = gpu_driver,
-            hdr = hdr_capable,
+            hdr = hdr_capable, hdr_active = want_hdr,
             "écran connecté"
         );
 
@@ -679,7 +797,12 @@ impl NoosState {
                 vrr_reason,
                 vrr_display,
                 gpu_driver,
-                hdr_capable,
+                connector: connector.handle(),
+                hdr_edid,
+                hdr_props,
+                hdr_unavailable,
+                hdr: want_hdr.then(|| crate::hdr::HdrPass::new(sdr_nits, 0.0)),
+                sdr_nits,
                 modes: mode_infos,
                 drm_modes: modes.to_vec(),
                 make,
@@ -688,13 +811,6 @@ impl NoosState {
             },
         );
         self.space.map_output(&output, (x_offset, 0));
-        if self.config.hdr_for(&name) {
-            if hdr_capable {
-                warn!(name, "HDR demandé : la sortie HDR (PQ/BT.2020) n'est pas encore implémentée, SDR utilisé");
-            } else {
-                warn!(name, "HDR demandé mais l'écran/pilote ne le supporte pas");
-            }
-        }
         handle.insert_idle(move |state| state.render_surface(crtc));
     }
 
@@ -815,9 +931,25 @@ impl NoosState {
                 );
                 let flags = if self.config.gaming.direct_scanout { FrameFlags::DEFAULT } else { FrameFlags::empty() };
                 let clear = render::clear_color(self);
-                match surface.drm_output.render_frame(&mut gpu.renderer, &elements, clear, flags) {
-                    Ok(result) => {
-                        rendered = !result.is_empty;
+                // HDR : bureau SDR dessiné hors écran puis converti en PQ (un seul élément, pas
+                // de scanout direct).
+                let frame = match surface.hdr.as_mut() {
+                    Some(pass) => pass.render(&mut gpu.renderer, &out, &elements, clear).and_then(|(hdr, states)| {
+                        surface
+                            .drm_output
+                            .render_frame(&mut gpu.renderer, &[hdr], [0.0, 0.0, 0.0, 1.0], FrameFlags::empty())
+                            .map(|r| (r.is_empty, states))
+                            .map_err(|e| format!("{e:?}"))
+                    }),
+                    None => surface
+                        .drm_output
+                        .render_frame(&mut gpu.renderer, &elements, clear, flags)
+                        .map(|r| (r.is_empty, r.states))
+                        .map_err(|e| format!("{e:?}")),
+                };
+                match frame {
+                    Ok((is_empty, states)) => {
+                        rendered = !is_empty;
                         if rendered && gpu.software {
                             // llvmpipe dessine par tuiles dans des fils : sans clôture GPU, on
                             // attend la fin du dessin avant d'afficher (sinon tuiles noires ou
@@ -825,14 +957,14 @@ impl NoosState {
                             let _ = gpu.renderer.with_context(|gl| unsafe { gl.Finish() });
                         }
                         if rendered {
-                            let feedback = self.take_presentation_feedback(&out, &result.states);
+                            let feedback = self.take_presentation_feedback(&out, &states);
                             if let Err(e) = surface.drm_output.queue_frame(Some(feedback)) {
                                 warn!("queue_frame : {e:?}");
                                 rendered = false;
                             }
                         }
                     }
-                    Err(e) => warn!("rendu : {e:?}"),
+                    Err(e) => warn!("rendu : {e}"),
                 }
                 // Partage / capture d'écran en attente sur cet écran.
                 self.process_captures(&mut gpu.renderer, &out, &elements, clear);

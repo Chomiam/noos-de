@@ -46,6 +46,15 @@ impl Backend {
         }
     }
 
+    /// HDR10 d'un écran (`sdr_nits` : blanc du bureau en cd/m²).
+    pub fn set_hdr(&mut self, output: &str, enabled: bool, sdr_nits: u32) -> Result<(), String> {
+        match self {
+            Backend::Winit(d) => d.set_hdr(enabled, sdr_nits),
+            Backend::Udev(d) => d.set_hdr(output, enabled, sdr_nits),
+            Backend::Detached => Err("backend indisponible".into()),
+        }
+    }
+
     pub fn change_vt(&mut self, vt: i32) {
         if let Backend::Udev(d) = self {
             d.change_vt(vt);
@@ -87,8 +96,10 @@ impl Backend {
     }
 
     pub fn apply_config(&mut self, config: &NoosConfig) {
-        if let Backend::Udev(d) = self {
-            d.apply_config(config);
+        match self {
+            Backend::Udev(d) => d.apply_config(config),
+            Backend::Winit(d) => d.apply_config(config),
+            Backend::Detached => {}
         }
     }
 

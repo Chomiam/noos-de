@@ -285,7 +285,8 @@ pub enum VrrPolicy {
 #[serde(default)]
 pub struct Gaming {
     pub vrr: VrrPolicy,
-    /// Demande la sortie HDR (BT.2020 / PQ) sur les écrans compatibles. Expérimental.
+    /// Sortie HDR10 (BT.2020 / PQ) par défaut sur les écrans compatibles (chaque écran peut
+    /// la changer dans `[[output]] hdr`).
     pub hdr: bool,
     /// Préférer un framebuffer 10 bits (requis pour le HDR, réduit le banding).
     pub ten_bit: bool,
@@ -584,6 +585,11 @@ impl Default for Tiling {
 
 // ─────────────────────────────── Écrans ───────────────────────────────
 
+/// Blanc du contenu SDR en HDR par défaut (cd/m²) : blanc de référence de l'UIT-R BT.2408.
+pub const DEFAULT_SDR_BRIGHTNESS: u32 = 203;
+/// Bornes du réglage « Luminosité du contenu SDR » (cd/m²).
+pub const SDR_BRIGHTNESS_RANGE: (u32, u32) = (80, 480);
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(default)]
 pub struct OutputConfig {
@@ -593,6 +599,9 @@ pub struct OutputConfig {
     pub mode: Option<String>,
     pub vrr: Option<VrrPolicy>,
     pub hdr: Option<bool>,
+    /// Luminosité du contenu SDR quand le HDR est actif (cd/m², blanc du bureau) ;
+    /// absent = [`DEFAULT_SDR_BRIGHTNESS`].
+    pub sdr_brightness: Option<u32>,
     pub enabled: Option<bool>,
     /// Orientation : `normal`, `90`, `180`, `270` (sens horaire).
     pub transform: Option<String>,
@@ -672,6 +681,12 @@ impl NoosConfig {
 
     pub fn hdr_for(&self, output: &str) -> bool {
         self.output(output).and_then(|o| o.hdr).unwrap_or(self.gaming.hdr)
+    }
+
+    /// Luminosité du blanc SDR en HDR (cd/m²), bornée à [`SDR_BRIGHTNESS_RANGE`].
+    pub fn sdr_brightness_for(&self, output: &str) -> u32 {
+        let (min, max) = SDR_BRIGHTNESS_RANGE;
+        self.output(output).and_then(|o| o.sdr_brightness).unwrap_or(DEFAULT_SDR_BRIGHTNESS).clamp(min, max)
     }
 }
 

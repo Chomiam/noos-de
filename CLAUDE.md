@@ -163,6 +163,7 @@ compositeur y écrit (`[desktops] names`).
 | `NOOS_ARCHIVE_DEMO=<archive>\|create` | noos-archive : ouvre une archive / la page de création préremplie |
 | `NOOS_FILE_DEMO=<dossier>;details;list;select=0,2;look;zoom=3;sort=size;copy=<source>;menu;mount;trash` | noos-file : ouvre un dossier, volet de détails, vue Détails, sélection, aperçu rapide, zoom, tri, copie suivie |
 | `NOOS_VRR_DEMO=gpu:i915\|display\|supported` | noos-settings › Écran / Jeux : simule la cause d'indisponibilité du VRR (écran FreeSync 48–180 Hz fictif) |
+| `NOOS_HDR_PREVIEW=roundtrip\|pq` | noos-comp imbriqué : écran simulé compatible HDR ; HDR actif = conversion PQ puis décodage inverse (image identique attendue) / signal PQ brut |
 | `NOOS_PKG_ELEVATE=sudo\|none` | noos-pkg : élévation par `sudo -n` ou aucune (tests), au lieu de pkexec |
 
 ### Règles de sécurité (erreurs déjà commises)
@@ -296,6 +297,11 @@ compositeur y écrit (`[desktops] names`).
 - **Applis externes** (`noos-theme/src/thirdparty.rs`) : GNOME règle `button-layout` sur
   `appmenu:close` → NOOS y écrit `[appearance] button_layout`. Couleurs Qt : qt5ct / qt6ct
   (`QT_QPA_PLATFORMTHEME=qt6ct`), barre de titre Qt `QT_WAYLAND_DECORATION=adwaita`.
+- **HDR10** (`noos-comp/src/hdr.rs`) : Smithay 65aa86f n'écrit jamais `HDR_OUTPUT_METADATA`,
+  `Colorspace` ni `max bpc` → validation atomique séparée (`ALLOW_MODESET`, bloquante) ; le
+  noyau garde ces valeurs, les validations de Smithay les reprennent. Le blob fait exactement
+  32 octets (`struct hdr_output_metadata`). Bureau SDR → texture → shader PQ (un seul élément :
+  pas de scanout direct en HDR). Captures et partage d'écran restent en SDR (éléments d'origine).
 - **Configuration illisible** : `NoosConfig::save()` garde une copie `noos.toml.illisible`
   avant d'écraser un fichier qui ne se lit plus.
 

@@ -2,6 +2,9 @@
 //! Idéal pour développer sans quitter son bureau : `cargo run -p noos-comp -- --winit`.
 //! `NOOS_WINIT_OUTPUTS=2` (ou 3) : la fenêtre est découpée en plusieurs écrans côte à côte,
 //! pour tester le multi-écrans sans second moniteur.
+//! `NOOS_HDR_PREVIEW=roundtrip` : l'écran simulé se dit compatible HDR et, HDR activé, passe par
+//! la conversion PQ suivie du décodage inverse (l'image doit rester identique) ;
+//! `NOOS_HDR_PREVIEW=pq` affiche le signal PQ brut (délavé, c'est normal).
 
 use std::time::Duration;
 
@@ -34,6 +37,10 @@ pub struct WinitData {
     pub damage_tracker: OutputDamageTracker,
     last_render: std::time::Instant,
     swap_interval_set: bool,
+    /// Aperçu HDR (`NOOS_HDR_PREVIEW`) : mode du shader, et passe active.
+    hdr_preview: Option<f32>,
+    hdr: Option<crate::hdr::HdrPass>,
+    sdr_nits: u32,
 }
 
 impl WinitData {
@@ -58,7 +65,42 @@ impl WinitData {
     }
 
     pub fn output_infos(&self) -> Vec<OutputInfo> {
-        self.outputs.iter().map(|o| Self::output_info(o)).collect()
+        self.outputs
+            .iter()
+            .map(|o| {
+                let mut info = Self::output_info(o);
+                if self.hdr_preview.is_some() && self.outputs.len() == 1 {
+                    info.hdr_capable = true;
+                    info.hdr_active = self.hdr.is_some();
+                    info.peak_brightness = 400;
+                    info.format = "AB30".into();
+                } else {
+                    info.hdr_unavailable = "Mode imbriqué : le HDR se règle sur l'écran réel".into();
+                }
+                info.sdr_brightness = self.sdr_nits;
+                info
+            })
+            .collect()
+    }
+
+    pub fn set_hdr(&mut self, enabled: bool, sdr_nits: u32) -> Result<(), String> {
+        self.sdr_nits = sdr_nits;
+        let Some(mode) = self.hdr_preview.filter(|_| self.outputs.len() == 1) else {
+            return if enabled { Err("Mode imbriqué : le HDR se règle sur l'écran réel".into()) } else { Ok(()) };
+        };
+        match (&mut self.hdr, enabled) {
+            (Some(pass), true) => pass.set_sdr_nits(sdr_nits),
+            (None, true) => self.hdr = Some(crate::hdr::HdrPass::new(sdr_nits, mode)),
+            (_, false) => self.hdr = None,
+        }
+        Ok(())
+    }
+
+    pub fn apply_config(&mut self, config: &noos_core::NoosConfig) {
+        if let Some(o) = self.outputs.first() {
+            let name = o.name();
+            let _ = self.set_hdr(config.hdr_for(&name), config.sdr_brightness_for(&name));
+        }
     }
 
     fn output_info(output: &Output) -> OutputInfo {
@@ -152,7 +194,16 @@ pub fn run() -> anyhow::Result<()> {
 
     let damage_tracker = if count == 1 { OutputDamageTracker::from_output(&output) } else { OutputDamageTracker::new(win, 1.0, Transform::Flipped180) };
     let shm_formats = backend.renderer().shm_formats();
-    let data = WinitData { backend, outputs: outputs.clone(), damage_tracker, last_render: std::time::Instant::now(), swap_interval_set: false };
+    let data = WinitData {
+        backend,
+        outputs: outputs.clone(),
+        damage_tracker,
+        last_render: std::time::Instant::now(),
+        swap_interval_set: false,
+        hdr_preview: crate::hdr::preview_mode(),
+        hdr: None,
+        sdr_nits: noos_core::config::DEFAULT_SDR_BRIGHTNESS,
+    };
 
     let mut state = NoosState::new(display, event_loop.handle(), event_loop.get_signal(), Backend::Winit(data));
     state.dmabuf_state = Some((dmabuf_state, dmabuf_global));
@@ -162,6 +213,7 @@ pub fn run() -> anyhow::Result<()> {
         state.space.map_output(o, loc);
     }
     state.apply_output_layout();
+    state.backend.apply_config(&state.config.clone());
 
     event_loop
         .handle()
@@ -231,7 +283,15 @@ impl NoosState {
                 // Dans une fenêtre, c'est le compositeur hôte qui dessine le curseur par défaut.
                 let res = if outputs.len() == 1 {
                     let elements = render::output_elements(self, renderer, &outputs[0], None);
-                    data.damage_tracker.render_output(renderer, &mut fb, age, &elements, clear).map(|r| r.damage.cloned()).map_err(|e| format!("{e:?}"))
+                    match data.hdr.as_mut() {
+                        Some(pass) => pass.render(renderer, &outputs[0], &elements, clear).and_then(|(hdr, _)| {
+                            data.damage_tracker
+                                .render_output(renderer, &mut fb, age, &[hdr], [0.0, 0.0, 0.0, 1.0])
+                                .map(|r| r.damage.cloned())
+                                .map_err(|e| format!("{e:?}"))
+                        }),
+                        None => data.damage_tracker.render_output(renderer, &mut fb, age, &elements, clear).map(|r| r.damage.cloned()).map_err(|e| format!("{e:?}")),
+                    }
                 } else {
                     // Plusieurs écrans simulés : chacun décalé dans sa tranche de la fenêtre.
                     let mut elements = vec![];
