@@ -162,9 +162,10 @@ pub fn system_rules(samba: &Samba, ssh: &Ssh) -> Vec<PortRule> {
     let mut v = vec![];
     if samba.enabled {
         v.push(lan_in(Proto::Tcp, "139,445", TAG_SAMBA));
-        // WSD (wsdd2 : 3702/udp, 5357/tcp), LLMNR (5355), mDNS (Avahi : 5353/udp).
+        // WSD (wsdd2 : 3702 en UDP et en TCP — fiche du PC lue par Windows ; 5357/tcp pour
+        // les autres serveurs WSD), LLMNR (5355), mDNS (Avahi : 5353/udp).
         v.push(lan_in(Proto::Udp, "3702,5353,5355", TAG_DISCOVERY));
-        v.push(lan_in(Proto::Tcp, "5355,5357", TAG_DISCOVERY));
+        v.push(lan_in(Proto::Tcp, "3702,5355,5357", TAG_DISCOVERY));
     } else if ssh.enabled {
         v.push(lan_in(Proto::Udp, "5353", TAG_DISCOVERY));
     }
@@ -250,6 +251,7 @@ mod tests {
         let ssh = Ssh { enabled: true, port: 22, password_auth: true };
         let wanted = system_rules(&samba, &ssh);
         assert_eq!(wanted.len(), 4);
+        assert!(wanted.iter().any(|r| r.proto == Proto::Tcp && r.ports.split(',').any(|p| p == "3702")));
         assert!(wanted.iter().all(|r| r.zone == Zone::Lan && r.direction == Direction::In));
         let mut existing: Vec<PortRule> = wanted.iter().cloned().enumerate().map(|(i, mut r)| {
             r.id = i as u64 + 1;
