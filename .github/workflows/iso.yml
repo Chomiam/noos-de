@@ -1,12 +1,22 @@
 # ISO d'installation de NOOS (Debian sid), à la demande (onglet Actions › ISO › Run workflow).
-# Résultat : artefact « noos-iso » (noos-sid-amd64.iso), gardé 7 jours.
+# Résultat : artefact « noos-iso » (noos-sid-amd64.iso), gardé 7 jours ; avec « release »
+# renseigné (ex. v0.1.0-alpha3), l'ISO et SHA256SUMS sont aussi publiés en préversion GitHub.
 name: ISO
 
 on:
   workflow_dispatch:
+    inputs:
+      release:
+        description: "Étiquette de la préversion à publier (ex. v0.1.0-alpha3) ; vide = artefact seul"
+        required: false
+        default: ""
+      title:
+        description: "Titre de la préversion (facultatif)"
+        required: false
+        default: ""
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   iso:
@@ -31,3 +41,16 @@ jobs:
           path: noos-iso/out/*.iso
           retention-days: 7
           compression-level: 0
+      - name: Préversion GitHub (ISO + SHA256SUMS)
+        if: inputs.release != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release }}
+          TITLE: ${{ inputs.title }}
+        run: |
+          cd noos-iso/out
+          sha256sum *.iso > SHA256SUMS
+          notes="$GITHUB_WORKSPACE/noos-iso/release-notes.md"
+          [ -f "$notes" ] || { echo "Préversion de NOOS (Debian sid)." > /tmp/notes.md; notes=/tmp/notes.md; }
+          gh release create "$TAG" *.iso SHA256SUMS --prerelease --target "$GITHUB_SHA" \
+            --title "${TITLE:-NOOS $TAG}" --notes-file "$notes"
