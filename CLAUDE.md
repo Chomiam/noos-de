@@ -201,6 +201,12 @@ compositeur y écrit (`[desktops] names`).
   toujours `vm.sh stop` puis `vm.sh start`. GRUB : touches US (qcodes), pas AZERTY. Console
   série : ajouter `console=tty0 console=ttyS0,115200` à la ligne `linux` (GRUB › e), puis
   `tools/vm/serial.py login atest <mdp>` et `tools/vm/serial.py run "commande"`.
+- **VM sous Linux** : ISO de la CI (`gh run download <run ISO> -n noos-iso -D noos-iso/out`),
+  `vm.sh start <iso> uefi` puis `vm.sh install` (compte « test ») ; console série = socket
+  `$XDG_RUNTIME_DIR/noosser.sock` (`serial.py` le prend par défaut) après avoir ajouté
+  `console=ttyS0,115200` à grub.cfg par guestfish (VM éteinte). Copier un binaire dans la VM :
+  `python3 -m http.server --bind 127.0.0.1` sur l'hôte, `sudo curl http://10.0.2.2:PORT/…`
+  dans l'invité. Un clic QMP au même endroit que le précédent peut ne pas être pris.
   L'utilisateur peut voir la fenêtre QEMU : lui demander de ne pas y cliquer pendant un
   parcours scripté (clics à coordonnées fixes).
 
@@ -312,6 +318,14 @@ compositeur y écrit (`[desktops] names`).
   jour du paquet couperait Internet à la session en cours. `nft -c` sans root :
   `unshare -rn nft -c -f -`. Ne jamais tester le démon sur la vraie machine sans
   `noos-firewall check` d'abord ; secours : `sudo /opt/noos/bin/noos-firewall off`.
+  Validé en VM (installation complète depuis l'ISO + paquet du dépôt, 17/11/2026) : service au
+  démarrage, fenêtre d'autorisation en sortie et en entrée, polkit (accepté / refusé), bouclier,
+  révocation, redémarrage du service (agent reconnecté en 2 s). Test d'entrée dans une VM :
+  `ip netns add pair` + veth, serveur dans l'hôte, client dans `pair`.
+- **Icônes d'applis** : des entrées .desktop pointent vers des XPM (`/usr/share/pixmaps/python3.14.xpm`)
+  que GTK 4 n'affiche plus, et le thème cherche aussi dans `/usr/share/pixmaps` (un nom « existe »
+  mais mène au XPM) → vérifier le fichier trouvé par `IconTheme::lookup_icon` (`shown_icon`).
+  Jamais `gio::AppInfo::executable()` : plante sur une entrée sans `Exec` → `commandline()`.
 - **Configuration illisible** : `NoosConfig::save()` garde une copie `noos.toml.illisible`
   avant d'écraser un fichier qui ne se lit plus.
 

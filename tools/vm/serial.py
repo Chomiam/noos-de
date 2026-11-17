@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Console série de la VM de test (Windows : 127.0.0.1:4445, voir tools/vm/vm.sh).
+"""Console série de la VM de test (Linux : $XDG_RUNTIME_DIR/noosser.sock ; Windows : 127.0.0.1:4445).
 
     serial.py login UTILISATEUR MOT_DE_PASSE   se connecte (getty série : console=ttyS0)
     serial.py run "commande"                    lance une commande, affiche sa sortie
@@ -14,12 +14,19 @@ import socket
 import sys
 import time
 
-ADDR = os.environ.get("NOOS_VM_SERIAL", "127.0.0.1:4445")
+# Linux (tools/vm/vm.sh) : socket Unix $XDG_RUNTIME_DIR/noosser.sock ; Windows : TCP.
+ADDR = os.environ.get("NOOS_VM_SERIAL") or (
+    "127.0.0.1:4445" if os.name == "nt" else os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "noosser.sock")
+)
 
 
 def connect():
-    host, _, port = ADDR.rpartition(":")
-    s = socket.create_connection((host, int(port)))
+    if ADDR.startswith("/"):
+        s = socket.socket(socket.AF_UNIX)
+        s.connect(ADDR)
+    else:
+        host, _, port = ADDR.rpartition(":")
+        s = socket.create_connection((host, int(port)))
     s.settimeout(0.3)
     return s
 

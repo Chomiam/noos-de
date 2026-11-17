@@ -453,7 +453,7 @@ fn key_identity(key: &str, hint: &str) -> (String, gio::Icon) {
     let fallback = || -> gio::Icon { gio::ThemedIcon::new("application-x-executable").upcast() };
     if let Some(id) = key.strip_prefix("flatpak:") {
         if let Some(info) = gio_unix::DesktopAppInfo::new(&format!("{id}.desktop")) {
-            return (info.name().to_string(), info.icon().unwrap_or_else(fallback));
+            return (info.name().to_string(), shown_icon(info.icon()));
         }
         let short = id.rsplit('.').next().unwrap_or(id);
         return (if hint.is_empty() { short.to_string() } else { hint.to_string() }, gio::ThemedIcon::new(id).upcast());
@@ -471,7 +471,7 @@ fn key_identity(key: &str, hint: &str) -> (String, gio::Icon) {
         let cmd = cmd.to_string_lossy().to_string();
         let e = cmd.split_whitespace().next().unwrap_or("").trim_matches('"').to_string();
         if !e.is_empty() && (base(&e) == kb || (!hint.is_empty() && base(&e) == hint)) {
-            return (info.name().to_string(), info.icon().unwrap_or_else(fallback));
+            return (info.name().to_string(), shown_icon(info.icon()));
         }
     }
     let name = if hint.is_empty() { kb } else { hint.to_string() };
@@ -479,6 +479,53 @@ fn key_identity(key: &str, hint: &str) -> (String, gio::Icon) {
     let mut c = name.chars();
     let name = c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or(name);
     (name, fallback())
+}
+
+/// Icône affichable. Une icône nommée absente du thème, ou un fichier que GTK 4 ne lit plus
+/// (XPM : `/usr/share/pixmaps/python3.14.xpm`), laisserait un vide : on cherche alors le même
+/// nom dans le thème (`python3.14` → `python3` → `python`), sinon l'icône générique.
+fn shown_icon(icon: Option<gio::Icon>) -> gio::Icon {
+    let fallback = || -> gio::Icon { gio::ThemedIcon::new("application-x-executable").upcast() };
+    let Some(display) = gtk::gdk::Display::default() else { return icon.unwrap_or_else(fallback) };
+    let theme = gtk::IconTheme::for_display(&display);
+    // Le thème cherche aussi dans /usr/share/pixmaps : un nom peut « exister » et ne mener
+    // qu'à un XPM illisible. On regarde le fichier réellement trouvé.
+    let usable = |name: &str| {
+        theme.has_icon(name)
+            && theme
+                .lookup_icon(name, &[], 48, 1, gtk::TextDirection::Ltr, gtk::IconLookupFlags::empty())
+                .file()
+                .and_then(|f| f.path())
+                .is_none_or(|p| !p.extension().is_some_and(|e| e.eq_ignore_ascii_case("xpm")))
+    };
+    let Some(icon) = icon else { return fallback() };
+    if let Some(f) = icon.downcast_ref::<gio::FileIcon>() {
+        let path = f.file().path().unwrap_or_default();
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+        if path.exists() && matches!(ext.as_str(), "png" | "svg" | "svgz" | "jpg" | "jpeg" | "webp") {
+            return icon;
+        }
+        let mut name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
+        while !name.is_empty() {
+            if usable(&name) {
+                return gio::ThemedIcon::new(&name).upcast();
+            }
+            // python3.14 → python3 → python
+            let cut = name.trim_end_matches(|c: char| c.is_ascii_digit()).trim_end_matches(['.', '-', '_']).to_string();
+            if cut == name {
+                break;
+            }
+            name = cut;
+        }
+        return fallback();
+    }
+    if let Some(t) = icon.downcast_ref::<gio::ThemedIcon>() {
+        return match t.names().iter().find(|n| usable(n)) {
+            Some(n) => gio::ThemedIcon::new(n).upcast(),
+            None => fallback(),
+        };
+    }
+    icon
 }
 
 fn app_icon(icon: &gio::Icon) -> gtk::Image {

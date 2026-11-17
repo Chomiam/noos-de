@@ -792,6 +792,17 @@ fn serve_agent(shared: &Arc<Shared>, peer: Peer, mut stream: UnixStream) {
         }
     }
     let _ = stream.write_all(format!("{}\n", serde_json::to_string(&Reply::ok(serde_json::Value::Null)).unwrap()).as_bytes());
+    // Fermeture détectée tout de suite (fin de flux), pas au battement suivant : sinon les
+    // demandes attendraient une fenêtre disparue au lieu du repli « aucune fenêtre ».
+    if let Ok(mut r) = stream.try_clone() {
+        let sh = shared.clone();
+        let _ = r.set_read_timeout(None);
+        std::thread::spawn(move || {
+            let mut buf = [0u8; 256];
+            while matches!(r.read(&mut buf), Ok(n) if n > 0) {}
+            sh.state.lock().unwrap().agents.retain(|a| a.id != id);
+        });
+    }
     loop {
         let line = match rx.recv_timeout(StdDuration::from_secs(30)) {
             Ok(ev) => serde_json::to_string(&ev).unwrap_or_default(),

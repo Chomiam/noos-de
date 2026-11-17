@@ -52,7 +52,7 @@ fn app_identity(p: &Program) -> (String, gio::Icon) {
     if let Some(id) = &p.flatpak
         && let Some(info) = gio_unix::DesktopAppInfo::new(&format!("{id}.desktop"))
     {
-        return (info.name().to_string(), info.icon().unwrap_or_else(fallback));
+        return (info.name().to_string(), shown_icon(info.icon()));
     }
     let base = |s: &str| s.rsplit('/').next().unwrap_or(s).to_string();
     let exe_base = base(&p.exe);
@@ -68,7 +68,7 @@ fn app_identity(p: &Program) -> (String, gio::Icon) {
         }
         let resolved = glib::find_program_in_path(&*e).map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|| e.to_string());
         if resolved == p.exe || (!exe_base.is_empty() && base(&e) == exe_base) || (!p.comm.is_empty() && base(&e) == p.comm) {
-            return (info.name().to_string(), info.icon().unwrap_or_else(fallback));
+            return (info.name().to_string(), shown_icon(info.icon()));
         }
     }
     let name = if !p.comm.is_empty() {
@@ -82,6 +82,53 @@ fn app_identity(p: &Program) -> (String, gio::Icon) {
     let mut c = name.chars();
     let name = c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or(name);
     (name, fallback())
+}
+
+/// Icône affichable. Une icône nommée absente du thème, ou un fichier que GTK 4 ne lit plus
+/// (XPM : `/usr/share/pixmaps/python3.14.xpm`), laisserait un vide : on cherche alors le même
+/// nom dans le thème (`python3.14` → `python3` → `python`), sinon l'icône générique.
+fn shown_icon(icon: Option<gio::Icon>) -> gio::Icon {
+    let fallback = || -> gio::Icon { gio::ThemedIcon::new("application-x-executable").upcast() };
+    let Some(display) = gtk::gdk::Display::default() else { return icon.unwrap_or_else(fallback) };
+    let theme = gtk::IconTheme::for_display(&display);
+    // Le thème cherche aussi dans /usr/share/pixmaps : un nom peut « exister » et ne mener
+    // qu'à un XPM illisible. On regarde le fichier réellement trouvé.
+    let usable = |name: &str| {
+        theme.has_icon(name)
+            && theme
+                .lookup_icon(name, &[], 48, 1, gtk::TextDirection::Ltr, gtk::IconLookupFlags::empty())
+                .file()
+                .and_then(|f| f.path())
+                .is_none_or(|p| !p.extension().is_some_and(|e| e.eq_ignore_ascii_case("xpm")))
+    };
+    let Some(icon) = icon else { return fallback() };
+    if let Some(f) = icon.downcast_ref::<gio::FileIcon>() {
+        let path = f.file().path().unwrap_or_default();
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+        if path.exists() && matches!(ext.as_str(), "png" | "svg" | "svgz" | "jpg" | "jpeg" | "webp") {
+            return icon;
+        }
+        let mut name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
+        while !name.is_empty() {
+            if usable(&name) {
+                return gio::ThemedIcon::new(&name).upcast();
+            }
+            // python3.14 → python3 → python
+            let cut = name.trim_end_matches(|c: char| c.is_ascii_digit()).trim_end_matches(['.', '-', '_']).to_string();
+            if cut == name {
+                break;
+            }
+            name = cut;
+        }
+        return fallback();
+    }
+    if let Some(t) = icon.downcast_ref::<gio::ThemedIcon>() {
+        return match t.names().iter().find(|n| usable(n)) {
+            Some(n) => gio::ThemedIcon::new(n).upcast(),
+            None => fallback(),
+        };
+    }
+    icon
 }
 
 /// Nom du service d'un port (`/etc/services`), ex. 443/tcp → https.
@@ -481,7 +528,7 @@ impl Ui {
         });
         // Fermeture automatique si rien d'autre ne se passe.
         let n4 = next.clone();
-        *self.timer.borrow_mut() = Some(glib::timeout_add_seconds_local_once(if proto::demo() { 600 } else { 12 }, move || n4()));
+        *self.timer.borrow_mut() = Some(glib::timeout_add_seconds_local_once(if proto::demo() { 600 } else { 20 }, move || n4()));
     }
 }
 
@@ -514,15 +561,22 @@ fn main() -> glib::ExitCode {
         let ui = Rc::new(Ui { app: app.clone(), window: RefCell::new(None), queue: RefCell::new(VecDeque::new()), current: RefCell::new(None), timer: RefCell::new(None) });
         let (tx, rx) = async_channel::unbounded::<Event>();
         std::thread::spawn(move || {
+            let mut warned = false;
             loop {
                 let tx2 = tx.clone();
                 let r = proto::agent(move |ev| {
                     let _ = tx2.send_blocking(ev);
                 });
-                if let Err(e) = r {
-                    eprintln!("noos-firewall-prompt : {e:#} — nouvelle tentative dans 10 s");
+                // Démon redémarré (mise à jour du paquet) : reconnexion rapide, message une seule fois.
+                match r {
+                    Err(e) if !warned => {
+                        eprintln!("noos-firewall-prompt : {e:#} — nouvelles tentatives toutes les 2 s");
+                        warned = true;
+                    }
+                    Err(_) => {}
+                    Ok(()) => warned = false,
                 }
-                std::thread::sleep(Duration::from_secs(10));
+                std::thread::sleep(Duration::from_secs(2));
             }
         });
         glib::spawn_future_local(async move {

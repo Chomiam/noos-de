@@ -311,10 +311,12 @@ impl PolkitAgent {
             .map(|p| program_name(p))
             // Sinon le processus demandeur (polkitd fournit son PID) : « popsicle-gtk »…
             .or_else(|| {
+                // Exécutable d'abord : « comm » est tronqué à 15 caractères (« noos-firewall-p »).
                 ["polkit.subject-pid", "polkit.caller-pid"].iter().find_map(|k| {
                     let pid = req.details.get(*k)?;
-                    let comm = std::fs::read_to_string(format!("/proc/{pid}/comm")).ok()?;
-                    Some(comm.trim().to_string()).filter(|c| !c.is_empty())
+                    let exe = std::fs::read_link(format!("/proc/{pid}/exe")).ok().map(|p| program_name(&p.to_string_lossy()));
+                    let name = exe.or_else(|| std::fs::read_to_string(format!("/proc/{pid}/comm")).ok().map(|c| c.trim().to_string()))?;
+                    Some(noos_app_name(&name).unwrap_or(&name).to_string()).filter(|c| !c.is_empty())
                 })
             })
             .unwrap_or_else(|| "Service système".into());
@@ -678,6 +680,19 @@ fn identities_to_users(ids: &[(String, HashMap<String, glib::Variant>)]) -> Vec<
     users.sort_by_key(|(n, _)| *n != me);
     users.dedup();
     users
+}
+
+/// Nom affiché des applications NOOS qui demandent une élévation.
+fn noos_app_name(exe: &str) -> Option<&'static str> {
+    Some(match exe {
+        "noos-firewall-prompt" => "Pare-feu NOOS",
+        "noos-firewall" => "Pare-feu NOOS (ligne de commande)",
+        "noos-settings" => "Paramètres",
+        "noos-software" => "Logiciels",
+        "noos-disk" => "Disques",
+        "noos-save" => "Sauvegarder et Restaurer",
+        _ => return None,
+    })
 }
 
 /// « /usr/bin/popsicle-gtk --x » → « popsicle-gtk ».
