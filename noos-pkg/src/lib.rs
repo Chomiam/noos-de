@@ -19,6 +19,7 @@ pub mod details;
 pub mod exec;
 pub mod history;
 pub mod owner;
+pub mod permissions;
 pub mod sources;
 pub mod system;
 

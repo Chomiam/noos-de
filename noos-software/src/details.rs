@@ -343,6 +343,11 @@ impl App {
         sim.add(&waiting);
         content.append(&sim);
 
+        // ── Accès (Flatpak) ──
+        if kind == BackendKind::Flatpak {
+            content.append(&self.permissions_group(pkg));
+        }
+
         // ── Informations ──
         let info = adap::PreferencesGroup::new();
         info.set_title("Informations");
@@ -469,6 +474,95 @@ impl App {
                 None => app.toasts.add_toast(adap::Toast::new(&format!("{id} : introuvable"))),
             }
         });
+    }
+}
+
+impl App {
+    /// Permissions d'une appli Flatpak : lecture seule avant l'installation, interrupteurs
+    /// (`flatpak override --user`) ensuite.
+    fn permissions_group(self: &Rc<Self>, pkg: &Package) -> adap::PreferencesGroup {
+        let g = adap::PreferencesGroup::new();
+        g.set_title("Accès accordés");
+        g.set_description(Some(if pkg.installed {
+            "Ce que l'application peut faire hors de son bac à sable. Retirer un accès peut l'empêcher de fonctionner."
+        } else {
+            "Ce que l'application pourra faire hors de son bac à sable une fois installée."
+        }));
+        let wait = row("Lecture des permissions…", "");
+        g.add(&wait);
+        let (id, installed, scope, origin) = (pkg.id.clone(), pkg.installed, pkg.scope.unwrap_or(noos_pkg::Scope::System), if pkg.origin.is_empty() { "flathub".to_string() } else { pkg.origin.clone() });
+        let task = background(move || {
+            let list = noos_pkg::permissions::of_app(&id, installed, scope, &origin).map_err(|e| format!("{e:#}"));
+            (list, installed && noos_pkg::permissions::has_overrides(&id))
+        });
+        let (app, g2, pkg) = (self.clone(), g.clone(), pkg.clone());
+        glib::spawn_future_local(async move {
+            let (list, overridden) = task.await;
+            g2.remove(&wait);
+            let list = match list {
+                Ok(l) => l,
+                Err(e) => {
+                    g2.add(&row("Permissions indisponibles", &e));
+                    return;
+                }
+            };
+            if list.is_empty() {
+                g2.add(&row("Aucun accès particulier", "L'application reste entièrement dans son bac à sable"));
+            }
+            for p in list {
+                let r = row(&p.label, &p.detail);
+                let icon = match p.level {
+                    2 => "dialog-warning-symbolic",
+                    1 => "dialog-information-symbolic",
+                    _ => "emblem-ok-symbolic",
+                };
+                let img = gtk::Image::from_icon_name(icon);
+                if p.level == 2 {
+                    img.add_css_class("warning");
+                }
+                r.add_prefix(&img);
+                if pkg.installed {
+                    let sw = gtk::Switch::new();
+                    sw.set_active(p.enabled);
+                    sw.set_valign(gtk::Align::Center);
+                    let (app, id) = (app.clone(), pkg.id.clone());
+                    sw.connect_state_set(move |_, on| {
+                        let plan = noos_pkg::permissions::override_plan(&id, &p, on);
+                        let task = background(move || plan.run(&|_| {}).map_err(|e| format!("{e:#}")));
+                        let toasts = app.toasts.clone();
+                        glib::spawn_future_local(async move {
+                            match task.await {
+                                Ok(()) => toasts.add_toast(adap::Toast::new(if on { "Accès accordé (au prochain lancement)" } else { "Accès retiré (au prochain lancement)" })),
+                                Err(e) => toasts.add_toast(adap::Toast::new(&e)),
+                            }
+                        });
+                        glib::Propagation::Proceed
+                    });
+                    r.add_suffix(&sw);
+                    r.set_activatable_widget(Some(&sw));
+                }
+                g2.add(&r);
+            }
+            if overridden {
+                let b = gtk::Button::with_label("Rétablir");
+                b.add_css_class("flat");
+                b.set_tooltip_text(Some("Revenir aux permissions d'origine de l'application"));
+                let (app, id) = (app.clone(), pkg.id.clone());
+                b.connect_clicked(move |b| {
+                    let plan = noos_pkg::permissions::reset_plan(&id);
+                    let task = background(move || plan.run(&|_| {}).is_ok());
+                    let (toasts, b) = (app.toasts.clone(), b.clone());
+                    glib::spawn_future_local(async move {
+                        if task.await {
+                            b.set_visible(false);
+                            toasts.add_toast(adap::Toast::new("Permissions d'origine rétablies (rouvrez la fiche)"));
+                        }
+                    });
+                });
+                g2.set_header_suffix(Some(&b));
+            }
+        });
+        g
     }
 }
 
