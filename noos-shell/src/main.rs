@@ -17,6 +17,7 @@ mod polkit;
 mod power;
 mod quick;
 mod reorder;
+mod search;
 mod startmenu;
 mod style;
 mod taskbar;
@@ -78,6 +79,8 @@ pub struct Shell {
     taskbars: RefCell<Vec<taskbar::Taskbar>>,
     wallpapers: RefCell<Vec<wallpaper::Wallpaper>>,
     pub start: RefCell<Option<Rc<startmenu::StartMenu>>>,
+    /// Recherche de la barre (panneau des résultats).
+    pub search: RefCell<Option<Rc<search::SearchPanel>>>,
     pub quick: RefCell<Option<Rc<quick::QuickSettings>>>,
     pub notify: RefCell<Option<Rc<notify::Notifications>>>,
     /// Agent d'authentification polkit (fenêtre d'élévation de privilèges).
@@ -548,6 +551,7 @@ fn main() -> glib::ExitCode {
             taskbars: RefCell::new(Vec::new()),
             wallpapers: RefCell::new(Vec::new()),
             start: RefCell::new(None),
+            search: RefCell::new(None),
             quick: RefCell::new(None),
             notify: RefCell::new(None),
             polkit: RefCell::new(None),
@@ -569,6 +573,7 @@ fn main() -> glib::ExitCode {
             css,
         });
         *shell.start.borrow_mut() = Some(startmenu::StartMenu::new(&shell));
+        *shell.search.borrow_mut() = Some(search::SearchPanel::new(&shell));
         *shell.quick.borrow_mut() = Some(quick::QuickSettings::new(&shell));
         *shell.notify.borrow_mut() = Some(notify::Notifications::new(&shell));
         *shell.polkit.borrow_mut() = Some(polkit::PolkitAgent::new(&shell));
@@ -599,6 +604,11 @@ fn main() -> glib::ExitCode {
         }
         shell.rebuild_outputs();
         shell.apply_style(&cfg);
+        if let Ok(spec) = std::env::var("NOOS_SEARCH_DEMO") {
+            // Démo : saisie simulée dans la pastille de recherche (ou le menu Démarrer).
+            let shell = shell.clone();
+            glib::timeout_add_local_once(Duration::from_millis(2500), move || search::demo(&shell, &spec));
+        }
 
         {
             let shell = shell.clone();

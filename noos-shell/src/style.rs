@@ -32,6 +32,9 @@ pub fn css(cfg: &NoosConfig, dark: bool) -> String {
     let top_h = cfg.topbar.height.clamp(24, 48);
     let top_btn = top_h.saturating_sub(8).max(16);
     let side = if cfg.taskbar.position == "right" { "left" } else { "right" };
+    // Pastille de recherche : un peu moins haute que les boutons (comme Windows 11).
+    let pill_h = btn.saturating_sub(2 * pad_v + 4).max(18);
+    let top_pill_h = top_btn.saturating_sub(4).max(16);
 
     format!(
         r#"
@@ -72,14 +75,22 @@ picture.no-wallpaper {{ background: linear-gradient(155deg, shade(@accent_bg_col
   border-radius: 99px;
   padding: 0 14px;
   min-width: 180px;
+  min-height: {pill_h}px;
+  margin: 0 2px;
 }}
+.noos-taskbar .search-pill:hover {{ background-color: alpha(@window_fg_color, 0.10); }}
+.noos-taskbar .search-pill.searching {{ background-color: alpha(@window_fg_color, 0.12); border-color: alpha(@accent_bg_color, 0.8); }}
+.noos-taskbar .search-pill text {{ background: none; min-height: 0; padding: 0; caret-color: @accent_bg_color; }}
+.noos-taskbar .search-pill text placeholder {{ color: alpha(@window_fg_color, 0.55); }}
+.noos-taskbar.noos-topbar .search-pill {{ min-height: {top_pill_h}px; min-width: 150px; }}
 .noos-taskbar .clock-date {{ {date_display} }}
 .noos-taskbar.noos-topbar {{ min-height: {top_h}px; border-top: none; border-bottom: 1px solid alpha(@window_fg_color, 0.08); }}
 .noos-taskbar.noos-topbar button {{ min-height: {top_btn}px; padding-top: 0; padding-bottom: 0; }}
 .noos-taskbar.noos-topbar .clock-date {{ font-size: 0; min-height: 0; margin: 0; }}
 .noos-taskbar.vertical {{ min-height: 0; min-width: {height}px; padding: 8px 0; border-top: none; border-{side}: 1px solid alpha(@window_fg_color, 0.08); }}
 .noos-taskbar.vertical button {{ min-width: {btn}px; padding-left: 0; padding-right: 0; }}
-.noos-taskbar.vertical .search-pill {{ min-width: 0; padding: 4px; }}
+.noos-taskbar.vertical .search-pill {{ min-width: 0; min-height: {btn}px; padding: 0; border: none; background: none; }}
+.noos-taskbar.vertical .search-pill:hover {{ background-color: alpha(@window_fg_color, 0.08); border-radius: 6px; }}
 .noos-taskbar.vertical .show-desktop {{ min-height: 6px; border-left: none; border-top: 1px solid alpha(@window_fg_color, 0.15); }}
 .noos-taskbar .show-desktop {{ min-width: 6px; padding: 0; border-radius: 0; border-left: 1px solid alpha(@window_fg_color, 0.15); }}
 
@@ -111,6 +122,16 @@ picture.no-wallpaper {{ background: linear-gradient(155deg, shade(@accent_bg_col
 .noos-flyout .tile:checked {{ background-color: @accent_bg_color; color: @accent_fg_color; }}
 .noos-flyout.quick {{ padding-bottom: 0; }}
 .noos-flyout .power-row {{ margin: 8px 0 0 0; }}
+
+/* ── Recherche (pastille de la barre, menu Démarrer) ── */
+.noos-flyout.search-flyout {{ padding: 14px 10px 10px 10px; }}
+.search-results row.hit {{ border-radius: 6px; padding: 6px 10px; }}
+.search-results row.hit:hover {{ background-color: alpha(@window_fg_color, 0.06); }}
+.search-results row.hit:selected, .search-results row.hit:selected:backdrop {{ background-color: alpha(@accent_bg_color, 0.22); color: @window_fg_color; }}
+.search-results .search-group {{ font-weight: 700; font-size: 0.85em; opacity: 0.7; margin: 10px 10px 4px 10px; }}
+.search-results .hit-subtitle {{ font-size: 0.82em; opacity: 0.65; }}
+.search-results .hit-calc {{ font-size: 1.35em; font-weight: 600; font-feature-settings: "tnum"; }}
+.search-flyout .search-hint {{ font-size: 0.8em; opacity: 0.55; margin: 2px 10px 0 10px; }}
 .noos-flyout .power-action {{ border-radius: 8px; padding: 10px 4px; }}
 .noos-flyout .power-action:hover {{ background-color: alpha(@window_fg_color, 0.08); }}
 .noos-flyout .power-action.power-off:hover {{ background-color: alpha(@destructive_bg_color, 0.85); color: white; }}

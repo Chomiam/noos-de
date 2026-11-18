@@ -32,7 +32,7 @@ donne le contexte de travail.
 | Dossier | Rôle |
 |---|---|
 | `noos-comp/` | Compositeur Smithay (DRM/KMS + libinput, ou imbriqué winit), tiling, Mica (flou), capture d'écran, IPC, mode kiosque (`--kiosk "<cmd>"`), **applis X11** : lance `Xwayland` (paquet Debian) et gère ses fenêtres lui-même (`src/xwayland.rs`, `X11Wm` de Smithay) |
-| `noos-shell/` | Barre des tâches, menu Démarrer, réglages rapides, notifications, zone de notification, fond d'écran, **agent polkit** (`src/polkit.rs`) |
+| `noos-shell/` | Barre des tâches, menu Démarrer, **recherche** (`src/search.rs` : champ de la barre en `OnDemand` au survol, panneau `noos-search` ; applis, Paramètres, fichiers, calcul), réglages rapides, notifications, zone de notification, fond d'écran, **agent polkit** (`src/polkit.rs`) |
 | `noos-settings/`, `noos-file/`, `noos-term/`, `noos-snip/`, `noos-keys/`, `noos-software/` + `noos-pkg/` | Applications |
 | `noos-pkg/src/deb.rs` | Fichiers `.deb` : fiche (`dpkg-deb -f`), simulation sans root (`apt-get -s install <fichier>`), installation `apt-get install <chemin>` (pkexec) ; Logiciels est l'appli par défaut des `.deb` |
 | `noos-pkg/src/appimage.rs` | AppImage : lecture sans exécution (`unsquashfs -offset`), installation dans `~/Applications` + lanceur `appimage-<id>.desktop` (`X-NOOS-AppImage`) ; Logiciels ouvre les `.AppImage` (type MIME `application/vnd.appimage`) |
@@ -152,6 +152,7 @@ compositeur y écrit (`[desktops] names`).
 | `NOOS_POLKIT_TEST=1` | noos-shell affiche une fenêtre d'élévation d'exemple |
 | `NOOS_SOFTWARE_PAGE=repos` | noos-software s'ouvre sur une page (`explore`, `installed`, `updates`, `repos`) |
 | `NOOS_SOFTWARE_SEARCH=gimp` | noos-software lance une recherche au démarrage |
+| `NOOS_SEARCH_DEMO=texte` (`'texte;down;down'`, `start:texte`) | noos-shell : saisie simulée dans la pastille de recherche du dock (puis flèches) / dans le menu Démarrer ; panneau de résultats ouvert |
 | `NOOS_REORDER_DEMO=1` | noos-shell fait glisser la 1re icône épinglée de 2 crans (sans enregistrer) |
 | `NOOS_SAVE_DEMO=1` (+ `NOOS_SAVE_DEMO_PENDING=1`, `NOOS_SAVE_DEMO_BOOT=n`) | noos-save affiche des instantanés fictifs (restauration en attente, démarrage sur l'instantané n), sans rien exécuter |
 | `NOOS_SAVE_PAGE=settings` / `NOOS_SAVE_EXPAND=n` / `NOOS_SAVE_COMPARE=n` / `NOOS_SAVE_SCROLL=px` | noos-save : page Réglages, instantané n déplié, fenêtre « Comparer » de n, défilement |

@@ -8,7 +8,7 @@ use gtk::{gio, glib};
 use gtk4_layer_shell::{KeyboardMode, Layer, LayerShell};
 use noos_core::ipc::Request;
 
-use crate::{Shell, apps};
+use crate::{Shell, apps, search};
 
 pub struct StartMenu {
     window: gtk::Window,
@@ -16,7 +16,7 @@ pub struct StartMenu {
     stack: gtk::Stack,
     pinned: gtk::FlowBox,
     all: gtk::ListBox,
-    results: gtk::ListBox,
+    results: Rc<search::Results>,
     hidden_at: Cell<Option<Instant>>,
 }
 
@@ -84,7 +84,7 @@ impl StartMenu {
         root.set_size_request(640, 680);
 
         let search = gtk::SearchEntry::new();
-        search.set_placeholder_text(Some("Rechercher des applications"));
+        search.set_placeholder_text(Some("Rechercher des applications, des paramètres et des fichiers"));
         root.append(&search);
 
         let stack = gtk::Stack::new();
@@ -138,13 +138,16 @@ impl StartMenu {
         );
         stack.add_named(&all_page, Some("all"));
 
-        // ── Résultats de recherche ──
-        let results = gtk::ListBox::new();
-        results.set_selection_mode(gtk::SelectionMode::Single);
-        results.set_activate_on_single_click(true);
-        let results_scroll =
-            gtk::ScrolledWindow::builder().child(&results).vexpand(true).hscrollbar_policy(gtk::PolicyType::Never).build();
-        stack.add_named(&results_scroll, Some("search"));
+        // ── Résultats de recherche (même moteur que la pastille de la barre) ──
+        let results = {
+            let win = window.downgrade();
+            search::Results::new(move |_| {
+                if let Some(w) = win.upgrade() {
+                    w.set_visible(false);
+                }
+            })
+        };
+        stack.add_named(&results.scroll, Some("search"));
         root.append(&stack);
 
         // ── Pied : utilisateur + alimentation ──
@@ -259,18 +262,39 @@ impl StartMenu {
         {
             let m = menu.clone();
             menu.search.connect_activate(move |_| {
-                if let Some(app) = m.results.row_at_index(0).and_then(|r| row_app(&r)) {
-                    m.launch(&app);
+                if m.stack.visible_child_name().as_deref() == Some("search") {
+                    m.results.open_selected();
                 }
             });
         }
-        for list in [&menu.all, &menu.results] {
+        {
             let m = menu.clone();
-            list.connect_row_activated(move |_, row| {
+            menu.all.connect_row_activated(move |_, row| {
                 if let Some(app) = row_app(row) {
                     m.launch(&app);
                 }
             });
+        }
+        {
+            // Flèches : choix du résultat sans quitter le champ de recherche.
+            let keys = gtk::EventControllerKey::new();
+            keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+            let m = menu.clone();
+            keys.connect_key_pressed(move |_, key, _, _| {
+                if m.stack.visible_child_name().as_deref() != Some("search") {
+                    return glib::Propagation::Proceed;
+                }
+                let delta = match key {
+                    gtk::gdk::Key::Down | gtk::gdk::Key::KP_Down => 1,
+                    gtk::gdk::Key::Up | gtk::gdk::Key::KP_Up => -1,
+                    gtk::gdk::Key::Page_Down => 5,
+                    gtk::gdk::Key::Page_Up => -5,
+                    _ => return glib::Propagation::Proceed,
+                };
+                m.results.move_selection(delta);
+                glib::Propagation::Stop
+            });
+            menu.window.add_controller(keys);
         }
         {
             let m = menu.clone();
@@ -336,13 +360,7 @@ impl StartMenu {
             self.stack.set_visible_child_name("home");
             return;
         }
-        self.results.remove_all();
-        for app in apps::search(text).into_iter().take(30) {
-            self.results.append(&app_row(&app));
-        }
-        if let Some(first) = self.results.row_at_index(0) {
-            self.results.select_row(Some(&first));
-        }
+        self.results.set(text, search::query(text));
         self.stack.set_visible_child_name("search");
     }
 
@@ -365,11 +383,22 @@ impl StartMenu {
         }
     }
 
+    /// Démo (`NOOS_SEARCH_DEMO=start:…;down`) : flèche bas dans les résultats.
+    pub fn move_selection(&self, delta: i32) {
+        self.results.move_selection(delta);
+    }
+
     pub fn show(&self, search: Option<&str>) {
-        self.search.set_text(search.unwrap_or(""));
-        self.stack.set_visible_child_name("home");
+        let text = search.unwrap_or("");
+        self.search.set_text(text);
+        if text.trim().is_empty() {
+            self.stack.set_visible_child_name("home");
+        }
         self.window.present();
         self.search.grab_focus();
+        // Texte repris (recherche commencée ailleurs) : curseur à la fin, rien de sélectionné,
+        // pour que la frappe suivante s'ajoute au lieu de remplacer.
+        self.search.set_position(-1);
     }
 
     pub fn hide(&self) {
