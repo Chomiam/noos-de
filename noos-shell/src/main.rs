@@ -518,6 +518,12 @@ fn main() -> glib::ExitCode {
             cfg.appearance.wallpaper = moved;
             let _ = cfg.save();
         }
+        // Widgets d'une version précédente, sans identifiant : celui généré à la lecture
+        // changerait à chaque relecture tant que le fichier n'est pas réécrit (annuler, réglages).
+        let again = NoosConfig::load();
+        if cfg.desktop_widgets.iter().zip(&again.desktop_widgets).any(|(a, b)| a.id != b.id) {
+            let _ = cfg.save();
+        }
         if let Err(e) = noos_theme::install_theme(&cfg.appearance) {
             eprintln!("noos-shell : installation du thème : {e:#}");
         }
