@@ -18,6 +18,7 @@
 //! noos-pkg appimage-install <fichier>        déplace dans ~/Applications + menu Démarrer
 //! noos-pkg deb <fichier.deb>                 fiche du paquet et simulation (sans root)
 //! noos-pkg details -b backend <id>           fiche détaillée (Logiciels) et simulation
+//! noos-pkg cleanup [--dry-run]              ce qui peut être nettoyé (orphelins, cache, noyaux…)
 //! noos-pkg owner <lanceur.desktop>           paquet (apt, Flatpak, AppImage) d'une application
 //!
 //! Options : --dry-run (affiche le plan sans l'exécuter), --json
@@ -142,6 +143,18 @@ fn run() -> anyhow::Result<()> {
                 }
             }
             print_packages(&results, args.json);
+        }
+        "cleanup" => {
+            let items = noos_pkg::cleanup::scan();
+            if items.is_empty() {
+                println!("Rien à nettoyer");
+            }
+            for i in &items {
+                println!("{} — {} octets — {}", i.title, i.size, i.entries.join(", "));
+                for line in i.plan.describe() {
+                    println!("    {line}");
+                }
+            }
         }
         "owner" => {
             let id = args.rest.first().ok_or_else(|| anyhow::anyhow!("précisez le lanceur (gimp.desktop)"))?;

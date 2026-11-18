@@ -873,7 +873,6 @@ pub fn parse_debian_changelog(text: &str, since: Option<&str>, max: usize) -> Ve
         if !line.starts_with(' ') && line.contains(" (") && line.contains(';') {
             let version = line.split_once(" (").and_then(|(_, r)| r.split_once(')')).map(|(v, _)| v.to_string()).unwrap_or_default();
             if since == Some(version.as_str()) || out.len() >= max {
-                cur = None;
                 break;
             }
             cur = Some(ChangelogEntry { version, ..Default::default() });

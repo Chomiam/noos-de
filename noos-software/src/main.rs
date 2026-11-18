@@ -8,6 +8,7 @@
 //! l'interface GTK4 + libAdapta.
 
 mod appimage;
+mod cleanup;
 mod deb;
 mod details;
 mod explore;
@@ -234,7 +235,7 @@ impl App {
             if pkg.backend == Some(BackendKind::Flatpak) {
                 "L'application sera désinstallée. Ses données dans ~/.var/app sont conservées."
             } else {
-                "Le paquet et les dépendances devenues inutiles seront supprimés."
+                "Le paquet sera supprimé (la fiche dit si d'autres paquets en dépendent). Ses dépendances devenues inutiles se retirent ensuite depuis Installées › Faire de la place."
             },
             "Supprimer",
             true,
@@ -485,6 +486,7 @@ impl App {
 
     fn render_installed(self: &Rc<Self>) {
         clear(&self.installed_box);
+        self.installed_box.append(&self.cleanup_group());
         self.installed_box.append(&self.installed_filter);
         let filter = self.installed_filter.text().to_lowercase();
         // AppImage en tête : peu nombreuses, et c'est là qu'on cherche juste après une installation.
@@ -1219,6 +1221,11 @@ fn build(gapp: &adap::Application) {
         }
         let ops = app.ops.clone();
         glib::timeout_add_local_once(Duration::from_millis(2500), move || ops.queue_button.popup());
+    }
+    if let Ok(v) = std::env::var("NOOS_SOFTWARE_CLEANUP") {
+        // Aperçu : « Faire de la place » ouvert (`demo` : éléments fictifs).
+        stack.set_visible_child_name("installed");
+        app.show_cleanup(v == "demo");
     }
     if let Ok(spec) = std::env::var("NOOS_SOFTWARE_DETAILS") {
         app.open_details_spec(&spec);

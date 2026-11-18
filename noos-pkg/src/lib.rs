@@ -13,6 +13,7 @@
 pub mod appimage;
 pub mod backends;
 pub mod catalog;
+pub mod cleanup;
 pub mod deb;
 pub mod details;
 pub mod exec;
