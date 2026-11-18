@@ -443,8 +443,23 @@ impl App {
         noos_pkg::rank(query, &mut pkgs);
         let software = catalog::merge(pkgs, &self.appstream.borrow());
         self.results.remove_all();
-        for sw in software.iter().take(120) {
-            self.results.append(&self.software_row(sw));
+        for entry in catalog::organize(query, software).iter().take(120) {
+            self.results.append(&self.software_row(&entry.software));
+            if !entry.related.is_empty() {
+                // Aide, traductions, données… repliées sous le logiciel.
+                let x = adap::ExpanderRow::new();
+                x.set_title(&match entry.related.len() {
+                    1 => "1 paquet associé".to_string(),
+                    n => format!("{n} paquets associés"),
+                });
+                let names: Vec<&str> = entry.related.iter().map(|s| s.name.as_str()).collect();
+                x.set_subtitle(&if names.len() > 4 { format!("{} et {} autres", names[..4].join(", "), names.len() - 4) } else { names.join(", ") });
+                x.add_prefix(&gtk::Image::from_icon_name("view-more-symbolic"));
+                for r in entry.related.iter().take(200) {
+                    x.add_row(&self.software_row(r));
+                }
+                self.results.append(&x);
+            }
         }
         self.explore_stack.set_visible_child_name("results");
     }

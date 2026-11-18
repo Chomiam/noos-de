@@ -2,7 +2,7 @@
 //!
 //! | Opération            | Commande                                                         |
 //! |----------------------|------------------------------------------------------------------|
-//! | recherche            | `apt-cache search --names-only` + `apt-cache policy`             |
+//! | recherche            | `apt-cache search` (noms, puis descriptions traduites) + AppStream (mots-clés) + `apt-cache policy` |
 //! | installés            | `apt-mark showmanual` + `dpkg-query` (hors priorités required / important) |
 //! | mises à jour         | `apt-get -s full-upgrade` (simulation, sans droits)               |
 //! | vérification (timer) | `apt-get update` dans le cache de l'utilisateur, sans root        |
@@ -24,7 +24,127 @@ use crate::{
 
 pub struct Apt {
     _sys: SystemInfo,
-    appstream: OnceLock<HashMap<String, String>>,
+    appstream: OnceLock<AppstreamIndex>,
+}
+
+/// Index AppStream (DEP-11) des paquets Debian : identifiants, texte de recherche (noms,
+/// résumés, mots-clés et catégories, en C et dans la langue de la session), applications.
+#[derive(Debug, Clone, Default)]
+pub struct AppstreamIndex {
+    /// Paquet → identifiant AppStream (minuscules, sans `.desktop`).
+    pub ids: HashMap<String, String>,
+    /// Paquet → texte en minuscules dans lequel chercher.
+    pub text: HashMap<String, String>,
+    /// Paquet → résumé (langue de la session, sinon C).
+    pub summary: HashMap<String, String>,
+    /// Paquet → nom lisible de l'application (langue de la session, sinon C).
+    pub name: HashMap<String, String>,
+    /// Paquets fournissant une application (desktop ou console).
+    pub apps: HashSet<String>,
+}
+
+/// Remplit l'index depuis un fichier DEP-11 (lecture ligne à ligne, sans lecteur YAML complet :
+/// ~2 600 composants par fichier). `lang` : code court de la session (`fr`).
+pub fn parse_dep11_index(text: &str, idx: &mut AppstreamIndex, lang: &str) {
+    #[derive(Default)]
+    struct Doc {
+        id: Option<String>,
+        pkg: Option<String>,
+        kind: String,
+        hay: String,
+        summary_c: String,
+        summary_l: String,
+        name_c: String,
+        name_l: String,
+    }
+    let wanted = |l: &str| l == "C" || (!lang.is_empty() && (l == lang || l.starts_with(&format!("{lang}-")) || l.starts_with(&format!("{lang}_"))));
+    let commit = |d: &mut Doc, idx: &mut AppstreamIndex| {
+        let d = std::mem::take(d);
+        let (Some(id), Some(pkg)) = (d.id, d.pkg) else { return };
+        idx.ids.entry(pkg.clone()).or_insert_with(|| id.trim_end_matches(".desktop").to_lowercase());
+        let e = idx.text.entry(pkg.clone()).or_default();
+        e.push(' ');
+        e.push_str(&d.hay.to_lowercase());
+        let sum = if d.summary_l.is_empty() { d.summary_c } else { d.summary_l };
+        if !sum.is_empty() {
+            idx.summary.entry(pkg.clone()).or_insert(sum);
+        }
+        if d.kind == "desktop-application" || d.kind == "console-application" {
+            let name = if d.name_l.is_empty() { d.name_c } else { d.name_l };
+            if !name.is_empty() {
+                idx.name.entry(pkg.clone()).or_insert(name);
+            }
+            idx.apps.insert(pkg);
+        }
+    };
+    let unq = |v: &str| v.trim().trim_matches('\'').trim_matches('"').to_string();
+    let mut d = Doc::default();
+    let (mut top, mut sub) = (String::new(), String::new());
+    for line in text.lines() {
+        if line.starts_with("---") {
+            commit(&mut d, idx);
+            top.clear();
+            continue;
+        }
+        if !line.starts_with(' ') {
+            if let Some(item) = line.strip_prefix("- ") {
+                if top == "Categories" {
+                    d.hay.push(' ');
+                    d.hay.push_str(&unq(item));
+                }
+                continue;
+            }
+            let (k, v) = line.split_once(':').unwrap_or((line, ""));
+            top = k.to_string();
+            sub.clear();
+            match k {
+                "ID" => d.id = Some(unq(v)),
+                "Package" => d.pkg = Some(unq(v)),
+                "Type" => d.kind = unq(v),
+                _ => {}
+            }
+            continue;
+        }
+        if !matches!(top.as_str(), "Name" | "Summary" | "Keywords") {
+            continue;
+        }
+        let t = line.trim_start();
+        let indent = line.len() - t.len();
+        if let Some(item) = t.strip_prefix("- ") {
+            if top == "Keywords" && wanted(&sub) {
+                d.hay.push(' ');
+                d.hay.push_str(&unq(item));
+            }
+        } else if indent == 2 {
+            if let Some((l, v)) = t.split_once(':') {
+                sub = l.to_string();
+                let v = unq(v);
+                if wanted(l) && !v.is_empty() {
+                    d.hay.push(' ');
+                    d.hay.push_str(&v);
+                    let (c, loc) = if top == "Summary" { (&mut d.summary_c, &mut d.summary_l) } else { (&mut d.name_c, &mut d.name_l) };
+                    if top != "Keywords" {
+                        if l == "C" {
+                            *c = v;
+                        } else if loc.is_empty() {
+                            *loc = v;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    commit(&mut d, idx);
+}
+
+/// Le texte contient-il tous les mots de la requête ?
+pub fn matches_words(hay: &str, words: &[String]) -> bool {
+    !words.is_empty() && words.iter().all(|w| hay.contains(w.as_str()))
+}
+
+/// Motif `apt-cache search` : la saisie est une expression régulière, on l'échappe.
+fn escape_pattern(q: &str) -> String {
+    q.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c.to_string() } else { format!("\\{c}") }).collect()
 }
 
 /// Options communes des commandes apt en root : pas de question, configuration locale conservée.
@@ -282,6 +402,19 @@ impl Apt {
         Self { _sys: sys, appstream: OnceLock::new() }
     }
 
+    fn index(&self) -> &AppstreamIndex {
+        self.appstream.get_or_init(|| {
+            let lang = details::languages().into_iter().find(|l| l.len() == 2 && l != "en").unwrap_or_default();
+            let mut idx = AppstreamIndex::default();
+            for f in details::dep11_files(native_arch_cached()) {
+                if let Some(text) = read_maybe_compressed(&f) {
+                    parse_dep11_index(&text, &mut idx, &lang);
+                }
+            }
+            idx
+        })
+    }
+
     fn policy(names: &[String], extra: &[String]) -> HashMap<String, Policy> {
         if names.is_empty() {
             return HashMap::new();
@@ -470,9 +603,12 @@ impl Backend for Apt {
         if q.len() < 2 {
             return Ok(vec![]);
         }
-        // apt-cache search prend une expression régulière : on échappe la saisie.
-        let pattern: String = q.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c.to_string() } else { format!("\\{c}") }).collect();
-        let out = capture(&["apt-cache", "search", "--names-only", &pattern])?;
+        // Résumés traduits (Translation-fr) quand ils existent.
+        let pattern = escape_pattern(&q);
+        let mut argv: Vec<String> = vec!["apt-cache".into()];
+        argv.extend(details::apt_languages_opts());
+        argv.extend(["search".into(), "--names-only".into(), pattern]);
+        let out = capture(&argv.iter().map(String::as_str).collect::<Vec<_>>())?;
         let mut pkgs: Vec<Package> = parse_search(&out)
             .into_iter()
             .map(|(name, summary)| Package {
@@ -484,7 +620,44 @@ impl Backend for Apt {
             })
             .collect();
         crate::rank(&q, &mut pkgs);
-        pkgs.truncate(150);
+        pkgs.truncate(120);
+        let mut seen: HashSet<String> = pkgs.iter().map(|p| p.id.clone()).collect();
+        // Puis les applications dont le nom traduit, le résumé ou les mots-clés AppStream
+        // correspondent (« retouche photo » → GIMP), puis les descriptions apt.
+        let words: Vec<String> = q.split_whitespace().map(str::to_string).collect();
+        let idx = self.index();
+        let mut by_keywords: Vec<&String> = idx.text.iter().filter(|(p, hay)| !seen.contains(*p) && matches_words(hay, &words)).map(|(p, _)| p).collect();
+        by_keywords.sort_by_key(|p| (!idx.apps.contains(*p), p.len()));
+        for p in by_keywords.into_iter().take(40) {
+            seen.insert(p.clone());
+            pkgs.push(Package {
+                backend: Some(BackendKind::Apt),
+                id: p.clone(),
+                name: p.clone(),
+                summary: idx.summary.get(p).cloned().unwrap_or_default(),
+                ..Default::default()
+            });
+        }
+        if q.chars().count() >= 3 {
+            // Descriptions traduites (Translation-fr) puis anglaises.
+            let mut argv: Vec<String> = vec!["apt-cache".into()];
+            argv.extend(details::apt_languages_opts());
+            argv.push("search".into());
+            argv.extend(words.iter().map(|w| escape_pattern(w)));
+            let refs: Vec<&str> = argv.iter().map(String::as_str).collect();
+            let extra = capture(&refs).map(|o| parse_search(&o)).unwrap_or_default();
+            let mut extra: Vec<(String, String)> = extra.into_iter().filter(|(n, _)| !seen.contains(n)).collect();
+            // Applications d'abord, puis les noms courts (moins de bibliothèques).
+            extra.sort_by_key(|(n, _)| (!idx.apps.contains(n), n.starts_with("lib"), n.len()));
+            for (name, summary) in extra.into_iter().take(40) {
+                pkgs.push(Package { backend: Some(BackendKind::Apt), id: name.clone(), name, summary, ..Default::default() });
+            }
+        }
+        for p in &mut pkgs {
+            if let Some(n) = idx.name.get(&p.id) {
+                p.name = n.clone();
+            }
+        }
         let names: Vec<String> = pkgs.iter().map(|p| p.id.clone()).collect();
         let policy = Self::policy(&names, &[]);
         for p in &mut pkgs {
@@ -682,17 +855,7 @@ impl Backend for Apt {
     }
 
     fn appstream_ids(&self) -> HashMap<String, String> {
-        self.appstream
-            .get_or_init(|| {
-                let mut map = HashMap::new();
-                for f in details::dep11_files(native_arch_cached()) {
-                    if let Some(text) = read_maybe_compressed(&f) {
-                        parse_dep11(&text, &mut map);
-                    }
-                }
-                map
-            })
-            .clone()
+        self.index().ids.clone()
     }
 }
 
@@ -741,6 +904,27 @@ mod tests {
         assert_eq!(m["vlc"], "vlc");
         assert_eq!(m["2048"], "2048");
         assert_eq!(m.len(), 3);
+    }
+
+    #[test]
+    fn dep11_index() {
+        let y = "---\nFile: DEP-11\n---\nType: desktop-application\nID: org.gimp.GIMP\nPackage: gimp\nName:\n  C: GNU Image Manipulation Program\n  fr: Éditeur d’image GIMP\n  de: Bildbearbeitung\n\
+Summary:\n  C: High-end image creation\n  fr: Création et retouche d'images\nCategories:\n- Graphics\n- RasterGraphics\nKeywords:\n  C:\n  - photo\n  - painting\n  fr:\n  - retouche\n  de:\n  - Malen\nUrl:\n  homepage: https://www.gimp.org/\n\
+---\nType: font\nID: org.example.Font\nPackage: fonts-x\nName:\n  C: X Font\n";
+        let mut idx = AppstreamIndex::default();
+        parse_dep11_index(y, &mut idx, "fr");
+        assert_eq!(idx.ids["gimp"], "org.gimp.gimp");
+        let hay = &idx.text["gimp"];
+        for w in ["éditeur", "retouche", "photo", "rastergraphics", "création"] {
+            assert!(hay.contains(w), "{w} absent de {hay}");
+        }
+        assert!(!hay.contains("malen") && !hay.contains("bildbearbeitung"));
+        assert!(!hay.contains("gimp.org"));
+        assert_eq!(idx.summary["gimp"], "Création et retouche d'images");
+        assert_eq!(idx.name["gimp"], "Éditeur d’image GIMP");
+        assert!(idx.apps.contains("gimp") && !idx.apps.contains("fonts-x"));
+        assert!(matches_words(hay, &["retouche".into(), "photo".into()]));
+        assert!(!matches_words(hay, &["retouche".into(), "vidéo".into()]));
     }
 
     #[test]

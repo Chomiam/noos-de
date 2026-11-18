@@ -232,22 +232,30 @@ pub fn record_updates(results: &[(BackendKind, Result<Vec<Update>, String>)]) ->
     st
 }
 
-/// Classe les résultats : correspondance exacte, puis préfixe, puis le reste.
+/// Pertinence d'un nom pour une requête : 0 exact, 1 préfixe, 2 contient, 3 ailleurs
+/// (description, mots-clés).
+pub fn match_score(query: &str, id: &str, name: &str) -> u8 {
+    let q = query.trim().to_lowercase();
+    let id = id.to_lowercase();
+    let name = name.to_lowercase();
+    let last = id.rsplit('.').next().unwrap_or(&id).to_string();
+    if id == q || name == q || last == q {
+        0
+    } else if name.starts_with(&q) || last.starts_with(&q) || id.starts_with(&q) {
+        1
+    } else if name.contains(&q) || id.contains(&q) {
+        2
+    } else {
+        3
+    }
+}
+
+/// Classe les résultats : correspondance exacte, puis préfixe, puis le reste. Les résultats
+/// trouvés ailleurs que dans le nom gardent leur ordre (déjà trié par la source).
 pub fn rank(query: &str, packages: &mut [Package]) {
-    let q = query.to_lowercase();
     packages.sort_by_key(|p| {
-        let id = p.id.to_lowercase();
+        let score = match_score(query, &p.id, &p.name);
         let name = p.name.to_lowercase();
-        let last = id.rsplit('.').next().unwrap_or(&id).to_string();
-        let score = if id == q || name == q || last == q {
-            0
-        } else if name.starts_with(&q) || last.starts_with(&q) || id.starts_with(&q) {
-            1
-        } else if name.contains(&q) || id.contains(&q) {
-            2
-        } else {
-            3
-        };
-        (score, name.len(), name)
+        if score < 3 { (score, name.len(), name) } else { (3, 0, String::new()) }
     });
 }

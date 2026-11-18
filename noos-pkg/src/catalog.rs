@@ -75,6 +75,61 @@ pub fn merge(packages: Vec<Package>, appstream: &HashMap<String, String>) -> Vec
     out
 }
 
+/// Un résultat de recherche : le logiciel et ses paquets associés (aide, traductions,
+/// données, greffons…) repliés sous lui.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Entry {
+    pub software: Software,
+    pub related: Vec<Software>,
+}
+
+/// Le logiciel est-il une application (AppStream ou Flatpak), pas un simple paquet ?
+pub fn is_app(sw: &Software) -> bool {
+    !sw.key.starts_with("apt:")
+}
+
+/// Marqueurs de paquets associés : `gimp-help-fr`, `libreoffice-l10n-fr`, `gimp-data`…
+const RELATED: &[&str] = &[
+    "-help", "-l10n", "-locale", "-i18n", "-lang", "-data", "-common", "-doc", "-dbg", "-dev", "-plugin", "-extra", "-examples", "-theme",
+    "-dict", "-hyph", "-mythes",
+];
+
+/// Paquet de base d'un paquet associé (`gimp-help-fr` → `gimp`), s'il ressemble à un associé.
+pub fn related_base(id: &str) -> Option<&str> {
+    RELATED.iter().filter_map(|m| id.find(m).filter(|p| *p > 0).map(|p| &id[..p])).min_by_key(|b| b.len())
+}
+
+/// Organise des logiciels (déjà fusionnés) : pertinence du nom, applications avant les simples
+/// paquets à pertinence égale, paquets associés repliés sous leur logiciel de base.
+pub fn organize(query: &str, software: Vec<Software>) -> Vec<Entry> {
+    let apt_ids: std::collections::HashSet<String> =
+        software.iter().flat_map(|s| s.offers.iter().filter(|o| o.backend == Some(BackendKind::Apt)).map(|o| o.id.clone())).collect();
+    let mut entries: Vec<Entry> = Vec::new();
+    let mut later: Vec<(String, Software)> = Vec::new();
+    for sw in software {
+        let only_apt = sw.offers.iter().all(|o| o.backend == Some(BackendKind::Apt));
+        let base = if only_apt && sw.offers.len() == 1 { related_base(&sw.offers[0].id).filter(|b| apt_ids.contains(*b)).map(str::to_string) } else { None };
+        match base {
+            Some(b) => later.push((b, sw)),
+            None => entries.push(Entry { software: sw, related: vec![] }),
+        }
+    }
+    for (base, sw) in later {
+        match entries.iter_mut().find(|e| e.software.offers.iter().any(|o| o.backend == Some(BackendKind::Apt) && o.id == base)) {
+            Some(e) => e.related.push(sw),
+            None => entries.push(Entry { software: sw, related: vec![] }),
+        }
+    }
+    let score = |sw: &Software| {
+        std::iter::once(crate::match_score(query, &sw.name, &sw.name))
+            .chain(sw.offers.iter().map(|o| crate::match_score(query, &o.id, &o.name)))
+            .min()
+            .unwrap_or(3)
+    };
+    entries.sort_by_key(|e| (score(&e.software), !is_app(&e.software)));
+    entries
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -100,6 +155,27 @@ mod tests {
         assert_eq!(s[0].offers[0].origin, "flathub");
         assert_eq!(s[0].offers[2].backend, Some(BackendKind::Apt));
         assert_eq!(s[1].key, "apt:gimp-devel");
+    }
+
+    #[test]
+    fn associes_et_applications() {
+        let appstream: HashMap<String, String> = [("gimp".to_string(), "org.gimp.gimp".to_string())].into();
+        let found = vec![
+            pkg(BackendKind::Apt, "gimp", "gimp", "debian"),
+            pkg(BackendKind::Apt, "gimp-data", "gimp-data", "debian"),
+            pkg(BackendKind::Apt, "gimp-help-fr", "gimp-help-fr", "debian"),
+            pkg(BackendKind::Apt, "gimplensfun", "gimplensfun", "debian"),
+            pkg(BackendKind::Flatpak, "org.gimp.GIMP", "GIMP", "flathub"),
+            pkg(BackendKind::Apt, "photo-help-x", "photo-help-x", "debian"),
+        ];
+        let e = organize("gimp", merge(found, &appstream));
+        assert_eq!(e[0].software.name, "GIMP");
+        assert_eq!(e[0].related.iter().map(|s| s.offers[0].id.as_str()).collect::<Vec<_>>(), ["gimp-data", "gimp-help-fr"]);
+        assert_eq!(e[1].software.key, "apt:gimplensfun");
+        // Base absente des résultats : reste une ligne à part.
+        assert_eq!(e[2].software.key, "apt:photo-help-x");
+        assert_eq!(related_base("libreoffice-l10n-fr"), Some("libreoffice"));
+        assert_eq!(related_base("htop"), None);
     }
 
     #[test]
