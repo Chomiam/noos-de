@@ -12,10 +12,14 @@ mod folders;
 mod media;
 mod note;
 mod photo;
+mod vitals;
 mod weather;
 mod worldclock;
 
-use std::rc::{Rc, Weak};
+use std::{
+    f64::consts::PI,
+    rc::{Rc, Weak},
+};
 
 use gtk::{glib, prelude::*};
 use noos_core::config::DesktopWidget;
@@ -118,7 +122,7 @@ pub fn build(ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
         "media" => media::build(ctx, w),
         "photo" => photo::build(ctx, w),
         "folders" => folders::build(ctx, w),
-        "vitals" => vitals(),
+        "vitals" => vitals::build(ctx, w),
         _ => note::build(ctx, w),
     }
 }
@@ -143,24 +147,6 @@ pub fn defaults(w: &mut DesktopWidget) {
     if w.kind == "countdown" {
         countdown::defaults(w);
     }
-}
-
-fn vitals() -> gtk::Widget {
-    let b = gtk::Box::new(gtk::Orientation::Vertical, 8);
-    b.add_css_class("desk-vitals");
-    let t = gtk::Label::new(Some("Ressources"));
-    t.add_css_class("desk-title");
-    t.set_xalign(0.0);
-    b.append(&t);
-    let v = noos_widget_vitals::Vitals::new();
-    v.widget().set_sensitive(true);
-    b.append(v.widget());
-    // Le widget vit tant que la boîte existe (ses minuteries vérifient leur widget).
-    let keep = Rc::new(v);
-    b.connect_destroy(move |_| {
-        let _ = &keep;
-    });
-    b.upcast()
 }
 
 // ───────────────────────────── Petits éléments communs ─────────────────────────────
@@ -241,6 +227,23 @@ pub fn open_path(path: &std::path::Path) {
     let _ = gtk::gio::AppInfo::launch_default_for_uri(&uri, gtk::gio::AppLaunchContext::NONE);
 }
 
+/// Jauge ronde : piste discrète (couleur `fg`), arc de la part `p` (0–1) à la couleur `c`.
+pub fn ring(cr: &gtk::cairo::Context, w: f64, h: f64, p: f64, c: (f64, f64, f64), fg: (f64, f64, f64)) {
+    let lw = w.min(h) * 0.1;
+    let r = w.min(h) / 2.0 - lw / 2.0 - 1.0;
+    let (cx, cy) = (w / 2.0, h / 2.0);
+    cr.set_line_width(lw);
+    cr.set_line_cap(gtk::cairo::LineCap::Round);
+    cr.set_source_rgba(fg.0, fg.1, fg.2, 0.14);
+    cr.arc(cx, cy, r, 0.0, 2.0 * PI);
+    let _ = cr.stroke();
+    if p > 0.0 {
+        cr.set_source_rgb(c.0, c.1, c.2);
+        cr.arc(cx, cy, r, -PI / 2.0, -PI / 2.0 + 2.0 * PI * p.clamp(0.01, 1.0));
+        let _ = cr.stroke();
+    }
+}
+
 /// Taille selon `s` / `m` / `l`.
 pub fn by_size<T: Copy>(w: &DesktopWidget, s: T, m: T, l: T) -> T {
     match w.size() {
@@ -260,5 +263,5 @@ pub const CSS: &str = r#"
 
 /// Feuilles de style de tous les widgets.
 pub fn css() -> String {
-    [CSS, clock::CSS, calendar::CSS, countdown::CSS, weather::CSS, worldclock::CSS, media::CSS, photo::CSS, folders::CSS, note::CSS].concat()
+    [CSS, clock::CSS, calendar::CSS, countdown::CSS, weather::CSS, worldclock::CSS, media::CSS, photo::CSS, folders::CSS, note::CSS, vitals::CSS].concat()
 }

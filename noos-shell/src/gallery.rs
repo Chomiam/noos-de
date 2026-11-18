@@ -19,7 +19,7 @@ pub const CSS: &str = r#"
 .widget-card .widget-tile { min-width: 52px; min-height: 52px; border-radius: 14px; color: white; box-shadow: 0 4px 12px rgba(0,0,0,0.25); }
 .widget-card .widget-name { font-weight: 700; }
 .widget-card .widget-desc { font-size: 0.85em; opacity: 0.7; }
-.widget-card .widget-add { font-size: 0.75em; font-weight: 700; color: @accent_bg_color; opacity: 0; transition: opacity 150ms; }
+.widget-card .widget-add { font-size: 0.75em; font-weight: 700; color: @accent_color; opacity: 0; transition: opacity 150ms; }
 .widget-card:hover .widget-add { opacity: 1; }
 .gallery-empty { padding: 30px; opacity: 0.6; }
 .tile-clock { background-image: linear-gradient(135deg, #5b8def, #3a5bd9); }

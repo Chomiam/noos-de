@@ -25,6 +25,8 @@ pub const CSS: &str = r#"
 .desk-media progressbar trough { min-height: 4px; border-radius: 99px; }
 .desk-media progressbar progress { min-height: 4px; border-radius: 99px; }
 .desk-media-play { min-width: 40px; min-height: 40px; border-radius: 99px; background-color: @accent_bg_color; color: @accent_fg_color; }
+.desk-media-play.big { min-width: 52px; min-height: 52px; }
+.size-l .desk-media-title { font-size: 1.35em; }
 .desk-media-btn { min-width: 32px; min-height: 32px; border-radius: 99px; }
 "#;
 
@@ -136,7 +138,9 @@ fn art_file(url: &str, done: impl FnOnce(Option<gio::File>) + 'static) {
 }
 
 pub fn build(_ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
-    let art_px = by_size(w, 56, 84, 120);
+    let size = w.size().to_string();
+    let (small, large) = (size == "s", size == "l");
+    let art_px = by_size(w, 52, 84, 250);
     let o = gtk::Overlay::new();
     o.set_overflow(gtk::Overflow::Hidden);
     let bg = gtk::Picture::new();
@@ -146,7 +150,12 @@ pub fn build(_ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
     o.set_child(Some(&bg));
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 16);
     row.add_css_class("desk-media");
-    row.set_size_request(by_size(w, 260, 340, 420), -1);
+    row.set_size_request(by_size(w, 280, 340, 290), -1);
+    // Grande taille : carte d'album — pochette en haut, texte et commandes centrés dessous.
+    if large {
+        row.set_orientation(gtk::Orientation::Vertical);
+        row.set_spacing(14);
+    }
     o.add_overlay(&row);
     o.set_measure_overlay(&row, true);
     // Pochette (dégradé + note de musique tant qu'il n'y en a pas).
@@ -156,6 +165,7 @@ pub fn build(_ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
     art.set_overflow(gtk::Overflow::Hidden);
     art.set_size_request(art_px, art_px);
     art.set_valign(gtk::Align::Center);
+    art.set_halign(gtk::Align::Center);
     let note = gtk::Image::from_icon_name("audio-x-generic-symbolic");
     note.set_pixel_size(art_px / 2);
     art.set_child(Some(&note));
@@ -174,13 +184,16 @@ pub fn build(_ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
     title.add_css_class("desk-media-title");
     title.set_xalign(0.0);
     title.set_ellipsize(gtk::pango::EllipsizeMode::End);
-    title.set_max_width_chars(22);
+    title.set_max_width_chars(if small { 15 } else { 22 });
+    if small {
+        title.set_width_chars(15);
+    }
     col.append(&title);
     let artist = gtk::Label::new(Some("Lancez de la musique ou une vidéo"));
     artist.add_css_class("desk-media-artist");
     artist.set_xalign(0.0);
     artist.set_ellipsize(gtk::pango::EllipsizeMode::End);
-    artist.set_max_width_chars(26);
+    artist.set_max_width_chars(if small { 18 } else { 26 });
     col.append(&artist);
     let bar = gtk::ProgressBar::new();
     bar.set_margin_top(6);
@@ -209,8 +222,23 @@ pub fn build(_ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
     ctl.append(&prev);
     ctl.append(&play);
     ctl.append(&next);
-    col.append(&ctl);
+    if large {
+        for l in [&player, &title, &artist] {
+            l.set_xalign(0.5);
+        }
+        ctl.set_spacing(18);
+        play.add_css_class("big");
+    }
     row.append(&col);
+    // Petite taille : l'essentiel — pochette, titre, artiste et lecture / pause à côté.
+    if small {
+        prev.set_visible(false);
+        next.set_visible(false);
+        ctl.set_valign(gtk::Align::Center);
+        row.append(&ctl);
+    } else {
+        col.append(&ctl);
+    }
 
     let state: Rc<RefCell<Track>> = Rc::new(RefCell::new(Track::default()));
     let shown_art = Rc::new(RefCell::new(String::new()));
@@ -223,11 +251,11 @@ pub fn build(_ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
             artist.set_text(if none { "Lancez de la musique ou une vidéo" } else { &t.artist });
             artist.set_visible(none || !t.artist.is_empty());
             player.set_text(&t.player.to_uppercase());
-            player.set_visible(!none);
+            player.set_visible(!none && !small);
             ctl.set_sensitive(!none);
             let has_len = t.length > 0;
-            bar.set_visible(has_len);
-            times.set_visible(has_len);
+            bar.set_visible(has_len && !small);
+            times.set_visible(has_len && !small);
             if has_len {
                 bar.set_fraction((t.position as f64 / t.length as f64).clamp(0.0, 1.0));
                 pos_l.set_text(&fmt_time(t.position));

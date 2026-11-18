@@ -6,22 +6,40 @@ use std::path::{Path, PathBuf};
 use gtk::{gio, glib, prelude::*};
 use noos_core::config::DesktopWidget;
 
-use super::{Ctx, by_size, open_path, section};
+use super::{Ctx, open_path, section};
 
 pub const CSS: &str = r#"
 .desk-folder { padding: 8px 4px; border-radius: 12px; min-width: 72px; }
 .desk-folder:hover { background-color: alpha(currentColor, 0.08); }
 .desk-folder-tile { min-width: 44px; min-height: 44px; border-radius: 12px; color: white; }
-.size-l .desk-folder-tile { min-width: 56px; min-height: 56px; }
-.size-s .desk-folder-tile { min-width: 34px; min-height: 34px; border-radius: 10px; }
 .desk-folder-tile.c0 { background-image: linear-gradient(135deg, #4f8ef7, #2f6ae0); }
 .desk-folder-tile.c1 { background-image: linear-gradient(135deg, #2ec27e, #1a9a5f); }
 .desk-folder-tile.c2 { background-image: linear-gradient(135deg, #f6a33a, #e07b1a); }
 .desk-folder-tile.c3 { background-image: linear-gradient(135deg, #c061cb, #9141ac); }
 .desk-folder-tile.c4 { background-image: linear-gradient(135deg, #f66151, #c01c28); }
 .desk-folder-tile.c5 { background-image: linear-gradient(135deg, #33c7de, #1c8fa8); }
+.desk-folder-row { padding: 6px 8px; border-radius: 12px; }
+.desk-folder-row:hover { background-color: alpha(currentColor, 0.08); }
+.size-s .desk-folder { min-width: 48px; padding: 6px; }
+.size-s .desk-folder-tile { min-width: 40px; min-height: 40px; }
 .desk-folder-name { font-size: 0.85em; }
 "#;
+
+/// Pastille colorée du dossier n° `i`.
+fn tile(p: &Path, i: usize, px: i32) -> gtk::Box {
+    let tile = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    tile.add_css_class("desk-folder-tile");
+    tile.add_css_class(&format!("c{}", i % 6));
+    tile.set_halign(gtk::Align::Center);
+    tile.set_valign(gtk::Align::Center);
+    tile.set_hexpand(false);
+    let img = gtk::Image::from_icon_name(icon(p));
+    img.set_pixel_size(px);
+    img.set_hexpand(true);
+    img.set_halign(gtk::Align::Center);
+    tile.append(&img);
+    tile
+}
 
 fn defaults() -> Vec<PathBuf> {
     let home = glib::home_dir();
@@ -85,9 +103,45 @@ pub fn build(_ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
         t.set_xalign(0.0);
         b.append(&t);
     }
+    // Grande taille : une liste (nom et nombre d'éléments). Petite : les icônes seules.
+    if w.size() == "l" {
+        let list = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        list.set_size_request(300, -1);
+        for (i, p) in paths(w).into_iter().enumerate() {
+            let btn = gtk::Button::new();
+            btn.add_css_class("flat");
+            btn.add_css_class("desk-folder-row");
+            let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+            row.append(&tile(&p, i, 20));
+            let col = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            col.set_valign(gtk::Align::Center);
+            let l = gtk::Label::new(Some(&name(&p)));
+            l.add_css_class("heading");
+            l.set_xalign(0.0);
+            col.append(&l);
+            let n = std::fs::read_dir(&p).map(|d| d.take(10_000).filter_map(Result::ok).filter(|e| !e.file_name().to_string_lossy().starts_with('.')).count()).unwrap_or(0);
+            let c = gtk::Label::new(Some(&match n {
+                0 => "Vide".to_string(),
+                1 => "1 élément".to_string(),
+                n => format!("{n} éléments"),
+            }));
+            c.add_css_class("desk-dim");
+            c.add_css_class("caption");
+            c.set_xalign(0.0);
+            col.append(&c);
+            row.append(&col);
+            btn.set_child(Some(&row));
+            btn.set_tooltip_text(Some(&p.to_string_lossy()));
+            btn.connect_clicked(move |_| open_path(&p));
+            list.append(&btn);
+        }
+        b.append(&list);
+        return b.upcast();
+    }
+    let small = w.size() == "s";
     let grid = gtk::FlowBox::new();
     grid.set_selection_mode(gtk::SelectionMode::None);
-    let cols = by_size(w, 3, 3, 4);
+    let cols = 3;
     grid.set_min_children_per_line(cols);
     grid.set_max_children_per_line(cols);
     grid.set_homogeneous(true);
@@ -98,24 +152,16 @@ pub fn build(_ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
         btn.add_css_class("flat");
         btn.add_css_class("desk-folder");
         let v = gtk::Box::new(gtk::Orientation::Vertical, 6);
-        let tile = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-        tile.add_css_class("desk-folder-tile");
-        tile.add_css_class(&format!("c{}", i % 6));
-        tile.set_halign(gtk::Align::Center);
-        tile.set_hexpand(false);
-        let img = gtk::Image::from_icon_name(icon(&p));
-        img.set_pixel_size(by_size(w, 18, 22, 28));
-        img.set_hexpand(true);
-        img.set_halign(gtk::Align::Center);
-        tile.append(&img);
-        v.append(&tile);
-        let l = gtk::Label::new(Some(&name(&p)));
-        l.add_css_class("desk-folder-name");
-        l.set_ellipsize(gtk::pango::EllipsizeMode::End);
-        l.set_max_width_chars(15);
-        v.append(&l);
+        v.append(&tile(&p, i, if small { 20 } else { 22 }));
+        if !small {
+            let l = gtk::Label::new(Some(&name(&p)));
+            l.add_css_class("desk-folder-name");
+            l.set_ellipsize(gtk::pango::EllipsizeMode::End);
+            l.set_max_width_chars(15);
+            v.append(&l);
+        }
         btn.set_child(Some(&v));
-        btn.set_tooltip_text(Some(&p.to_string_lossy()));
+        btn.set_tooltip_text(Some(&format!("{} — {}", name(&p), p.to_string_lossy())));
         btn.connect_clicked(move |_| open_path(&p));
         grid.insert(&btn, -1);
     }

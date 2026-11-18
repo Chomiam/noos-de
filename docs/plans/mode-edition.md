@@ -122,7 +122,8 @@ Aperçu imbriqué, configuration isolée (`tools/preview/scenario.sh`), un et de
 (`NOOS_WINIT_OUTPUTS=2`), barre des tâches en bas, en haut et à gauche. Captures « après » dans
 `docs/plans/captures-mode-edition/` : `bureau.jpg` (tous les widgets, vraie météo),
 `edition.jpg`, `galerie.jpg`, `barres.jpg`, `mises-en-page.jpg`, `reglages.jpg`,
-`visite.jpg`, `annuler.jpg`, `deux-ecrans.jpg`, `barre-en-haut.jpg`, `verticale.jpg`.
+`visite.jpg`, `annuler.jpg`, `deux-ecrans.jpg`, `barre-en-haut.jpg`, `verticale.jpg`, et
+`tailles-1.jpg` / `tailles-2.jpg` (chaque widget en petit, moyen, grand).
 
 | Variable | Effet |
 |---|---|
@@ -139,7 +140,25 @@ logique est commune avec ce qui est montré (`NOOS_EDIT_GUIDES` passe par le mê
 d'aimantation, `add:` par le même ajout que le dépôt d'une carte) ; à essayer dans la vraie
 session.
 
-## 6. Reste à faire
+## 6. Deuxième passe de tests (18/11/2026)
+
+Tous les widgets en trois tailles, trois fonds, thème clair et sombre, réglages de chacun,
+ajouts sur un bureau plein. Corrigé :
+
+- **tailles** : chaque taille a sa disposition (voir le tableau du guide) ; Ressources ignorait
+  la taille ;
+- note : « Nouvelle note… » était un vrai texte à effacer → texte indicatif ;
+- barre d'outils qui cachait les widgets du haut (et leur barre de titre) → côté choisi à
+  l'entrée du mode ;
+- panneau de réglages qui sortait de l'écran pour les widgets du bas → ouvert vers le haut ou le
+  bas selon la place, hauteur limitée ;
+- ajout sur un bureau plein : tout s'empilait dans le coin → position la moins recouverte ;
+  barres de titre, barre d'outils et cadre des notifications évités ;
+- thème clair : jours fériés et libellés d'accent illisibles (`@accent_bg_color` → `@accent_color`) ;
+- fond « Aucun » : poignée de taille sur le contenu → marges ; petits cadrans de nuit invisibles
+  sur fond sombre (et de jour sur fond clair) → liseré ; pastilles étirées (Ressources, galerie).
+
+## 7. Reste à faire
 
 Les lignes « — » ci-dessus, et : tester sur vrai matériel (plusieurs écrans physiques, HiDPI),
 traduire les noms de villes des fuseaux, widget d'agenda branché sur les calendriers en ligne

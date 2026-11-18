@@ -20,6 +20,8 @@ pub const CSS: &str = r#"
 .desk-note.blue { background-image: linear-gradient(170deg, #d4ecff, #b0d8ff); }
 .desk-note.purple { background-image: linear-gradient(170deg, #e8dcff, #d2bdff); }
 .desk-note, .desk-note textview, .desk-note text { color: #34302a; caret-color: #34302a; }
+.desk-note-hint { color: rgba(52,48,42,0.45); font-size: 1.05em; }
+.size-l .desk-note-hint { font-size: 1.25em; }
 .note-swatch { min-width: 26px; min-height: 26px; padding: 0; border-radius: 99px; border: 2px solid alpha(currentColor, 0.15); }
 .note-swatch:checked { border-color: @accent_bg_color; box-shadow: 0 0 0 2px alpha(@accent_bg_color, 0.4); }
 .note-swatch.yellow { background: #ffe97a; } .note-swatch.pink { background: #ffb3d1; } .note-swatch.green { background: #b4ecaa; }
@@ -34,10 +36,20 @@ pub fn build(ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
     let tv = gtk::TextView::new();
     tv.set_wrap_mode(gtk::WrapMode::WordChar);
     tv.set_size_request(by_size(w, 180, 230, 320), by_size(w, 120, 170, 250));
-    if w.text.is_empty() {
-        tv.buffer().set_text("Nouvelle note…");
-    } else {
-        tv.buffer().set_text(&w.text);
+    tv.buffer().set_text(&w.text);
+    // Texte indicatif (pas du vrai texte à effacer) tant que la note est vide.
+    let o = gtk::Overlay::new();
+    o.set_child(Some(&tv));
+    let hint = gtk::Label::new(Some("Écrivez ici…"));
+    hint.add_css_class("desk-note-hint");
+    hint.set_halign(gtk::Align::Start);
+    hint.set_valign(gtk::Align::Start);
+    hint.set_can_target(false);
+    hint.set_visible(w.text.is_empty());
+    o.add_overlay(&hint);
+    {
+        let hint = hint.clone();
+        tv.buffer().connect_changed(move |b| hint.set_visible(b.char_count() == 0));
     }
     // Enregistrée après une courte pause, sans reconstruire le widget (le curseur resterait
     // en place) ni passer par l'historique.
@@ -53,7 +65,7 @@ pub fn build(ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
             }
         });
     });
-    b.append(&tv);
+    b.append(&o);
     b.upcast()
 }
 

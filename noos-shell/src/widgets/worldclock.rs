@@ -17,6 +17,7 @@ pub const CSS: &str = r#"
 .size-l .desk-world-time { font-size: 2em; }
 .size-s .desk-world-time { font-size: 1.2em; }
 .desk-world-zone { padding: 2px 4px; }
+.desk-world-bar { margin: 0 2px; }
 "#;
 
 const DEFAULT: &str = "America/New_York;Europe/London;Asia/Tokyo";
@@ -108,7 +109,28 @@ pub fn build(_ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
         time.add_css_class("desk-world-time");
         time.set_valign(gtk::Align::Center);
         row.append(&time);
-        b.append(&row);
+        // Grande taille : la journée de la ville sur 24 h (nuit, aube, jour, soir) et l'heure
+        // actuelle en repère.
+        let bar = gtk::DrawingArea::new();
+        bar.set_content_height(10);
+        bar.add_css_class("desk-world-bar");
+        let large = w.size() == "l";
+        if large {
+            let v = gtk::Box::new(gtk::Orientation::Vertical, 4);
+            v.add_css_class("desk-world-row");
+            row.remove_css_class("desk-world-row");
+            v.append(&row);
+            v.append(&bar);
+            b.append(&v);
+            let tz2 = tz.clone();
+            bar.set_draw_func(move |a, cr, wd, ht| {
+                if let Ok(now) = glib::DateTime::now(&tz2) {
+                    draw_day(a, cr, wd as f64, ht as f64, &now);
+                }
+            });
+        } else {
+            b.append(&row);
+        }
         ticks.push(Box::new(move || {
             let (Ok(here), Ok(there)) = (glib::DateTime::now_local(), glib::DateTime::now(&tz)) else { return };
             time.set_text(&there.format("%H:%M").map(|s| s.to_string()).unwrap_or_default());
@@ -127,6 +149,7 @@ pub fn build(_ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
             };
             off.set_text(&format!("{day}, {off_txt}"));
             area.queue_draw();
+            bar.queue_draw();
         }));
     }
     if ticks.is_empty() {
@@ -147,7 +170,15 @@ fn draw_mini(cr: &gtk::cairo::Context, w: f64, h: f64, now: &glib::DateTime) {
     let (bg, fg) = if day { ((0.97, 0.97, 0.98), (0.12, 0.13, 0.16)) } else { ((0.12, 0.14, 0.24), (0.93, 0.94, 0.98)) };
     cr.set_source_rgb(bg.0, bg.1, bg.2);
     cr.arc(cx, cy, r, 0.0, 2.0 * PI);
-    let _ = cr.fill();
+    let _ = cr.fill_preserve();
+    // Liseré : un cadran de nuit reste visible sur un fond sombre.
+    if day {
+        cr.set_source_rgba(0.0, 0.0, 0.0, 0.18);
+    } else {
+        cr.set_source_rgba(1.0, 1.0, 1.0, 0.35);
+    }
+    cr.set_line_width(1.2);
+    let _ = cr.stroke();
     cr.set_line_cap(gtk::cairo::LineCap::Round);
     cr.set_source_rgba(fg.0, fg.1, fg.2, 0.5);
     for i in 0..12 {
@@ -165,6 +196,31 @@ fn draw_mini(cr: &gtk::cairo::Context, w: f64, h: f64, now: &glib::DateTime) {
         cr.line_to(cx + len * angle.sin(), cy - len * angle.cos());
         let _ = cr.stroke();
     }
+}
+
+/// Barre de 24 h : nuit (bleu nuit), aube et crépuscule (orangés), jour (bleu ciel) ; trait
+/// blanc à l'heure actuelle.
+fn draw_day(a: &gtk::DrawingArea, cr: &gtk::cairo::Context, w: f64, h: f64, now: &glib::DateTime) {
+    let _ = a;
+    let g = gtk::cairo::LinearGradient::new(0.0, 0.0, w, 0.0);
+    for (hour, (r, gg, b)) in [(0.0, (0.10, 0.12, 0.28)), (5.5, (0.14, 0.16, 0.36)), (7.0, (0.98, 0.62, 0.36)), (9.0, (0.40, 0.68, 0.98)), (17.0, (0.40, 0.68, 0.98)), (19.0, (0.95, 0.50, 0.42)), (20.5, (0.16, 0.16, 0.38)), (24.0, (0.10, 0.12, 0.28))] {
+        g.add_color_stop_rgb(hour / 24.0, r, gg, b);
+    }
+    let r = h / 2.0;
+    cr.new_sub_path();
+    cr.arc(r, r, r, PI / 2.0, 1.5 * PI);
+    cr.arc(w - r, r, r, -PI / 2.0, PI / 2.0);
+    cr.close_path();
+    let _ = cr.set_source(&g);
+    let _ = cr.fill();
+    let x = (now.hour() as f64 + now.minute() as f64 / 60.0) / 24.0 * w;
+    cr.set_source_rgb(1.0, 1.0, 1.0);
+    cr.arc(x.clamp(r, w - r), r, r * 0.9, 0.0, 2.0 * PI);
+    let _ = cr.fill();
+    cr.set_source_rgba(0.0, 0.0, 0.0, 0.35);
+    cr.set_line_width(1.0);
+    cr.arc(x.clamp(r, w - r), r, r * 0.9, 0.0, 2.0 * PI);
+    let _ = cr.stroke();
 }
 
 /// Fuseaux connus du système (`/usr/share/zoneinfo/tzdata.zi` ou `zone1970.tab`).

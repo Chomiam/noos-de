@@ -305,18 +305,33 @@ déplacement libre. Un widget reste toujours entièrement à l'écran.
 **Réglages** (⚙, ou clic droit sur le widget hors mode édition) : taille, **fond** (verre,
 opaque, aucun), **écran** (plusieurs écrans), réglages propres au widget, Dupliquer, Retirer.
 
-| Widget | Contenu, réglages |
-|---|---|
-| Horloge | numérique (grands chiffres) ou **analogique** (cadran dessiné, trotteuse à la couleur d'accent) ; secondes, date |
-| Horloges du monde | une ligne par ville : petit cadran clair le jour, sombre la nuit, heure, « Demain, +8 h » ; recherche parmi les fuseaux du système (noms français des grandes villes), ordre, retrait |
-| Calendrier | grille du mois façon Windows 11 (aujourd'hui en pastille, week-ends atténués, jours fériés en couleur avec leur nom), mois précédent / suivant (flèches, molette), « Aujourd'hui », numéros de semaine, **prochain jour férié** (France : fêtes fixes et mobiles depuis Pâques) |
-| Compte à rebours | événement nommé, date et heure ; jours restants dans un **anneau de progression**, puis heures et minutes, « C'est aujourd'hui ! », « Depuis 3 jours » |
-| Météo | [Open-Meteo](https://open-meteo.com) (sans compte ni clé) : température, ressenti, conditions, min / max, humidité, vent, **prévisions sur 5 jours** (grande taille) ; fond dégradé selon le temps et le jour / la nuit ; recherche de ville en français, °C / °F ; actualisée toutes les 30 min, dernière réponse gardée pour le hors-ligne (`~/.cache/noos/weather/`). Seule la ville choisie est envoyée au service |
-| Lecteur multimédia | lecteur MPRIS (Firefox, Spotify, VLC, mpv…) : pochette et fond flouté, titre, artiste, progression, précédent / lecture-pause / suivant ; le lecteur qui joue a la priorité |
-| Cadre photo | images d'un dossier (Images par défaut) en fondu enchaîné, intervalle (1 min à 1 h), ordre aléatoire ; clic : ouvre l'image, molette : suivante |
-| Note | pense-bête en 5 couleurs, texte enregistré au fil de la frappe |
-| Dossiers | raccourcis colorés vers Documents, Téléchargements, Images… ; ajout / retrait de dossiers |
-| Ressources | processeur, carte graphique, mémoire, disque, réseau |
+Les **trois tailles** ne font pas que grossir le widget : chacune a sa disposition (captures :
+`docs/plans/captures-mode-edition/tailles-*.jpg`).
+
+| Widget | Petite | Moyenne | Grande | Réglages |
+|---|---|---|---|---|
+| Horloge | heure + date courte (« Mer. 18 nov. ») ; cadran seul | heure + date | date avec l'année, semaine et jour de l'année, avancement de la journée ; cadran chiffré + heure numérique | numérique / **analogique** (trotteuse à la couleur d'accent), secondes, date |
+| Horloges du monde | liste compacte | petit cadran clair le jour, sombre la nuit, heure, « Demain, +8 h » | + **barre jour / nuit de 24 h** par ville | villes (fuseaux du système, noms français des grandes villes), ordre, retrait |
+| Calendrier | tuile **« aujourd'hui »** (jour, quantième, mois, prochain férié) | grille du mois façon Windows 11, jours fériés en couleur, prochain férié | grille avec numéros de semaine + liste **« À venir »** (4 prochains fériés) | numéros de semaine, prochain férié ; flèches, molette, « Aujourd'hui » |
+| Compte à rebours | anneau + titre | anneau (jours) + titre, date, temps restant | anneau (**part écoulée**) + tuiles jours / heures / minutes | nom, date (calendrier) et heure |
+| Météo | **tuile** : température, icône, ville, min / max | conditions, ressenti, min / max, humidité, vent | + prévisions sur 5 jours | ville (recherche en français), °C / °F |
+| Lecteur multimédia | pochette, titre, lecture / pause | + lecteur, progression, précédent / suivant | **carte d'album** : grande pochette, texte et commandes centrés | — |
+| Cadre photo | l'image seule | + nom au survol | + **barre** nom, date, ‹ › | dossier, intervalle (1 min à 1 h), ordre aléatoire |
+| Note | trois tailles de papier ; texte indicatif « Écrivez ici… » tant qu'elle est vide | | | 5 couleurs |
+| Dossiers | les icônes seules | icônes et noms | **liste** avec le nombre d'éléments | ajout / retrait de dossiers |
+| Ressources | **4 jauges rondes** (processeur, graphique, mémoire, disque) | barre compacte (comme dans la barre des tâches) | une **carte par composant** : matériel, valeur, jauge, détail (espace libre, débits, température), réseau | — |
+
+Météo : [Open-Meteo](https://open-meteo.com) (sans compte ni clé), fond dégradé selon le temps
+et le jour / la nuit, actualisée toutes les 30 min, dernière réponse gardée pour le hors-ligne
+(`~/.cache/noos/weather/`) ; seule la ville choisie est envoyée au service. Lecteur : MPRIS
+(Firefox, Spotify, VLC, mpv…), le lecteur qui joue a la priorité. Cadre photo : clic = ouvrir
+l'image, molette = suivante.
+
+En mode édition, la barre d'outils se place **en haut ou en bas, du côté où elle cache le moins
+de widgets** (en bas si la barre des tâches est en haut). Le panneau de réglages d'un widget
+s'ouvre vers le haut ou vers le bas selon la place (hauteur limitée, défilement). Un widget
+ajouté par un clic va au premier endroit libre, barres de titre, barre d'outils et cadre des
+notifications compris ; sur un bureau plein, là où il recouvre le moins.
 
 Les widgets vivent dans leur propre surface (`noos-desktop-widgets`, couche « bottom »), jamais
 dans le fond d'écran (le flou Mica serait recalculé à chaque image). Configuration :

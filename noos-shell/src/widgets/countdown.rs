@@ -12,11 +12,14 @@ pub const CSS: &str = r#"
 .desk-count-ring { color: @accent_bg_color; }
 .desk-count-num { font-size: 34px; font-weight: 700; font-feature-settings: "tnum"; }
 .size-s .desk-count-num { font-size: 24px; }
-.size-l .desk-count-num { font-size: 48px; }
+.size-l .desk-count-num { font-size: 36px; }
 .desk-count-unit { font-size: 0.8em; opacity: 0.7; margin-top: -4px; }
 .desk-count-title { font-weight: 700; font-size: 1.2em; }
 .size-l .desk-count-title { font-size: 1.45em; }
 .desk-count-rest { font-feature-settings: "tnum"; }
+.desk-count-tile { min-width: 62px; padding: 6px 4px; border-radius: 12px; background-color: alpha(currentColor, 0.07); }
+.desk-count-tile .v { font-size: 1.6em; font-weight: 800; font-feature-settings: "tnum"; }
+.desk-count-tile .u { font-size: 0.75em; opacity: 0.65; }
 "#;
 
 /// Valeurs d'un compte à rebours neuf : nouvel an prochain, créé maintenant.
@@ -39,8 +42,10 @@ pub fn build(_ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
     let title = w.option("title").unwrap_or("Événement").to_string();
     let target = w.option("target").and_then(parse);
     let created = w.option("created").and_then(parse);
-    let b = gtk::Box::new(gtk::Orientation::Horizontal, by_size(w, 12, 18, 22));
-    let ring_px = by_size(w, 88, 116, 156);
+    let (small, large) = (w.size() == "s", w.size() == "l");
+    // Petite taille : anneau et titre empilés ; moyenne : côte à côte ; grande : tuiles en plus.
+    let b = gtk::Box::new(if small { gtk::Orientation::Vertical } else { gtk::Orientation::Horizontal }, by_size(w, 8, 18, 22));
+    let ring_px = by_size(w, 96, 116, 150);
     let ring = gtk::Overlay::new();
     let area = gtk::DrawingArea::new();
     area.set_content_width(ring_px);
@@ -62,19 +67,43 @@ pub fn build(_ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
     col.set_valign(gtk::Align::Center);
     let t = gtk::Label::new(Some(&title));
     t.add_css_class("desk-count-title");
-    t.set_xalign(0.0);
+    t.set_xalign(if small { 0.5 } else { 0.0 });
+    t.set_justify(if small { gtk::Justification::Center } else { gtk::Justification::Left });
     t.set_wrap(true);
-    t.set_max_width_chars(18);
+    t.set_max_width_chars(if small { 14 } else { 18 });
     col.append(&t);
     let when = gtk::Label::new(target.as_ref().and_then(|d| d.format("%A %-d %B %Y · %H:%M").ok()).map(|s| capitalize(&s)).as_deref());
     when.add_css_class("desk-dim");
     when.set_xalign(0.0);
-    when.set_visible(w.size() != "s");
+    when.set_visible(!small);
     col.append(&when);
     let rest = gtk::Label::new(None);
     rest.add_css_class("desk-count-rest");
     rest.set_xalign(0.0);
+    rest.set_visible(!small);
     col.append(&rest);
+    // Grande taille : jours, heures, minutes en tuiles.
+    let tiles = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    tiles.set_margin_top(6);
+    let mut tile_vals = vec![];
+    for unit in ["jours", "heures", "minutes"] {
+        let tb = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        tb.add_css_class("desk-count-tile");
+        let v = gtk::Label::new(Some("–"));
+        v.add_css_class("v");
+        tb.append(&v);
+        let u = gtk::Label::new(Some(unit));
+        u.add_css_class("u");
+        tb.append(&u);
+        tiles.append(&tb);
+        tile_vals.push(v);
+    }
+    tiles.set_visible(large);
+    col.append(&tiles);
+    if small {
+        col.set_halign(gtk::Align::Center);
+        ring.set_halign(gtk::Align::Center);
+    }
     b.append(&col);
     let progress = std::rc::Rc::new(std::cell::Cell::new(0.0f64));
     {
@@ -98,7 +127,19 @@ pub fn build(_ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
             rest.set_text(&if past == 0 { "C'est aujourd'hui !".to_string() } else if past == 1 { "C'était hier".to_string() } else { format!("Depuis {past} jours") });
         } else {
             let (d, h, m) = (secs / 86400, secs % 86400 / 3600, secs % 3600 / 60);
-            if d > 0 {
+            for (l, v) in tile_vals.iter().zip([d, h, m]) {
+                l.set_text(&format!("{v:02}"));
+            }
+            if large {
+                rest.set_visible(false);
+            }
+            let total = created.as_ref().map(|c| target.difference(c).as_seconds()).filter(|t| *t > 0).unwrap_or(30 * 86400);
+            if large {
+                // Les tuiles disent le temps restant : l'anneau, la part écoulée.
+                let pct = ((1.0 - secs as f64 / total as f64) * 100.0).clamp(0.0, 100.0);
+                num.set_text(&format!("{pct:.0} %"));
+                unit.set_text("écoulé");
+            } else if d > 0 {
                 num.set_text(&d.to_string());
                 unit.set_text(if d == 1 { "jour" } else { "jours" });
                 rest.set_text(&format!("et {h} h {m:02} min"));
@@ -107,7 +148,6 @@ pub fn build(_ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
                 unit.set_text("heures");
                 rest.set_text("C'est bientôt !");
             }
-            let total = created.as_ref().map(|c| target.difference(c).as_seconds()).filter(|t| *t > 0).unwrap_or(30 * 86400);
             progress.set((1.0 - secs as f64 / total as f64).clamp(0.0, 1.0));
         }
         area.queue_draw();

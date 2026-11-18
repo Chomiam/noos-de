@@ -14,6 +14,11 @@ pub const CSS: &str = r#"
 .desk-photo picture { border-radius: 13px; }
 .desk-photo-caption { margin: 8px; padding: 3px 10px; border-radius: 99px; background-color: rgba(0,0,0,0.45); color: white; font-size: 0.82em; opacity: 0; transition: opacity 200ms; }
 .desk-photo:hover .desk-photo-caption { opacity: 1; }
+.desk-photo-bar { padding: 26px 12px 10px 14px; background-image: linear-gradient(to bottom, transparent, rgba(0,0,0,0.62)); color: white; border-radius: 0 0 13px 13px; }
+.desk-photo-bar .name { font-weight: 700; text-shadow: 0 1px 4px rgba(0,0,0,0.6); }
+.desk-photo-bar .date { font-size: 0.8em; opacity: 0.85; }
+.desk-photo-nav { min-width: 30px; min-height: 30px; padding: 0; background-color: rgba(255,255,255,0.18); color: white; }
+.desk-photo-nav:hover { background-color: rgba(255,255,255,0.32); }
 .desk-photo-empty { padding: 18px; }
 "#;
 
@@ -85,10 +90,40 @@ pub fn build(ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
     caption.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
     caption.set_max_width_chars(30);
     o.add_overlay(&caption);
+    // Petite taille : l'image seule. Grande : une barre toujours visible (nom, date, ‹ ›).
+    let size = w.size().to_string();
+    caption.set_visible(size == "m");
+    let bar = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    bar.add_css_class("desk-photo-bar");
+    bar.set_valign(gtk::Align::End);
+    let names = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    names.set_hexpand(true);
+    names.set_valign(gtk::Align::Center);
+    let name = gtk::Label::new(None);
+    name.add_css_class("name");
+    name.set_xalign(0.0);
+    name.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
+    let date = gtk::Label::new(None);
+    date.add_css_class("date");
+    date.set_xalign(0.0);
+    names.append(&name);
+    names.append(&date);
+    bar.append(&names);
+    let prev = gtk::Button::from_icon_name("go-previous-symbolic");
+    let next = gtk::Button::from_icon_name("go-next-symbolic");
+    for (btn, tip) in [(&prev, "Image précédente"), (&next, "Image suivante")] {
+        btn.add_css_class("circular");
+        btn.add_css_class("desk-photo-nav");
+        btn.set_tooltip_text(Some(tip));
+        btn.set_valign(gtk::Align::Center);
+        bar.append(btn);
+    }
+    bar.set_visible(size == "l");
+    o.add_overlay(&bar);
     let index = Rc::new(Cell::new(0usize));
     let front = Rc::new(Cell::new(0usize));
     let show = {
-        let (list, index, front, stack, caption) = (list.clone(), index.clone(), front.clone(), stack.clone(), caption.clone());
+        let (list, index, front, stack, caption, name, date) = (list.clone(), index.clone(), front.clone(), stack.clone(), caption.clone(), name.clone(), date.clone());
         Rc::new(move |next: bool| {
             if next {
                 index.set((index.get() + 1) % list.len());
@@ -101,7 +136,11 @@ pub fn build(ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
                 stack.set_visible_child(pic);
             }
             front.set(back);
-            caption.set_text(&path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default());
+            let file = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            caption.set_text(&file);
+            name.set_text(&file);
+            let when = std::fs::metadata(path).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok());
+            date.set_text(&when.and_then(|d| glib::DateTime::from_unix_local(d.as_secs() as i64).ok()).and_then(|d| d.format("%-d %B %Y").ok()).map(|s| s.to_string()).unwrap_or_default());
         })
     };
     show(false);
@@ -133,6 +172,17 @@ pub fn build(ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
         });
     }
     o.add_controller(scroll);
+    {
+        let show = show.clone();
+        next.connect_clicked(move |_| show(true));
+    }
+    {
+        let (show, index, list) = (show.clone(), index.clone(), list.clone());
+        prev.connect_clicked(move |_| {
+            index.set((index.get() + list.len() - 2) % list.len());
+            show(true);
+        });
+    }
     o.set_tooltip_text(Some("Clic : ouvrir · molette : image suivante"));
     o.upcast()
 }

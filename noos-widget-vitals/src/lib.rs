@@ -18,8 +18,7 @@ use std::{
 };
 
 use gtk::{glib, prelude::*};
-pub use sample::{Sampler, Snapshot};
-use sample::{gib, rate};
+pub use sample::{Sampler, Snapshot, gib, rate};
 
 /// Intervalle entre deux mesures.
 const PERIOD: Duration = Duration::from_secs(2);

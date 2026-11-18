@@ -26,7 +26,7 @@ pub const CSS: &str = r#"
 .desk-card { border-radius: 18px; padding: 16px 18px; transition: opacity 260ms ease-out, transform 320ms cubic-bezier(0.2, 0.9, 0.3, 1.15); }
 .desk-card.style-glass { color: @window_fg_color; border: 1px solid alpha(white, 0.10); box-shadow: 0 0 0 0 transparent, 0 10px 30px rgba(0,0,0,0.28); }
 .desk-card.style-solid { color: @window_fg_color; border: 1px solid alpha(@window_fg_color, 0.08); box-shadow: 0 0 0 0 transparent, 0 10px 30px rgba(0,0,0,0.32); }
-.desk-card.style-clear { background: none; border: none; box-shadow: none; padding: 4px; color: white; }
+.desk-card.style-clear { background: none; border: none; box-shadow: none; padding: 12px 14px; color: white; }
 .desk-card.style-clear label { text-shadow: 0 1px 8px rgba(0,0,0,0.55); }
 .desk-card.appear { opacity: 0; transform: scale(0.86); }
 .desk-card.dragging { transform: scale(1.02); box-shadow: 0 0 0 2px @accent_bg_color, 0 22px 50px rgba(0,0,0,0.45); }
@@ -39,7 +39,7 @@ pub const CSS: &str = r#"
 .desk-chip-btn { min-width: 30px; min-height: 30px; padding: 0; border-radius: 99px; color: @window_fg_color; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
 .desk-chip-btn:hover { }
 .desk-chip-btn.danger:hover { background-color: #e5484d; color: white; }
-.desk-resize { min-width: 24px; min-height: 24px; border-radius: 99px; margin: 4px; background-color: @accent_bg_color; color: @accent_fg_color; box-shadow: 0 2px 8px rgba(0,0,0,0.35); }
+.desk-resize { min-width: 20px; min-height: 20px; border-radius: 99px; margin: 3px; background-color: @accent_bg_color; color: @accent_fg_color; box-shadow: 0 2px 8px rgba(0,0,0,0.35); }
 .desk-guides { color: @accent_bg_color; }
 .desk-screen-name { padding: 6px 16px; border-radius: 99px; background-color: rgba(0,0,0,0.5); color: white; font-weight: 700; }
 .desk-settings { padding: 6px 4px; }
@@ -258,11 +258,37 @@ impl DeskWidget {
 
     fn open_settings(&self, shell: &Rc<Shell>, at: Option<&gtk::Widget>) {
         self.fill_settings(shell);
-        // En mode édition : sous le bouton ⚙ (au-dessus, il passerait sous la barre d'outils) ;
-        // sinon à côté du widget.
+        // En mode édition : contre le bouton ⚙, vers le bas ou vers le haut selon la place
+        // (et la hauteur du panneau limitée à cette place) ; sinon à côté du widget.
         let at = at.cloned().or_else(|| self.chrome.is_visible().then(|| self.settings_btn.clone().upcast()));
-        self.settings.set_position(if at.is_some() { gtk::PositionType::Bottom } else { gtk::PositionType::Right });
-        let target = at.unwrap_or_else(|| self.card.clone().upcast());
+        let target = at.clone().unwrap_or_else(|| self.card.clone().upcast());
+        let screen_h = self.outer.root().map(|r| r.height() as f64).unwrap_or(1080.0);
+        let y = self.outer.root().and_then(|r| target.compute_bounds(&r)).map(|b| (b.y() as f64, b.height() as f64)).unwrap_or((0.0, 0.0));
+        // Place libre : sans les barres ni la barre d'outils du mode édition.
+        let cfg = shell.config();
+        let (bar_top, bar_bottom) = {
+            let t = |top: bool| crate::taskbar::bar_height(&cfg, top) as f64;
+            let dock = crate::taskbar::bar_edge(&cfg, false);
+            let status = if cfg.topbar.enabled { crate::taskbar::bar_edge(&cfg, true) } else { "" };
+            let on = |edge: &str| (if dock == edge { t(false) } else { 0.0 }) + (if status == edge { t(true) } else { 0.0 });
+            (on("top"), on("bottom"))
+        };
+        let tool = |bottom: bool| match shell.editmode.borrow().as_ref() {
+            Some(e) if e.active.get() && e.at_bottom.get() == bottom => 150.0,
+            _ => 0.0,
+        };
+        let below = screen_h - bar_bottom - tool(true) - y.0 - y.1 - 16.0;
+        let above = y.0 - bar_top - tool(false) - 16.0;
+        let down = below >= 560.0 || below >= above;
+        self.settings.set_position(match (at.is_some(), down) {
+            (false, _) => gtk::PositionType::Right,
+            (true, true) => gtk::PositionType::Bottom,
+            (true, false) => gtk::PositionType::Top,
+        });
+        let room = if at.is_some() { if down { below } else { above } } else { screen_h - 48.0 };
+        if let Some(sc) = self.settings.child().and_downcast::<gtk::ScrolledWindow>() {
+            sc.set_max_content_height((room as i32 - 40).clamp(200, 600));
+        }
         if let Some(r) = target.compute_bounds(&self.outer) {
             self.settings.set_pointing_to(Some(&gdk::Rectangle::new(r.x() as i32, r.y() as i32, r.width() as i32, r.height() as i32)));
         }
@@ -309,6 +335,32 @@ pub fn demo_guides(shell: &Rc<Shell>, x: f64, y: f64) {
     }
 }
 
+/// Surface des widgets (barres de titre comprises) de l'écran principal que recouvrirait la
+/// barre d'outils du mode édition, en haut (`top`) ou en bas.
+pub fn toolbar_overlap(shell: &Rc<Shell>, top: bool) -> f64 {
+    let primary = shell.primary_output();
+    let cfg = shell.config();
+    let mut total = 0.0;
+    for w in shell.wallpapers.borrow().iter() {
+        let l = &w.desk;
+        if primary.as_ref().is_some_and(|p| *p != l.output) {
+            continue;
+        }
+        let (sw, sh) = l.size();
+        let work = work_area(shell, &cfg, &l.output, sw, sh);
+        let (tw, th) = (980.0, 150.0);
+        let bar = Rect::new((sw - tw) / 2.0, if top { work.y } else { work.y + work.h - th }, tw, th);
+        for d in l.widgets.borrow().iter() {
+            let r = d.rect(&l.fixed, l.editing.get());
+            let (x0, y0, x1, y1) = (r.x.max(bar.x), (r.y - CHROME_H).max(bar.y), (r.x + r.w).min(bar.x + bar.w), (r.y + r.h).min(bar.y + bar.h));
+            if x1 > x0 && y1 > y0 {
+                total += (x1 - x0) * (y1 - y0);
+            }
+        }
+    }
+    total
+}
+
 /// Zone utile d'un écran (sans la barre des tâches ni la barre d'état).
 fn work_area(shell: &Shell, cfg: &NoosConfig, output: &str, w: f64, h: f64) -> Rect {
     let primary = shell.primary_output();
@@ -353,11 +405,31 @@ pub fn add_widget(shell: &Rc<Shell>, kind: &str, output: Option<&str>, at: Optio
         let cfg = shell.config();
         let area = SnapArea::new(sw, sh, work_area(shell, &cfg, &l.output, sw, sh));
         let editing = l.editing.get();
-        let mut others: Vec<Rect> = l.widgets.borrow().iter().map(|d| d.rect(&l.fixed, editing)).collect();
+        // Rectangles avec leur barre de titre (mode édition) : rien ne doit la recouvrir.
+        let mut others: Vec<Rect> = l
+            .widgets
+            .borrow()
+            .iter()
+            .map(|d| {
+                let r = d.rect(&l.fixed, editing);
+                Rect::new(r.x, r.y - CHROME_H, r.w, r.h + CHROME_H)
+            })
+            .collect();
+        // Cadre « Les notifications apparaîtront ici » (coin choisi) : à éviter aussi.
+        if editing && primary.as_deref().is_none_or(|p| p == l.output) {
+            let c = cfg.notifications.position.as_str();
+            let (nw, nh) = (330.0, 180.0);
+            let nx = if c.ends_with("left") { 0.0 } else { sw - nw };
+            let wk = work_area(shell, &cfg, &l.output, sw, sh);
+            let ny = if c.starts_with("top") { wk.y } else { wk.y + wk.h - nh };
+            others.push(Rect::new(nx, ny, nw, nh));
+        }
         // Barre d'outils du mode édition (écran principal, en haut ou en bas) : à éviter aussi.
         if editing && primary.as_deref().is_none_or(|p| p == l.output) {
-            let y = if cfg.taskbar.position == "top" { sh - 150.0 } else { 0.0 };
-            others.push(Rect::new((sw - 960.0) / 2.0, y, 960.0, 150.0));
+            let bottom = shell.editmode.borrow().as_ref().is_some_and(|e| e.at_bottom.get());
+            let work = work_area(shell, &cfg, &l.output, sw, sh);
+            let y = if bottom { work.y + work.h - 150.0 } else { work.y };
+            others.push(Rect::new((sw - 980.0) / 2.0, y, 980.0, 150.0));
         }
         let (x, y) = match at {
             Some((x, y)) => {
@@ -365,7 +437,10 @@ pub fn add_widget(shell: &Rc<Shell>, kind: &str, output: Option<&str>, at: Optio
                 let (x, y, _) = layout::snap(r, &others, &area);
                 (x, y)
             }
-            None => layout::free_spot(spec.approx, &others, &area),
+            None => {
+                let (x, y) = layout::free_spot((spec.approx.0, spec.approx.1 + CHROME_H), &others, &area);
+                (x, y + CHROME_H)
+            }
         };
         fx = x / sw.max(1.0);
         fy = y / sh.max(1.0);
@@ -637,8 +712,8 @@ impl Inner {
         resize.set_valign(gtk::Align::End);
         resize.set_tooltip_text(Some("Glisser pour changer la taille"));
         let grip = gtk::DrawingArea::new();
-        grip.set_content_width(24);
-        grip.set_content_height(24);
+        grip.set_content_width(20);
+        grip.set_content_height(20);
         grip.set_draw_func(|a, cr, w, h| {
             let c = a.color();
             cr.set_source_rgba(c.red() as f64, c.green() as f64, c.blue() as f64, 1.0);

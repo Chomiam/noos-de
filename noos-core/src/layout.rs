@@ -425,11 +425,13 @@ pub fn snap(m: Rect, others: &[Rect], area: &SnapArea) -> (f64, f64, Vec<Guide>)
 }
 
 /// Premier emplacement libre pour un widget de taille `(w, h)` : en colonnes depuis le coin
-/// supérieur gauche de la zone utile, comme les icônes d'un bureau.
+/// supérieur gauche de la zone utile, comme les icônes d'un bureau. S'il n'y en a pas, la
+/// position qui recouvre le moins les autres.
 pub fn free_spot(size: (f64, f64), others: &[Rect], area: &SnapArea) -> (f64, f64) {
     let wk = area.work;
     let step = area.grid.max(8.0) * 2.0;
     let (w, h) = size;
+    let mut best: Option<(f64, f64, f64)> = None;
     let mut x = wk.x + area.margin;
     while x + w <= wk.x + wk.w - area.margin + 0.5 {
         let mut y = wk.y + area.margin;
@@ -438,11 +440,24 @@ pub fn free_spot(size: (f64, f64), others: &[Rect], area: &SnapArea) -> (f64, f6
             if !others.iter().any(|o| r.overlaps(o, area.gap - 1.0)) {
                 return (x, y);
             }
+            let cover: f64 = others.iter().map(|o| r.intersection(o)).sum();
+            if best.is_none_or(|(_, _, c)| cover < c) {
+                best = Some((x, y, cover));
+            }
             y += step;
         }
         x += step;
     }
-    (wk.x + area.margin, wk.y + area.margin)
+    best.map(|(x, y, _)| (x, y)).unwrap_or((wk.x + area.margin, wk.y + area.margin))
+}
+
+impl Rect {
+    /// Surface commune.
+    pub fn intersection(&self, o: &Rect) -> f64 {
+        let w = (self.x + self.w).min(o.x + o.w) - self.x.max(o.x);
+        let h = (self.y + self.h).min(o.y + o.h) - self.y.max(o.y);
+        if w > 0.0 && h > 0.0 { w * h } else { 0.0 }
+    }
 }
 
 #[cfg(test)]
@@ -554,5 +569,12 @@ mod tests {
         assert!(!Rect::new(x, y, 200.0, 100.0).overlaps(&taken[0], 0.0));
         assert_eq!(x, 24.0);
         assert!(y >= 324.0);
+        // Bureau plein : la position la moins recouverte, pas le coin.
+        let full: Vec<Rect> = (0..6).flat_map(|i| (0..4).map(move |j| Rect::new(i as f64 * 320.0, j as f64 * 258.0, 300.0, 240.0))).filter(|r| !(r.x == 1600.0 && r.y == 774.0)).collect();
+        let (x, y) = free_spot((200.0, 200.0), &full, &area);
+        let r = Rect::new(x, y, 200.0, 200.0);
+        let cover: f64 = full.iter().map(|o| r.intersection(o)).sum();
+        assert!(cover < 200.0 * 200.0 * 0.5, "{x},{y} recouvre {cover}");
+        assert!((x, y) != (24.0, 24.0));
     }
 }

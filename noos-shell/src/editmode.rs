@@ -52,7 +52,7 @@ pub const CSS: &str = r#"
 .edge-card:checked { border-color: @accent_bg_color; background-color: alpha(@accent_bg_color, 0.12); }
 .edit-pop .item-row { padding: 2px 0; }
 .edit-tour { padding: 6px 4px; }
-.edit-tour .tour-step { font-size: 0.75em; font-weight: 800; color: @accent_bg_color; letter-spacing: 0.06em; }
+.edit-tour .tour-step { font-size: 0.75em; font-weight: 800; color: @accent_color; letter-spacing: 0.06em; }
 .edit-tour .tour-title { font-weight: 800; font-size: 1.15em; }
 "#;
 
@@ -368,6 +368,9 @@ pub struct EditMode {
     hint: gtk::Label,
     hint_undo: gtk::Button,
     toast_n: Cell<u32>,
+    /// Barre d'outils en bas de l'écran (choisi à l'entrée du mode : le côté qui cache le
+    /// moins de widgets ; toujours en bas si la barre des tâches est en haut).
+    pub at_bottom: Cell<bool>,
     tour: RefCell<Option<gtk::Popover>>,
     /// Emplacement des notifications (cadre glissable vers un coin).
     notif: gtk::Window,
@@ -541,6 +544,7 @@ impl EditMode {
             hint,
             hint_undo,
             toast_n: Cell::new(0),
+            at_bottom: Cell::new(false),
             tour: RefCell::new(None),
             notif,
         });
@@ -759,7 +763,7 @@ impl EditMode {
         self.sync_history();
         // Barre d'outils en haut, sauf si la barre des tâches y est (la galerie s'ouvre alors
         // vers le haut).
-        let bottom = cfg.taskbar.position == "top";
+        let bottom = self.at_bottom.get();
         self.toolbar.set_anchor(Edge::Top, !bottom);
         self.toolbar.set_anchor(Edge::Bottom, bottom);
         self.toolbar.set_margin(if bottom { Edge::Bottom } else { Edge::Top }, 14);
@@ -798,6 +802,10 @@ impl EditMode {
             s.set_editing(on);
         }
         if on {
+            if let Some(s) = self.shell.upgrade() {
+                let bottom = s.config().taskbar.position == "top" || crate::desk::toolbar_overlap(&s, true) > crate::desk::toolbar_overlap(&s, false) + 1.0;
+                self.at_bottom.set(bottom);
+            }
             self.sync_labels();
             self.hint.set_text(HINT);
             self.hint_box.remove_css_class("toast");

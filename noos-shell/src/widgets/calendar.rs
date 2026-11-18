@@ -18,14 +18,124 @@ pub const CSS: &str = r#"
 .size-l .desk-cal-day { min-width: 44px; min-height: 44px; font-size: 1.1em; }
 .desk-cal-day.other { opacity: 0.3; }
 .desk-cal-day.weekend { opacity: 0.7; }
-.desk-cal-day.holiday { color: @accent_bg_color; font-weight: 700; }
+.desk-cal-day.holiday { color: @accent_color; font-weight: 700; }
 .desk-cal-day.today { background-color: @accent_bg_color; color: @accent_fg_color; font-weight: 700; opacity: 1; }
+.desk-cal-wd { font-size: 0.8em; font-weight: 800; letter-spacing: 0.08em; color: @accent_color; }
+.style-clear .desk-cal-wd { color: white; }
+.desk-cal-big { font-size: 64px; font-weight: 300; font-feature-settings: "tnum"; }
+.desk-cal-mo { font-weight: 600; }
+.desk-cal-next { font-size: 0.82em; opacity: 0.7; }
+.desk-cal-chip { min-width: 44px; padding: 4px 0; border-radius: 10px; background-color: alpha(@accent_bg_color, 0.2); }
+.desk-cal-chip .n { font-weight: 800; font-size: 1.15em; }
+.desk-cal-chip .m { font-size: 0.72em; opacity: 0.8; }
 .desk-cal-foot { font-size: 0.85em; padding: 8px 10px; border-radius: 10px; background-color: alpha(currentColor, 0.07); }
 "#;
 
 pub fn build(_ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
-    let weeks = w.option("weeks") == Some("1");
-    let footer = w.option("holidays") != Some("0") && w.size() != "s";
+    match w.size() {
+        "s" => today(),
+        "l" => {
+            // Grande taille : la grille (avec les semaines) et, à côté, les prochains fériés.
+            let row = gtk::Box::new(gtk::Orientation::Horizontal, 18);
+            row.append(&month(w, true));
+            row.append(&gtk::Separator::new(gtk::Orientation::Vertical));
+            row.append(&upcoming());
+            row.upcast()
+        }
+        _ => month(w, false),
+    }
+}
+
+/// Petite taille : le jour (jour de la semaine, quantième, mois) et le prochain férié.
+fn today() -> gtk::Widget {
+    let b = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    b.set_size_request(150, -1);
+    let wd = gtk::Label::new(None);
+    wd.add_css_class("desk-cal-wd");
+    let num = gtk::Label::new(None);
+    num.add_css_class("desk-cal-big");
+    let mo = gtk::Label::new(None);
+    mo.add_css_class("desk-cal-mo");
+    let next = gtk::Label::new(None);
+    next.add_css_class("desk-cal-next");
+    next.set_margin_top(8);
+    next.set_wrap(true);
+    next.set_max_width_chars(18);
+    for l in [&wd, &num, &mo, &next] {
+        l.set_xalign(0.0);
+        b.append(l);
+    }
+    let fill = move || {
+        let Ok(now) = glib::DateTime::now_local() else { return };
+        wd.set_text(&now.format("%A").map(|s| s.to_uppercase()).unwrap_or_default());
+        num.set_text(&now.day_of_month().to_string());
+        mo.set_text(&capitalize(&now.format("%B %Y").map(|s| s.to_string()).unwrap_or_default()));
+        let (y, m, d) = now.ymd();
+        let (_, _, _, name) = holidays::next_holiday(y, m as u32, d as u32);
+        next.set_text(&format!("{name} {}", days_until(&now, holidays::next_holiday(y, m as u32, d as u32))));
+    };
+    fill();
+    every(&b, 60, fill);
+    b.upcast()
+}
+
+/// « dans 37 jours », « demain », « aujourd'hui ».
+fn days_until(now: &glib::DateTime, (hy, hm, hd, _): (i32, u32, u32, &str)) -> String {
+    let (ty, tm, td) = now.ymd();
+    let (Ok(h), Ok(t)) = (glib::DateTime::from_local(hy, hm as i32, hd as i32, 0, 0, 0.0), glib::DateTime::from_local(ty, tm, td, 0, 0, 0.0)) else { return String::new() };
+    match h.difference(&t).as_seconds() / 86400 {
+        0 => "aujourd'hui".into(),
+        1 => "demain".into(),
+        n => format!("dans {n} jours"),
+    }
+}
+
+/// Grande taille : les quatre prochains jours fériés.
+fn upcoming() -> gtk::Widget {
+    let b = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    b.set_size_request(190, -1);
+    let t = gtk::Label::new(Some("À venir"));
+    t.add_css_class("desk-cal-head");
+    t.set_xalign(0.0);
+    b.append(&t);
+    let Ok(now) = glib::DateTime::now_local() else { return b.upcast() };
+    let (mut y, mut m, mut d) = now.ymd();
+    for _ in 0..4 {
+        let h = holidays::next_holiday(y, m as u32, d as u32);
+        let Ok(date) = glib::DateTime::from_local(h.0, h.1 as i32, h.2 as i32, 0, 0, 0.0) else { break };
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+        row.add_css_class("desk-cal-event");
+        let chip = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        chip.add_css_class("desk-cal-chip");
+        let dn = gtk::Label::new(Some(&h.2.to_string()));
+        dn.add_css_class("n");
+        chip.append(&dn);
+        let mn = gtk::Label::new(Some(&date.format("%b").map(|s| s.trim_end_matches('.').to_uppercase()).unwrap_or_default()));
+        mn.add_css_class("m");
+        chip.append(&mn);
+        row.append(&chip);
+        let col = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        col.set_valign(gtk::Align::Center);
+        let n = gtk::Label::new(Some(h.3));
+        n.add_css_class("heading");
+        n.set_xalign(0.0);
+        col.append(&n);
+        let w = gtk::Label::new(Some(&format!("{} · {}", capitalize(&date.format("%A").map(|s| s.to_string()).unwrap_or_default()), days_until(&now, h))));
+        w.add_css_class("desk-cal-next");
+        w.set_xalign(0.0);
+        col.append(&w);
+        row.append(&col);
+        b.append(&row);
+        // Lendemain du férié trouvé.
+        let Ok(next) = date.add_days(1) else { break };
+        (y, m, d) = next.ymd();
+    }
+    b.upcast()
+}
+
+fn month(w: &DesktopWidget, large: bool) -> gtk::Widget {
+    let weeks = large || w.option("weeks") == Some("1");
+    let footer = !large && w.option("holidays") != Some("0");
     let b = gtk::Box::new(gtk::Orientation::Vertical, 8);
     let head = gtk::Box::new(gtk::Orientation::Horizontal, 4);
     let title = gtk::Label::new(None);

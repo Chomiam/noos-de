@@ -18,7 +18,7 @@ pub const CSS: &str = r#"
 .kind-weather.style-glass.mood-storm, .kind-weather.style-solid.mood-storm { background-image: linear-gradient(160deg, #241f3a, #3e3560 60%, #5b4a7d); }
 .kind-weather.style-glass.mood-fog, .kind-weather.style-solid.mood-fog { background-image: linear-gradient(160deg, #6d7882, #98a2ab 60%, #c0c7cd); }
 .desk-weather-temp { font-size: 56px; font-weight: 300; }
-.size-s .desk-weather-temp { font-size: 40px; }
+.size-s .desk-weather-temp { font-size: 46px; font-weight: 300; }
 .size-l .desk-weather-temp { font-size: 72px; font-weight: 200; }
 .desk-weather-place { font-weight: 700; font-size: 1.1em; }
 .desk-weather-small { font-size: 0.85em; opacity: 0.85; }
@@ -157,9 +157,50 @@ fn deg(v: f64) -> String {
     format!("{}°", v.round() as i64)
 }
 
+/// Petite taille : tuile carrée — température et icône en haut, ville et temps en bas.
+fn tile(place: &str, d: &Weather, error: Option<&str>) -> gtk::Widget {
+    let b = gtk::Box::new(gtk::Orientation::Vertical, 2);
+    b.set_size_request(150, 150);
+    let top = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+    let t = gtk::Label::new(Some(&deg(d.temp)));
+    t.add_css_class("desk-weather-temp");
+    t.add_css_class("numeric");
+    t.set_hexpand(true);
+    t.set_xalign(0.0);
+    top.append(&t);
+    let icon = gtk::Image::from_icon_name(weather::icon(d.code, d.is_day));
+    icon.set_pixel_size(34);
+    icon.set_valign(gtk::Align::Start);
+    icon.set_margin_top(8);
+    top.append(&icon);
+    b.append(&top);
+    let spacer = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    spacer.set_vexpand(true);
+    b.append(&spacer);
+    let p = gtk::Label::new(Some(place));
+    p.add_css_class("desk-weather-place");
+    p.set_xalign(0.0);
+    p.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    p.set_max_width_chars(14);
+    b.append(&p);
+    let desc = gtk::Label::new(Some(&match (error, d.days.first()) {
+        (Some(e), _) => e.to_string(),
+        (None, Some(t)) => format!("{} / {}", deg(t.max), deg(t.min)),
+        _ => weather::describe(d.code).to_string(),
+    }));
+    desc.add_css_class("desk-weather-small");
+    desc.set_xalign(0.0);
+    b.append(&desc);
+    b.set_tooltip_text(Some(weather::describe(d.code)));
+    b.upcast()
+}
+
 fn view(place: &str, d: Option<&Weather>, error: Option<&str>, size: &str, fahrenheit: bool) -> gtk::Widget {
+    if let (Some(d), "s") = (d, size) {
+        return tile(place, d, error);
+    }
     let b = gtk::Box::new(gtk::Orientation::Vertical, 8);
-    b.set_size_request(match size { "s" => 200, "l" => 400, _ => 300 }, -1);
+    b.set_size_request(match size { "s" => 200, "l" => 400, _ => 330 }, -1);
     let top = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     let p = gtk::Label::new(Some(place));
     p.add_css_class("desk-weather-place");
