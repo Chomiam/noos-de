@@ -17,6 +17,7 @@ pub mod cleanup;
 pub mod deb;
 pub mod details;
 pub mod exec;
+pub mod history;
 pub mod owner;
 pub mod sources;
 pub mod system;

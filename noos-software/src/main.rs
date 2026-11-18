@@ -13,6 +13,7 @@ mod deb;
 mod details;
 mod explore;
 mod flathub;
+mod history;
 mod ops;
 
 use std::{
@@ -1086,6 +1087,9 @@ fn build(gapp: &adap::Application) {
     let log_btn = gtk::Button::from_icon_name("utilities-terminal-symbolic");
     log_btn.set_tooltip_text(Some("Journal des opérations"));
     header.pack_end(&log_btn);
+    let history_btn = gtk::Button::from_icon_name("document-open-recent-symbolic");
+    history_btn.set_tooltip_text(Some("Historique des opérations"));
+    header.pack_end(&history_btn);
     header.pack_end(&ops.queue_button);
 
     let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -1126,6 +1130,10 @@ fn build(gapp: &adap::Application) {
     {
         let ops = ops.clone();
         log_btn.connect_clicked(move |_| ops.show_log());
+    }
+    {
+        let app2 = app.clone();
+        history_btn.connect_clicked(move |_| app2.show_history());
     }
     gtk::style_context_add_provider_for_display(
         &gdk::Display::default().unwrap(),
@@ -1221,6 +1229,9 @@ fn build(gapp: &adap::Application) {
         }
         let ops = app.ops.clone();
         glib::timeout_add_local_once(Duration::from_millis(2500), move || ops.queue_button.popup());
+    }
+    if std::env::var_os("NOOS_SOFTWARE_HISTORY").is_some() {
+        app.show_history();
     }
     if let Ok(v) = std::env::var("NOOS_SOFTWARE_CLEANUP") {
         // Aperçu : « Faire de la place » ouvert (`demo` : éléments fictifs).

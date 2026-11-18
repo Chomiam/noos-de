@@ -218,10 +218,6 @@ impl Ops {
         self.refresh_queue();
     }
 
-    /// Titres des opérations en attente (tests, démo).
-    pub fn pending_titles(&self) -> Vec<String> {
-        self.queue.borrow().iter().map(|j| j.title.clone()).collect()
-    }
 
     fn append_log(&self, text: &str) {
         let mut end = self.log.end_iter();
@@ -261,8 +257,12 @@ impl Ops {
                     job.plan = Box::new(move |b| Ok(b.install(&all)));
                 }
             }
+            job.install = Some(pkgs);
         }
         *self.current.borrow_mut() = job.title.clone();
+        // Journal de Logiciels (historique) : apt tient déjà le sien.
+        let kind = self.backends[job.backend].kind();
+        let installed_names: Vec<String> = job.install.as_ref().map(|p| p.iter().map(|p| p.id.clone()).collect()).unwrap_or_default();
         self.running.set(true);
         self.refresh_queue();
         self.bar.set_reveal_child(true);
@@ -305,6 +305,10 @@ impl Ops {
                     ops.append_log(&format!("✗ {e:#}"));
                     ops.error_dialog(&title, &format!("{e:#}"));
                 }
+            }
+            if kind != BackendKind::Apt {
+                let (t, ok, names) = (title.clone(), res.is_ok(), installed_names.clone());
+                std::thread::spawn(move || noos_pkg::history::record(&t, kind, ok, &names));
             }
             done(res.is_ok());
             for d in extra_done {
