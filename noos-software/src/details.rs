@@ -358,6 +358,12 @@ impl App {
             content.append(&self.permissions_group(pkg));
         }
 
+        // ── Avis (ODRS, si activé) ──
+        if let Some(aid) = d.appstream_id.clone() {
+            let ver = d.installed_version.clone().or(d.available_version.clone()).unwrap_or_default();
+            content.append(&self.reviews_group(&aid, &ver));
+        }
+
         // ── Informations ──
         let info = adap::PreferencesGroup::new();
         info.set_title("Informations");
@@ -487,7 +493,171 @@ impl App {
     }
 }
 
+fn stars_text(n: u32) -> String {
+    (0..5).map(|i| if i < n { '★' } else { '☆' }).collect()
+}
+
 impl App {
+    /// Notes et avis (odrs.gnome.org) : rien n'est demandé au service tant que l'utilisateur ne
+    /// l'a pas activé (`[software] reviews`).
+    fn reviews_group(self: &Rc<Self>, app_id: &str, version: &str) -> adap::PreferencesGroup {
+        let g = adap::PreferencesGroup::new();
+        g.set_title("Avis des utilisateurs");
+        // NOOS_SOFTWARE_REVIEWS=1 : aperçu, avis affichés sans toucher à la configuration.
+        if !noos_core::NoosConfig::load().software.reviews && std::env::var_os("NOOS_SOFTWARE_REVIEWS").is_none() {
+            let r = row("Afficher les notes et les avis", "Fournis par odrs.gnome.org (service de GNOME et KDE) : activer envoie l'identifiant de l'application et un identifiant anonyme de cet ordinateur.");
+            r.set_subtitle_lines(3);
+            let b = gtk::Button::with_label("Activer");
+            b.set_valign(gtk::Align::Center);
+            let (app, g2, aid, ver, r2) = (self.clone(), g.clone(), app_id.to_string(), version.to_string(), r.clone());
+            b.connect_clicked(move |_| {
+                let mut c = noos_core::NoosConfig::load();
+                c.software.reviews = true;
+                let _ = c.save();
+                g2.remove(&r2);
+                app.fill_reviews(&g2, &aid, &ver);
+            });
+            r.add_suffix(&b);
+            g.add(&r);
+        } else {
+            self.fill_reviews(&g, app_id, version);
+        }
+        g
+    }
+
+    fn fill_reviews(self: &Rc<Self>, g: &adap::PreferencesGroup, app_id: &str, version: &str) {
+        let wait = row("Chargement des avis…", "");
+        g.add(&wait);
+        let (aid, ver) = (app_id.to_string(), version.to_string());
+        let task = background(move || (noos_pkg::odrs::ratings(&aid).ok(), noos_pkg::odrs::fetch(&aid, &ver, 8).map_err(|e| format!("{e:#}"))));
+        let (app, g, aid, ver) = (self.clone(), g.clone(), app_id.to_string(), version.to_string());
+        glib::spawn_future_local(async move {
+            let (ratings, reviews) = task.await;
+            g.remove(&wait);
+            let (list, skey) = match reviews {
+                Ok(x) => x,
+                Err(e) => {
+                    g.add(&row("Avis indisponibles", &e));
+                    return;
+                }
+            };
+            if let Some(avg) = ratings.as_ref().and_then(|r| r.average()) {
+                let r = ratings.clone().unwrap_or_default();
+                let bars: Vec<String> = r.stars().iter().enumerate().rev().map(|(i, c)| format!("{}★ {c}", i + 1)).collect();
+                let head = row(&format!("{} {:.1} sur 5", stars_text(avg.round() as u32), avg).replace('.', ","), &format!("{} notes · {}", r.total, bars.join(" · ")));
+                g.add(&head);
+            } else {
+                g.add(&row("Pas encore de note", "Soyez le premier à donner votre avis"));
+            }
+            for rv in &list {
+                let who = rv.user_display.clone().filter(|s| !s.trim().is_empty()).unwrap_or_else(|| "Anonyme".into());
+                let date = glib::DateTime::from_unix_local(rv.date_created as i64).ok().and_then(|d| d.format("%e %B %Y").ok()).map(|s| s.trim().to_string()).unwrap_or_default();
+                let mut meta = format!("{} · {who}", stars_text(rv.stars()));
+                if let Some(v) = rv.version.as_deref().filter(|v| !v.is_empty()) {
+                    meta.push_str(&format!(" · version {v}"));
+                }
+                if !date.is_empty() {
+                    meta.push_str(&format!(" · {date}"));
+                }
+                let r = row(&rv.summary, &format!("{meta}\n{}", rv.description));
+                r.set_subtitle_lines(8);
+                r.set_subtitle_selectable(true);
+                if let Some(k) = skey.clone() {
+                    for (icon, action, tip) in [("emblem-ok-symbolic", "upvote", "Avis utile"), ("dialog-warning-symbolic", "report", "Signaler un avis abusif")] {
+                        let b = gtk::Button::from_icon_name(icon);
+                        b.add_css_class("flat");
+                        b.set_valign(gtk::Align::Center);
+                        b.set_tooltip_text(Some(tip));
+                        let (k, aid, id, toasts) = (k.clone(), aid.clone(), rv.review_id, app.toasts.clone());
+                        b.connect_clicked(move |b| {
+                            b.set_sensitive(false);
+                            let (k, aid) = (k.clone(), aid.clone());
+                            let task = background(move || noos_pkg::odrs::vote(action, &aid, &k, id).is_ok());
+                            let toasts = toasts.clone();
+                            glib::spawn_future_local(async move {
+                                toasts.add_toast(adap::Toast::new(if task.await { if action == "report" { "Avis signalé" } else { "Merci pour votre vote" } } else { "Envoi impossible" }));
+                            });
+                        });
+                        r.add_suffix(&b);
+                    }
+                }
+                g.add(&r);
+            }
+            if let Some(k) = skey {
+                let b = gtk::Button::with_label("Écrire un avis");
+                b.add_css_class("flat");
+                let (app2, aid, ver) = (app.clone(), aid.clone(), ver.clone());
+                b.connect_clicked(move |_| app2.write_review(&aid, &ver, &k));
+                g.set_header_suffix(Some(&b));
+            }
+        });
+    }
+
+    /// Dialogue « Écrire un avis » : note, titre, texte, nom affiché ; publié sur odrs.gnome.org.
+    fn write_review(self: &Rc<Self>, app_id: &str, version: &str, skey: &str) {
+        let body = gtk::Box::new(gtk::Orientation::Vertical, 10);
+        let stars = Rc::new(Cell::new(0u32));
+        let line = gtk::Box::new(gtk::Orientation::Horizontal, 2);
+        line.set_halign(gtk::Align::Center);
+        let buttons: Rc<std::cell::RefCell<Vec<gtk::Button>>> = Rc::default();
+        for i in 1..=5u32 {
+            let b = gtk::Button::with_label("☆");
+            b.add_css_class("flat");
+            b.add_css_class("title-2");
+            let (stars, buttons2) = (stars.clone(), buttons.clone());
+            b.connect_clicked(move |_| {
+                stars.set(i);
+                for (j, x) in buttons2.borrow().iter().enumerate() {
+                    x.set_label(if (j as u32) < i { "★" } else { "☆" });
+                }
+            });
+            line.append(&b);
+            buttons.borrow_mut().push(b);
+        }
+        body.append(&line);
+        let summary = gtk::Entry::new();
+        summary.set_placeholder_text(Some("En une phrase"));
+        body.append(&summary);
+        let text = gtk::TextView::new();
+        text.set_wrap_mode(gtk::WrapMode::WordChar);
+        text.set_height_request(120);
+        text.add_css_class("card");
+        body.append(&text);
+        let name = gtk::Entry::new();
+        name.set_placeholder_text(Some("Nom affiché (vide : Anonyme)"));
+        name.set_text(&noos_core::NoosConfig::load().software.review_name);
+        body.append(&name);
+        let d = adap::AlertDialog::new(Some("Écrire un avis"), Some("Votre avis sera public sur odrs.gnome.org, visible dans GNOME Logiciels, KDE Discover et NOOS."));
+        d.set_extra_child(Some(&body));
+        d.add_responses(&[("cancel", "Annuler"), ("send", "Publier")]);
+        d.set_response_appearance("send", adap::ResponseAppearance::Suggested);
+        let (app, aid, ver, skey) = (self.clone(), app_id.to_string(), version.to_string(), skey.to_string());
+        d.connect_response(None, move |_, r| {
+            if r != "send" {
+                return;
+            }
+            let (n, s, t) = (stars.get(), summary.text().to_string(), text.buffer().text(&text.buffer().start_iter(), &text.buffer().end_iter(), false).to_string());
+            if n == 0 || s.trim().is_empty() {
+                app.toasts.add_toast(adap::Toast::new("Choisissez une note et écrivez un titre"));
+                return;
+            }
+            let who = name.text().to_string();
+            let mut c = noos_core::NoosConfig::load();
+            c.software.review_name = who.clone();
+            let _ = c.save();
+            let (aid, ver, skey) = (aid.clone(), ver.clone(), skey.clone());
+            let task = background(move || noos_pkg::odrs::submit(&aid, &skey, &ver, n, &s, &t, &who).map_err(|e| format!("{e:#}")));
+            let toasts = app.toasts.clone();
+            glib::spawn_future_local(async move {
+                match task.await {
+                    Ok(()) => toasts.add_toast(adap::Toast::new("Merci ! Votre avis est publié")),
+                    Err(e) => toasts.add_toast(adap::Toast::new(&e)),
+                }
+            });
+        });
+        d.present(Some(&self.window));
+    }
+
     /// Comparaison des façons d'installer un logiciel (apt, Flatpak, AppImage de AppImageHub).
     pub(crate) fn show_compare(self: &Rc<Self>, sw: &Software) {
         let content = gtk::Box::new(gtk::Orientation::Vertical, 16);

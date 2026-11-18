@@ -22,6 +22,8 @@ pub struct NoosConfig {
     pub lock: Lock,
     pub autoplay: AutoPlay,
     pub updates: Updates,
+    /// Logiciels (`[software]`).
+    pub software: Software,
     pub desktops: Desktops,
     /// Barre d'état : seconde barre, au bord opposé à la barre des tâches (bureaux virtuels,
     /// éléments déplacés en mode édition). Ancien nom de la section : `[topbar]` (« barre fine »).
@@ -497,6 +499,17 @@ impl Default for Updates {
     fn default() -> Self {
         Self { auto_check: true, interval_hours: 6, tray_icon: true, auto_flatpak: false }
     }
+}
+
+/// Réglages de Logiciels.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(default)]
+pub struct Software {
+    /// Notes et avis des utilisateurs (odrs.gnome.org) dans les fiches : requêtes vers un
+    /// service externe, donc désactivé tant que l'utilisateur ne l'a pas choisi.
+    pub reviews: bool,
+    /// Nom affiché sous les avis publiés (vide : « Anonyme »).
+    pub review_name: String,
 }
 
 /// Branchement d'une clé USB ou d'un disque externe (« Lecture automatique »).
