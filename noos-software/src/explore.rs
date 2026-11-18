@@ -144,6 +144,12 @@ impl App {
             home.remove(&c);
         }
 
+        // ── Recommandé pour votre matériel (rempli en arrière-plan, caché si vide) ──
+        let hw = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        hw.set_visible(false);
+        home.append(&hw);
+        self.fill_hardware(&hw);
+
         // ── Bannière ──
         let carousel = adap::Carousel::new();
         carousel.set_allow_scroll_wheel(false);
@@ -181,6 +187,15 @@ impl App {
             cats.insert(&b, -1);
         }
         home.append(&cats);
+
+        // ── Packs « Sélection NOOS » ──
+        let packs_title = gtk::Label::new(Some("Sélection NOOS"));
+        packs_title.add_css_class("title-3");
+        packs_title.set_xalign(0.0);
+        home.append(&packs_title);
+        let packs = flowbox(1, 3);
+        home.append(&packs);
+        self.fill_packs(&packs);
 
         // ── Sections ──
         for (coll, title) in [
@@ -430,7 +445,175 @@ impl App {
         let grid = flowbox(2, 3);
         b.append(&grid);
         self.fill_grid(&grid, coll.to_string(), 48);
+        // Catégorie : les applications des paquets Debian aussi.
+        if let (Some(cat), Some(idx)) = (coll.strip_prefix("category/"), self.backend_index(BackendKind::Apt)) {
+            let g = adap::PreferencesGroup::new();
+            g.set_title("Aussi en paquets Debian");
+            g.set_description(Some("Applications de la même catégorie dans les dépôts Debian (apt)"));
+            g.set_visible(false);
+            b.append(&g);
+            let (backends, cat) = (self.backends.clone(), cat.to_string());
+            let task = background(move || backends[idx].apps_in_category(&cat));
+            let app = self.clone();
+            glib::spawn_future_local(async move {
+                let pkgs = task.await;
+                let software = noos_pkg::catalog::merge(pkgs, &app.appstream.borrow());
+                for sw in software.iter().filter(|s| s.offers.iter().all(|o| o.backend == Some(BackendKind::Apt))).take(80) {
+                    g.add(&app.software_row(sw));
+                }
+                g.set_visible(true);
+            });
+        }
         self.explore_stack.set_visible_child_name("collection");
+    }
+
+    // ───────────────────────── Matériel ─────────────────────────
+
+    fn fill_hardware(self: &Rc<Self>, hw: &gtk::Box) {
+        let Some(idx) = self.backend_index(BackendKind::Apt) else { return };
+        let demo = std::env::var_os("NOOS_SOFTWARE_HARDWARE_DEMO").is_some();
+        let task = background(move || {
+            if demo {
+                let p = noos_pkg::hardware::Probe {
+                    gpu_vendors: vec![0x8086, 0x10de],
+                    cpu_vendor: "GenuineIntel".into(),
+                    modules: ["i915", "iwlwifi"].iter().map(|s| s.to_string()).collect(),
+                    joystick: true,
+                    laptop: true,
+                    usb: vec![],
+                };
+                noos_pkg::hardware::candidates(&p)
+            } else {
+                noos_pkg::hardware::recommendations()
+            }
+        });
+        let (app, hw) = (self.clone(), hw.clone());
+        glib::spawn_future_local(async move {
+            let recs = task.await;
+            if recs.is_empty() {
+                return;
+            }
+            let g = adap::PreferencesGroup::new();
+            g.set_title(&match recs.len() {
+                1 => "1 complément recommandé pour votre matériel".to_string(),
+                n => format!("{n} compléments recommandés pour votre matériel"),
+            });
+            g.set_description(Some("Détectés automatiquement : pilotes, firmwares et microcode absents de ce système"));
+            let all: Vec<noos_pkg::Package> = recs
+                .iter()
+                .map(|r| noos_pkg::Package { backend: Some(BackendKind::Apt), id: r.package.clone(), name: r.title.clone(), ..Default::default() })
+                .collect();
+            if recs.len() > 1 {
+                let b = gtk::Button::with_label("Tout installer");
+                b.add_css_class("suggested-action");
+                let (app2, pkgs, g2) = (app.clone(), all.clone(), hw.clone());
+                b.connect_clicked(move |_| {
+                    g2.set_visible(false);
+                    let app3 = app2.clone();
+                    app2.ops.enqueue_install("Compléments pour le matériel", idx, pkgs.clone(), move |_| app3.after_change());
+                });
+                g.set_header_suffix(Some(&b));
+            }
+            for (r, pkg) in recs.iter().zip(all) {
+                let sub = if r.nonfree { format!("{} · paquet {} (non libre)", r.reason, r.package) } else { format!("{} · paquet {}", r.reason, r.package) };
+                let row = crate::row(&r.title, &sub);
+                row.add_prefix(&gtk::Image::from_icon_name("computer-symbolic"));
+                let b = gtk::Button::with_label("Installer");
+                b.set_valign(gtk::Align::Center);
+                let (app2, row2) = (app.clone(), row.clone());
+                b.connect_clicked(move |_| {
+                    row2.set_sensitive(false);
+                    app2.install(pkg.clone());
+                });
+                row.add_suffix(&b);
+                g.add(&row);
+            }
+            hw.append(&g);
+            hw.set_visible(true);
+        });
+    }
+
+    // ───────────────────────── Packs ─────────────────────────
+
+    fn fill_packs(self: &Rc<Self>, flow: &gtk::FlowBox) {
+        let task = background(noos_pkg::packs::load);
+        let (app, flow) = (self.clone(), flow.clone());
+        glib::spawn_future_local(async move {
+            for pack in task.await {
+                let card = gtk::Button::new();
+                card.add_css_class("noos-tile");
+                let v = gtk::Box::new(gtk::Orientation::Vertical, 6);
+                let h = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+                let icon = gtk::Image::from_icon_name(if pack.icon.is_empty() { "package-x-generic-symbolic" } else { &pack.icon });
+                icon.set_pixel_size(24);
+                h.append(&icon);
+                let t = gtk::Label::new(Some(&pack.name));
+                t.add_css_class("heading");
+                t.set_xalign(0.0);
+                h.append(&t);
+                v.append(&h);
+                let d = gtk::Label::new(Some(&pack.description));
+                d.add_css_class("dim-label");
+                d.add_css_class("caption");
+                d.set_wrap(true);
+                d.set_xalign(0.0);
+                v.append(&d);
+                let names: Vec<&str> = pack.items.iter().map(|i| i.name.as_str()).collect();
+                let l = gtk::Label::new(Some(&names.join(" · ")));
+                l.add_css_class("caption");
+                l.set_wrap(true);
+                l.set_xalign(0.0);
+                v.append(&l);
+                card.set_child(Some(&v));
+                let app2 = app.clone();
+                card.connect_clicked(move |_| app2.install_pack(&pack));
+                flow.insert(&card, -1);
+            }
+        });
+    }
+
+    /// Installe un pack : ce qui manque, apt en une seule commande, Flatpak depuis Flathub.
+    pub(crate) fn install_pack(self: &Rc<Self>, pack: &noos_pkg::packs::Pack) {
+        let installed_apt: std::collections::HashSet<String> = self
+            .installed
+            .borrow()
+            .iter()
+            .filter(|(i, _, _)| self.kind(*i) == BackendKind::Apt)
+            .flat_map(|(_, l, _)| l.iter().map(|p| p.id.clone()))
+            .collect();
+        let missing: Vec<noos_pkg::packs::Item> = pack
+            .items
+            .iter()
+            .filter(|i| match i.backend.as_str() {
+                "flatpak" => !self.is_flatpak_installed(&i.id),
+                _ => !installed_apt.contains(&i.id),
+            })
+            .filter(|i| BackendKind::parse(&i.backend).is_some_and(|k| self.backend_index(k).is_some()))
+            .cloned()
+            .collect();
+        if missing.is_empty() {
+            self.toasts.add_toast(adap::Toast::new(&format!("Le pack {} est déjà installé", pack.name)));
+            return;
+        }
+        let list: Vec<String> = missing.iter().map(|i| format!("• {} ({})", i.name, if i.backend == "flatpak" { "Flatpak" } else { "apt" })).collect();
+        let app = self.clone();
+        let name = pack.name.clone();
+        self.confirm(
+            &format!("Installer le pack {name} ?"),
+            &format!("{}\n\nLes paquets Debian s'installent en une seule fois (une demande de mot de passe).", list.join("\n")),
+            "Installer",
+            false,
+            move || {
+                let apt: Vec<noos_pkg::Package> = missing.iter().filter(|i| i.backend == "apt").filter_map(|i| i.package()).collect();
+                if let (false, Some(idx)) = (apt.is_empty(), app.backend_index(BackendKind::Apt)) {
+                    let app2 = app.clone();
+                    app.ops.enqueue_install(format!("Pack {name}"), idx, apt, move |_| app2.after_change());
+                }
+                for i in missing.iter().filter(|i| i.backend == "flatpak") {
+                    app.install_flathub(&i.id, &i.name);
+                }
+            },
+        );
     }
 
     // ───────────────────────── Fiche d'application ─────────────────────────

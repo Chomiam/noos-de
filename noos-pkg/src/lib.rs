@@ -17,8 +17,10 @@ pub mod cleanup;
 pub mod deb;
 pub mod details;
 pub mod exec;
+pub mod hardware;
 pub mod history;
 pub mod owner;
+pub mod packs;
 pub mod permissions;
 pub mod sources;
 pub mod system;
@@ -173,6 +175,13 @@ pub trait Backend: Send + Sync {
     /// AppStream). Lecture seule, sans droits root.
     fn details(&self, package: &Package) -> anyhow::Result<details::Details> {
         anyhow::bail!("pas de fiche détaillée pour {}", package.id)
+    }
+
+    /// Applications d'une catégorie AppStream (`Graphics`, `Game`…) : vitrine pour les paquets
+    /// Debian.
+    fn apps_in_category(&self, category: &str) -> Vec<Package> {
+        let _ = category;
+        vec![]
     }
 
     /// Met à jour seulement ces paquets (sélection de la page Mises à jour).

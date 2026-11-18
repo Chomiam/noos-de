@@ -19,6 +19,7 @@
 //! noos-pkg deb <fichier.deb>                 fiche du paquet et simulation (sans root)
 //! noos-pkg details -b backend <id>           fiche détaillée (Logiciels) et simulation
 //! noos-pkg cleanup [--dry-run]              ce qui peut être nettoyé (orphelins, cache, noyaux…)
+//! noos-pkg hardware                         paquets recommandés pour le matériel
 //! noos-pkg owner <lanceur.desktop>           paquet (apt, Flatpak, AppImage) d'une application
 //!
 //! Options : --dry-run (affiche le plan sans l'exécuter), --json
@@ -154,6 +155,12 @@ fn run() -> anyhow::Result<()> {
                 for line in i.plan.describe() {
                     println!("    {line}");
                 }
+            }
+        }
+        "hardware" => {
+            println!("{:?}", noos_pkg::hardware::probe());
+            for r in noos_pkg::hardware::recommendations() {
+                println!("{} — {} ({})", r.package, r.title, r.reason);
             }
         }
         "owner" => {

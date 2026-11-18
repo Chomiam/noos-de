@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "packs": [
+    {
+      "id": "bureautique",
+      "name": "Bureautique",
+      "description": "Traitement de texte, tableur, présentations, courrier et PDF",
+      "icon": "x-office-document-symbolic",
+      "items": [
+        { "backend": "apt", "id": "libreoffice", "name": "LibreOffice" },
+        { "backend": "apt", "id": "libreoffice-l10n-fr", "name": "LibreOffice en français" },
+        { "backend": "apt", "id": "thunderbird", "name": "Thunderbird" },
+        { "backend": "apt", "id": "thunderbird-l10n-fr", "name": "Thunderbird en français" },
+        { "backend": "apt", "id": "evince", "name": "Visionneur de documents" }
+      ]
+    },
+    {
+      "id": "creation",
+      "name": "Création",
+      "description": "Retouche photo, dessin, illustration vectorielle, montage vidéo",
+      "icon": "applications-graphics-symbolic",
+      "items": [
+        { "backend": "apt", "id": "gimp", "name": "GIMP" },
+        { "backend": "apt", "id": "inkscape", "name": "Inkscape" },
+        { "backend": "apt", "id": "krita", "name": "Krita" },
+        { "backend": "apt", "id": "darktable", "name": "darktable" },
+        { "backend": "flatpak", "id": "org.kde.kdenlive", "name": "Kdenlive" }
+      ]
+    },
+    {
+      "id": "jeux",
+      "name": "Jeux",
+      "description": "Steam, Lutris, Heroic, gestion de Proton, superpositions et performances",
+      "icon": "input-gaming-symbolic",
+      "items": [
+        { "backend": "apt", "id": "steam-installer", "name": "Steam" },
+        { "backend": "apt", "id": "lutris", "name": "Lutris" },
+        { "backend": "flatpak", "id": "com.heroicgameslauncher.hgl", "name": "Heroic Games Launcher" },
+        { "backend": "flatpak", "id": "net.davidotek.pupgui2", "name": "ProtonUp-Qt" },
+        { "backend": "apt", "id": "mangohud", "name": "MangoHud" },
+        { "backend": "apt", "id": "gamemode", "name": "GameMode" }
+      ]
+    },
+    {
+      "id": "multimedia",
+      "name": "Multimédia",
+      "description": "Vidéo, musique, enregistrement et diffusion d'écran",
+      "icon": "applications-multimedia-symbolic",
+      "items": [
+        { "backend": "apt", "id": "vlc", "name": "VLC" },
+        { "backend": "apt", "id": "obs-studio", "name": "OBS Studio" },
+        { "backend": "apt", "id": "audacity", "name": "Audacity" },
+        { "backend": "apt", "id": "handbrake", "name": "HandBrake" }
+      ]
+    },
+    {
+      "id": "developpement",
+      "name": "Développement",
+      "description": "Compilateurs, Git, Python, conteneurs et éditeur de code",
+      "icon": "applications-engineering-symbolic",
+      "items": [
+        { "backend": "apt", "id": "build-essential", "name": "Outils de compilation" },
+        { "backend": "apt", "id": "git", "name": "Git" },
+        { "backend": "apt", "id": "python3-venv", "name": "Environnements Python" },
+        { "backend": "apt", "id": "podman", "name": "Podman" },
+        { "backend": "apt", "id": "distrobox", "name": "Distrobox" },
+        { "backend": "flatpak", "id": "com.vscodium.codium", "name": "VSCodium" }
+      ]
+    }
+  ]
+}

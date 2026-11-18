@@ -1230,6 +1230,15 @@ fn build(gapp: &adap::Application) {
         let ops = app.ops.clone();
         glib::timeout_add_local_once(Duration::from_millis(2500), move || ops.queue_button.popup());
     }
+    if let (Some(px), None) = (std::env::var("NOOS_SOFTWARE_SCROLL").ok().and_then(|v| v.parse::<f64>().ok()), std::env::var_os("NOOS_SOFTWARE_DETAILS")) {
+        // Aperçu : page Explorer défilée (packs, catégories Debian…).
+        let sc = explore_scroll.clone();
+        glib::timeout_add_local_once(Duration::from_millis(6000), move || sc.vadjustment().set_value(px));
+    }
+    if let Ok(c) = std::env::var("NOOS_SOFTWARE_COLLECTION") {
+        // Aperçu : une collection ou une catégorie (`category/Graphics`).
+        app.show_collection(&c, c.trim_start_matches("category/"));
+    }
     if std::env::var_os("NOOS_SOFTWARE_HISTORY").is_some() {
         app.show_history();
     }

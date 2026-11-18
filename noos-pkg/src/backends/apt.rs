@@ -41,6 +41,8 @@ pub struct AppstreamIndex {
     pub name: HashMap<String, String>,
     /// Paquets fournissant une application (desktop ou console).
     pub apps: HashSet<String>,
+    /// Paquet → catégories AppStream (`Graphics`, `Game`…).
+    pub categories: HashMap<String, Vec<String>>,
 }
 
 /// Remplit l'index depuis un fichier DEP-11 (lecture ligne à ligne, sans lecteur YAML complet :
@@ -56,6 +58,7 @@ pub fn parse_dep11_index(text: &str, idx: &mut AppstreamIndex, lang: &str) {
         summary_l: String,
         name_c: String,
         name_l: String,
+        cats: Vec<String>,
     }
     let wanted = |l: &str| l == "C" || (!lang.is_empty() && (l == lang || l.starts_with(&format!("{lang}-")) || l.starts_with(&format!("{lang}_"))));
     let commit = |d: &mut Doc, idx: &mut AppstreamIndex| {
@@ -68,6 +71,9 @@ pub fn parse_dep11_index(text: &str, idx: &mut AppstreamIndex, lang: &str) {
         let sum = if d.summary_l.is_empty() { d.summary_c } else { d.summary_l };
         if !sum.is_empty() {
             idx.summary.entry(pkg.clone()).or_insert(sum);
+        }
+        if d.kind == "desktop-application" && !d.cats.is_empty() {
+            idx.categories.entry(pkg.clone()).or_default().extend(d.cats.clone());
         }
         if d.kind == "desktop-application" || d.kind == "console-application" {
             let name = if d.name_l.is_empty() { d.name_c } else { d.name_l };
@@ -91,6 +97,7 @@ pub fn parse_dep11_index(text: &str, idx: &mut AppstreamIndex, lang: &str) {
                 if top == "Categories" {
                     d.hay.push(' ');
                     d.hay.push_str(&unq(item));
+                    d.cats.push(unq(item));
                 }
                 continue;
             }
@@ -728,6 +735,35 @@ impl Backend for Apt {
         Plan::new().root_owned(apt_root(&["update"])).root_owned(apt_root(&["full-upgrade"]))
     }
 
+    fn apps_in_category(&self, category: &str) -> Vec<Package> {
+        let idx = self.index();
+        let mut pkgs: Vec<Package> = idx
+            .categories
+            .iter()
+            .filter(|(_, c)| c.iter().any(|c| c == category))
+            .map(|(p, _)| Package {
+                backend: Some(BackendKind::Apt),
+                id: p.clone(),
+                name: idx.name.get(p).cloned().unwrap_or_else(|| p.clone()),
+                summary: idx.summary.get(p).cloned().unwrap_or_default(),
+                ..Default::default()
+            })
+            .collect();
+        pkgs.sort_by_key(|p| p.name.to_lowercase());
+        let names: Vec<String> = pkgs.iter().map(|p| p.id.clone()).collect();
+        let policy = Self::policy(&names, &[]);
+        pkgs.retain_mut(|p| match policy.get(&p.id) {
+            Some(pol) => {
+                p.installed = pol.installed.is_some();
+                p.version = pol.candidate.clone().or_else(|| pol.installed.clone()).unwrap_or_default();
+                p.origin = pol.origin.clone();
+                pol.candidate.is_some() || pol.installed.is_some()
+            }
+            None => false,
+        });
+        pkgs
+    }
+
     fn upgrade(&self, packages: &[Package]) -> Plan {
         // `--only-upgrade` : n'installe rien de nouveau par erreur ; les nouvelles dépendances
         // des paquets choisis sont tout de même ajoutées.
@@ -937,6 +973,7 @@ Summary:\n  C: High-end image creation\n  fr: Création et retouche d'images\nCa
         assert_eq!(idx.summary["gimp"], "Création et retouche d'images");
         assert_eq!(idx.name["gimp"], "Éditeur d’image GIMP");
         assert!(idx.apps.contains("gimp") && !idx.apps.contains("fonts-x"));
+        assert_eq!(idx.categories["gimp"], ["Graphics", "RasterGraphics"]);
         assert!(matches_words(hay, &["retouche".into(), "photo".into()]));
         assert!(!matches_words(hay, &["retouche".into(), "vidéo".into()]));
     }
