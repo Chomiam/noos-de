@@ -130,6 +130,11 @@ impl App {
                 buttons.push(b);
             }
             header.set_title_widget(Some(&switch));
+            let cmp = gtk::Button::with_label("Comparer");
+            cmp.set_tooltip_text(Some("Comparer les façons d'installer ce logiciel"));
+            let (app, sw2) = (self.clone(), sw.clone());
+            cmp.connect_clicked(move |_| app.show_compare(&sw2));
+            header.pack_start(&cmp);
             buttons[start].set_active(true);
         } else {
             self.fill_package(&container, &dialog, &generation, offers[0].clone());
@@ -483,6 +488,143 @@ impl App {
 }
 
 impl App {
+    /// Comparaison des façons d'installer un logiciel (apt, Flatpak, AppImage de AppImageHub).
+    pub(crate) fn show_compare(self: &Rc<Self>, sw: &Software) {
+        let content = gtk::Box::new(gtk::Orientation::Vertical, 16);
+        content.set_margin_top(12);
+        content.set_margin_bottom(24);
+        content.set_margin_start(24);
+        content.set_margin_end(24);
+        content.append(&crate::loading("Comparaison en cours…"));
+        let scroll = gtk::ScrolledWindow::builder().child(&content).vexpand(true).build();
+        let tv = adap::ToolbarView::new();
+        tv.add_top_bar(&adap::HeaderBar::new());
+        tv.set_content(Some(&scroll));
+        tv.add_css_class("noos-sheet");
+        let dialog = adap::Dialog::builder().title(&format!("Comparer — {}", sw.name)).content_width(860).content_height(620).child(&tv).build();
+        dialog.present(Some(&self.window));
+
+        let offers = sw.offers.clone();
+        let backends = self.backends.clone();
+        let names: Vec<String> = std::iter::once(sw.name.clone()).chain(sw.offers.iter().map(|o| o.id.rsplit('.').next().unwrap_or(&o.id).to_string())).collect();
+        let task = background(move || {
+            let rows: Vec<(Package, Option<Details>, usize)> = offers
+                .into_iter()
+                .map(|o| {
+                    let b = o.backend.and_then(|k| backends.iter().find(|b| b.kind() == k));
+                    let d = b.and_then(|b| b.details(&o).ok());
+                    let wide = if o.backend == Some(BackendKind::Flatpak) {
+                        noos_pkg::permissions::of_app(&o.id, o.installed, o.scope.unwrap_or(noos_pkg::Scope::System), if o.origin.is_empty() { "flathub" } else { &o.origin })
+                            .map(|l| l.iter().filter(|p| p.level == 2 && p.enabled).count())
+                            .unwrap_or(0)
+                    } else {
+                        0
+                    };
+                    (o, d, wide)
+                })
+                .collect();
+            let refs: Vec<&str> = names.iter().map(String::as_str).collect();
+            (rows, noos_pkg::appimagehub::find(&refs))
+        });
+        let (app, dlg) = (self.clone(), dialog.clone());
+        glib::spawn_future_local(async move {
+            let (rows, hub) = task.await;
+            crate::clear(&content);
+            let versions: Vec<(BackendKind, String)> = rows
+                .iter()
+                .map(|(o, d, _)| (o.backend.unwrap_or(BackendKind::Apt), d.as_ref().and_then(|d| d.available_version.clone().or(d.installed_version.clone())).unwrap_or_else(|| o.version.clone())))
+                .collect();
+            if let Some(best) = noos_pkg::catalog::recommend(&versions) {
+                let others: Vec<String> = versions.iter().enumerate().filter(|(i, _)| *i != best).map(|(_, (_, v))| v.clone()).collect();
+                let why = if versions.iter().all(|(_, v)| noos_pkg::catalog::compare_versions(v, &versions[best].1).is_eq()) {
+                    "même version : le paquet du système est mieux intégré".to_string()
+                } else {
+                    format!("version plus récente ({} contre {})", versions[best].1, others.join(", "))
+                };
+                let l = gtk::Label::new(Some(&format!("Conseillé : {} — {why}", source_text(&rows[best].0))));
+                l.add_css_class("heading");
+                l.set_wrap(true);
+                l.set_xalign(0.0);
+                content.append(&l);
+            }
+            let grid = gtk::Grid::new();
+            grid.set_column_spacing(24);
+            grid.set_row_spacing(10);
+            grid.set_column_homogeneous(false);
+            let cell = |t: &str, dim: bool| {
+                let l = gtk::Label::new(Some(t));
+                l.set_xalign(0.0);
+                l.set_wrap(true);
+                l.set_max_width_chars(28);
+                if dim {
+                    l.add_css_class("dim-label");
+                }
+                l
+            };
+            let labels = ["", "Version", "Téléchargement", "Taille installée", "Mises à jour", "Isolement", "Installé"];
+            for (r, t) in labels.iter().enumerate() {
+                grid.attach(&cell(t, true), 0, r as i32, 1, 1);
+            }
+            let mut col = 1;
+            for (o, d, wide) in &rows {
+                let kind = o.backend.unwrap_or(BackendKind::Apt);
+                let badge = crate::badge(&source_text(o), kind);
+                badge.set_halign(gtk::Align::Start);
+                grid.attach(&badge, col, 0, 1, 1);
+                let v = d.as_ref().and_then(|d| d.available_version.clone().or(d.installed_version.clone())).unwrap_or_else(|| o.version.clone());
+                grid.attach(&cell(&v, false), col, 1, 1, 1);
+                grid.attach(&cell(&size(d.as_ref().and_then(|d| d.download_size)), false), col, 2, 1, 1);
+                grid.attach(&cell(&size(d.as_ref().and_then(|d| d.installed_size)), false), col, 3, 1, 1);
+                grid.attach(&cell(if kind == BackendKind::Flatpak { "Par l'éditeur, indépendamment du système" } else { "Avec le système (Debian)" }, false), col, 4, 1, 1);
+                let iso = if kind == BackendKind::Flatpak {
+                    if *wide > 0 { format!("Bac à sable, {wide} accès large(s)") } else { "Bac à sable".to_string() }
+                } else {
+                    "Aucun : accès complet au système".to_string()
+                };
+                grid.attach(&cell(&iso, false), col, 5, 1, 1);
+                grid.attach(&cell(if o.installed { "✓ Oui" } else { "—" }, false), col, 6, 1, 1);
+                if !o.installed {
+                    let b = gtk::Button::with_label("Installer");
+                    b.add_css_class("suggested-action");
+                    b.set_halign(gtk::Align::Start);
+                    let (app2, p, dlg2) = (app.clone(), o.clone(), dlg.clone());
+                    b.connect_clicked(move |_| {
+                        dlg2.close();
+                        app2.install(p.clone());
+                    });
+                    grid.attach(&b, col, 7, 1, 1);
+                }
+                col += 1;
+            }
+            if let Some(h) = &hub {
+                let l = gtk::Label::new(Some("AppImage"));
+                l.add_css_class("noos-badge");
+                l.add_css_class("system");
+                l.set_halign(gtk::Align::Start);
+                grid.attach(&l, col, 0, 1, 1);
+                grid.attach(&cell("Voir sur AppImageHub", true), col, 1, 1, 1);
+                grid.attach(&cell("—", true), col, 2, 1, 1);
+                grid.attach(&cell("—", true), col, 3, 1, 1);
+                grid.attach(&cell("Selon l'AppImage (intégrées ou manuelles)", false), col, 4, 1, 1);
+                grid.attach(&cell("Aucun : accès complet à vos fichiers", false), col, 5, 1, 1);
+                grid.attach(&cell("—", false), col, 6, 1, 1);
+                let link = gtk::LinkButton::with_label(h.download.as_deref().unwrap_or(&h.page), "Télécharger…");
+                link.set_halign(gtk::Align::Start);
+                grid.attach(&link, col, 7, 1, 1);
+            }
+            content.append(&grid);
+            let note = gtk::Label::new(Some(
+                "Flatpak : isolé, souvent plus récent, mises à jour indépendantes. Paquet Debian : intégré au système, \
+                 plus léger quand ses bibliothèques sont déjà installées. AppImage : un seul fichier portable, sans isolement.",
+            ));
+            note.set_wrap(true);
+            note.set_xalign(0.0);
+            note.add_css_class("dim-label");
+            note.add_css_class("caption");
+            content.append(&note);
+        });
+    }
+
     /// Place occupée et données de l'utilisateur d'un logiciel installé.
     fn data_group(self: &Rc<Self>, pkg: &Package) -> adap::PreferencesGroup {
         let g = adap::PreferencesGroup::new();

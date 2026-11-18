@@ -130,6 +130,26 @@ pub fn organize(query: &str, software: Vec<Software>) -> Vec<Entry> {
     entries
 }
 
+/// Compare deux versions (« 1:3.2.8-1+b1 », « 3.2.8 », « 2026.1114 ») sur leurs nombres, sans
+/// l'époque ni la révision Debian.
+pub fn compare_versions(a: &str, b: &str) -> std::cmp::Ordering {
+    let core = |v: &str| -> Vec<u64> {
+        let v = v.split_once(':').map(|x| x.1).unwrap_or(v);
+        let v = v.rsplit_once('-').filter(|(u, _)| !u.is_empty()).map(|x| x.0).unwrap_or(v);
+        let v = v.split(['+', '~']).next().unwrap_or(v);
+        v.split(|c: char| !c.is_ascii_digit()).filter(|s| !s.is_empty()).filter_map(|s| s.parse().ok()).collect()
+    };
+    core(a).cmp(&core(b))
+}
+
+/// Façon d'installer conseillée parmi des offres (backend, version) : la plus récente ; à
+/// égalité, le paquet du système (intégré, mis à jour avec Debian).
+pub fn recommend(offers: &[(BackendKind, String)]) -> Option<usize> {
+    (0..offers.len()).max_by(|&i, &j| {
+        compare_versions(&offers[i].1, &offers[j].1).then_with(|| (offers[i].0 == BackendKind::Apt).cmp(&(offers[j].0 == BackendKind::Apt)))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -176,6 +196,18 @@ mod tests {
         assert_eq!(e[2].software.key, "apt:photo-help-x");
         assert_eq!(related_base("libreoffice-l10n-fr"), Some("libreoffice"));
         assert_eq!(related_base("htop"), None);
+    }
+
+    #[test]
+    fn versions_et_conseil() {
+        use std::cmp::Ordering::*;
+        assert_eq!(compare_versions("1:3.2.8-1+b1", "3.2.8"), Equal);
+        assert_eq!(compare_versions("3.2.6-1", "3.2.8"), Less);
+        assert_eq!(compare_versions("4:26.08.2-1", "26.08.3"), Less);
+        let o = vec![(BackendKind::Flatpak, "3.2.8".to_string()), (BackendKind::Apt, "3.2.8-1+b1".to_string())];
+        assert_eq!(recommend(&o), Some(1));
+        let o = vec![(BackendKind::Flatpak, "3.4.0".to_string()), (BackendKind::Apt, "3.2.8-1".to_string())];
+        assert_eq!(recommend(&o), Some(0));
     }
 
     #[test]

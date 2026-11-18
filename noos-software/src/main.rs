@@ -1381,6 +1381,30 @@ fn build(gapp: &adap::Application) {
     }
     if let Ok(spec) = std::env::var("NOOS_SOFTWARE_DETAILS") {
         app.open_details_spec(&spec);
+        if std::env::var_os("NOOS_SOFTWARE_COMPARE").is_some() {
+            // Aperçu : comparaison ouverte par-dessus la fiche.
+            let (app2, spec2) = (app.clone(), spec.clone());
+            glib::timeout_add_local_once(Duration::from_millis(4000), move || {
+                let backends = app2.backends.clone();
+                let q = spec2.split('@').next().unwrap_or(&spec2).to_string();
+                let task = background(move || {
+                    let mut found = Vec::new();
+                    let mut ids = HashMap::new();
+                    for b in backends.iter() {
+                        found.extend(b.search(&q).unwrap_or_default());
+                        if b.kind() == BackendKind::Apt {
+                            ids = b.appstream_ids();
+                        }
+                    }
+                    catalog::merge(found, &ids)
+                });
+                glib::spawn_future_local(async move {
+                    if let Some(sw) = task.await.into_iter().find(|s| s.offers.len() > 1) {
+                        app2.show_compare(&sw);
+                    }
+                });
+            });
+        }
     }
 }
 
