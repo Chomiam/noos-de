@@ -10,7 +10,7 @@ use std::{
 };
 
 use adap::prelude::*;
-use gtk::glib;
+use gtk::{gio, glib};
 use noos_pkg::{Backend, BackendKind, Package, Plan};
 
 pub type Backends = Arc<Vec<Box<dyn Backend>>>;
@@ -52,6 +52,8 @@ pub struct Ops {
     pub queue_button: gtk::MenuButton,
     queue_list: gtk::Box,
     current: RefCell<String>,
+    /// Fenêtre fermée pendant une opération : l'application reste en vie jusqu'à la fin.
+    hold: RefCell<Option<gio::ApplicationHoldGuard>>,
 }
 
 impl Ops {
@@ -111,6 +113,7 @@ impl Ops {
             queue_button,
             queue_list,
             current: RefCell::new(String::new()),
+            hold: RefCell::new(None),
         });
         let o = ops.clone();
         details.connect_clicked(move |_| o.show_log());
@@ -119,6 +122,35 @@ impl Ops {
 
     pub fn set_window(&self, w: &impl IsA<gtk::Window>) {
         *self.window.borrow_mut() = Some(w.clone().upcast());
+    }
+
+    /// Fermeture de la fenêtre : pendant une opération, la fenêtre se cache et l'application
+    /// continue (notification à la fin) ; renvoie `true` si la fermeture est retenue.
+    pub fn keep_running(&self, window: &adap::ApplicationWindow) -> bool {
+        if !self.busy() {
+            return false;
+        }
+        if let Some(app) = window.application() {
+            self.hold.borrow_mut().get_or_insert_with(|| app.hold());
+            let n = gio::Notification::new("Logiciels continue en arrière-plan");
+            n.set_body(Some(&format!("{} — vous serez prévenu à la fin.", self.current.borrow())));
+            app.send_notification(Some("noos-software-background"), &n);
+        }
+        window.set_visible(false);
+        true
+    }
+
+    /// Notification de fin d'opération quand la fenêtre n'est pas au premier plan.
+    fn notify_done(&self, title: &str, ok: bool) {
+        let Some(win) = self.window.borrow().clone() else { return };
+        if win.is_visible() && win.is_active() {
+            return;
+        }
+        let Some(app) = win.application() else { return };
+        let n = gio::Notification::new(if ok { "Opération terminée" } else { "Échec de l'opération" });
+        n.set_body(Some(title));
+        n.set_icon(&gio::ThemedIcon::new(if ok { "emblem-ok-symbolic" } else { "dialog-error-symbolic" }));
+        app.send_notification(None, &n);
     }
 
     pub fn busy(&self) -> bool {
@@ -314,8 +346,19 @@ impl Ops {
             for d in extra_done {
                 d(res.is_ok());
             }
+            ops.notify_done(&title, res.is_ok());
             ops.refresh_queue();
             ops.next();
+            // Fenêtre fermée et plus rien à faire : on quitte.
+            if !ops.busy() && ops.hold.borrow_mut().take().is_some() {
+                if let Some(w) = ops.window.borrow().as_ref() {
+                    if !w.is_visible() {
+                        if let Some(app) = w.application() {
+                            app.quit();
+                        }
+                    }
+                }
+            }
         });
     }
 

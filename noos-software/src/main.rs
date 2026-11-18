@@ -1249,6 +1249,11 @@ fn build(gapp: &adap::Application) {
         let app2 = app.clone();
         history_btn.connect_clicked(move |_| app2.show_history());
     }
+    {
+        // Fermer pendant une installation : la fenêtre se cache, le travail continue.
+        let ops = ops.clone();
+        window.connect_close_request(move |w| if ops.keep_running(w) { glib::Propagation::Stop } else { glib::Propagation::Proceed });
+    }
     gtk::style_context_add_provider_for_display(
         &gdk::Display::default().unwrap(),
         &app.dynamic_css,
@@ -1342,11 +1347,17 @@ fn build(gapp: &adap::Application) {
     }
     if std::env::var_os("NOOS_SOFTWARE_QUEUE_DEMO").is_some() && !app.backends.is_empty() {
         // Aperçu : une opération fictive en cours et deux en attente, file ouverte.
-        for (t, secs) in [("Installation de Éditeur d’image GIMP (apt · Debian)", "60"), ("Installation de Fluxer (Flatpak · Flathub)", "5"), ("Mise à jour de 3 éléments", "5")] {
+        let long = if std::env::var("NOOS_SOFTWARE_QUEUE_DEMO").is_ok_and(|v| v == "close") { "4" } else { "60" };
+        for (t, secs) in [("Installation de Éditeur d’image GIMP (apt · Debian)", long), ("Installation de Fluxer (Flatpak · Flathub)", "3"), ("Mise à jour de 3 éléments", "3")] {
             app.ops.enqueue(t, 0, move |_| Ok(noos_pkg::Plan::new().user(&["sleep", secs])), |_| {});
         }
         let ops = app.ops.clone();
         glib::timeout_add_local_once(Duration::from_millis(2500), move || ops.queue_button.popup());
+        if std::env::var("NOOS_SOFTWARE_QUEUE_DEMO").is_ok_and(|v| v == "close") {
+            // Fenêtre fermée pendant les opérations : elle doit se cacher, l'appli finir son travail.
+            let w = window.clone();
+            glib::timeout_add_local_once(Duration::from_millis(3000), move || w.close());
+        }
     }
     if let (Some(px), None) = (std::env::var("NOOS_SOFTWARE_SCROLL").ok().and_then(|v| v.parse::<f64>().ok()), std::env::var_os("NOOS_SOFTWARE_DETAILS")) {
         // Aperçu : page Explorer défilée (packs, catégories Debian…).
@@ -1422,7 +1433,9 @@ fn main() -> glib::ExitCode {
         std::mem::forget(noos_theme::Theming::init());
     });
     app.connect_activate(|app| {
-        if let Some(w) = app.active_window() {
+        // Fenêtre cachée pendant une opération en arrière-plan : on la remontre.
+        if let Some(w) = app.active_window().or_else(|| app.windows().into_iter().next()) {
+            w.set_visible(true);
             w.present();
         } else {
             build(app);
