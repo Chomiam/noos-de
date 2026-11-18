@@ -22,6 +22,7 @@ pub mod details;
 pub mod exec;
 pub mod hardware;
 pub mod history;
+pub mod mirrors;
 pub mod odrs;
 pub mod owner;
 pub mod packs;

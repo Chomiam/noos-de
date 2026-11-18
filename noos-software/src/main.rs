@@ -14,6 +14,7 @@ mod details;
 mod explore;
 mod flathub;
 mod history;
+mod mirrors;
 mod ops;
 
 use std::{
@@ -910,6 +911,9 @@ impl App {
                 }
             }
             self.repos_box.append(&g);
+            if kind == BackendKind::Apt {
+                self.repos_box.append(&self.mirror_group());
+            }
             // Préréglages qui ne sont pas déjà des lignes « non installée » (dépôt, URL, i386…).
             extra.extend(
                 presets
@@ -1378,6 +1382,11 @@ fn build(gapp: &adap::Application) {
     if let Ok(c) = std::env::var("NOOS_SOFTWARE_COLLECTION") {
         // Aperçu : une collection ou une catégorie (`category/Graphics`).
         app.show_collection(&c, c.trim_start_matches("category/"));
+    }
+    if std::env::var_os("NOOS_SOFTWARE_MIRRORS").is_some() {
+        // Aperçu : tableau des miroirs ouvert (NOOS_SOFTWARE_MIRRORS_TEST=1 : mesures lancées).
+        stack.set_visible_child_name("repos");
+        app.show_mirrors();
     }
     if std::env::var("NOOS_SOFTWARE_SORT").is_ok_and(|v| v == "size") {
         installed_sort.set_selected(1);
