@@ -232,6 +232,75 @@ pub fn check_updates(backends: &[Box<dyn Backend>], force: bool) -> Vec<(Backend
         .collect()
 }
 
+/// Installe les mises à jour Flatpak trouvées (service `noos-update-check`, réglage
+/// `[updates] auto_flatpak`) ; renvoie leur nombre si l'opération a réussi.
+pub fn auto_update_flatpak(backends: &[Box<dyn Backend>], found: &[(BackendKind, Result<Vec<Update>, String>)]) -> Option<usize> {
+    let ups = found.iter().find(|(k, _)| *k == BackendKind::Flatpak)?.1.as_ref().ok()?;
+    if ups.is_empty() {
+        return None;
+    }
+    let b = backends.iter().find(|b| b.kind() == BackendKind::Flatpak)?;
+    let pkgs: Vec<Package> = ups.iter().map(|u| u.package.clone()).collect();
+    b.upgrade(&pkgs).run(&|l| eprintln!("{l}")).ok()?;
+    Some(ups.len())
+}
+
+/// Notification de bureau (sans effet hors session graphique).
+pub fn notify(title: &str, body: &str) {
+    let _ = std::process::Command::new("gdbus")
+        .args([
+            "call", "--session", "--dest", "org.freedesktop.Notifications", "--object-path", "/org/freedesktop/Notifications",
+            "--method", "org.freedesktop.Notifications.Notify", "Logiciels", "0", "system-software-install", title, body, "[]", "{}", "8000",
+        ])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+}
+
+/// Mises à jour apt « au redémarrage » (systemd.offline-updates) : téléchargement maintenant,
+/// installation au démarrage suivant par `noos-offline-update.service`.
+pub mod offline {
+    use crate::Plan;
+
+    pub const MARK: &str = "/var/lib/noos/offline-update";
+
+    /// Télécharge les paquets et programme l'installation (une élévation).
+    pub fn schedule_plan() -> Plan {
+        Plan::new()
+            .root_owned(crate::backends::apt::apt_root(&["update"]))
+            .root_owned(crate::backends::apt::apt_root(&["--download-only", "full-upgrade"]))
+            .root(&["mkdir", "-p", "/var/lib/noos"])
+            .root(&["touch", MARK])
+            .root(&["ln", "-sfn", MARK, "/system-update"])
+    }
+
+    pub fn cancel_plan() -> Plan {
+        Plan::new().root(&["rm", "-f", "/system-update", MARK])
+    }
+
+    /// Installation programmée au prochain redémarrage ?
+    pub fn pending() -> bool {
+        std::fs::read_link("/system-update").is_ok_and(|l| l == std::path::Path::new(MARK))
+    }
+
+    /// Dernière installation hors ligne : (code de sortie d'apt, date en secondes).
+    pub fn last_result() -> Option<(i32, i64)> {
+        let t = std::fs::read_to_string(format!("{MARK}.result")).ok()?;
+        let mut it = t.split_whitespace();
+        Some((it.next()?.parse().ok()?, it.next()?.parse().ok()?))
+    }
+
+    #[cfg(test)]
+    mod tests {
+        #[test]
+        fn programmation() {
+            let d = super::schedule_plan().describe().join("\n");
+            assert!(d.contains("--download-only full-upgrade"), "{d}");
+            assert!(d.contains("ln -sfn /var/lib/noos/offline-update /system-update"), "{d}");
+        }
+    }
+}
+
 /// Enregistre le résultat d'une recherche (`~/.local/state/noos/updates.json`) : l'icône de
 /// la barre des tâches et Paramètres › Mises à jour le lisent.
 pub fn record_updates(results: &[(BackendKind, Result<Vec<Update>, String>)]) -> noos_core::updates::State {

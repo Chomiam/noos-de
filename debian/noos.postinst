@@ -96,6 +96,9 @@ if [ "$1" = configure ]; then
         touch /var/lib/noos/update-timer
     fi
 
+    # Mises à jour « au redémarrage » de Logiciels (system-update.target).
+    systemctl enable noos-offline-update.service >/dev/null 2>&1 || true
+
     # Écran de connexion sur la console 1 (voir greetd.service.d/90-noos-vt1.conf) : les
     # installations faites avec vt = 7 restaient bloquées sur la console texte au démarrage.
     if grep -q noos-greeter /etc/greetd/config.toml 2>/dev/null && grep -q '^vt *= *7' /etc/greetd/config.toml; then

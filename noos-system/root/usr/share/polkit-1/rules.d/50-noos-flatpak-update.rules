@@ -1,0 +1,12 @@
+// Mises à jour automatiques de Logiciels (Paramètres › Mises à jour) : le service
+// noos-update-check (service utilisateur, hors session « active » pour polkit) peut mettre à jour les
+// applications et runtimes Flatpak déjà installés pour tout le système, sans mot de passe.
+// Installer ou supprimer demande toujours l'autorisation.
+polkit.addRule(function (action, subject) {
+    if ((action.id == "org.freedesktop.Flatpak.app-update" ||
+         action.id == "org.freedesktop.Flatpak.runtime-update" ||
+         action.id == "org.freedesktop.Flatpak.appstream-update") &&
+        (subject.local || subject.isInGroup("sudo"))) {
+        return polkit.Result.YES;
+    }
+});

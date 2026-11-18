@@ -1,0 +1,27 @@
+#!/bin/sh
+# Installation hors ligne des mises à jour apt (voir noos-offline-update.service). Les paquets
+# ont été téléchargés avant le redémarrage (apt-get -d full-upgrade) : rien n'est retéléchargé.
+# Résultat : /var/lib/noos/offline-update.result (« code date »), journal
+# /var/log/noos-offline-update.log ; redémarre dans tous les cas.
+set -u
+MARK=/var/lib/noos/offline-update
+
+# Lien d'un autre outil (PackageKit…) : on ne s'en occupe pas.
+if [ "$(readlink /system-update 2>/dev/null)" != "$MARK" ]; then
+    exit 0
+fi
+# systemd.offline-updates(7) : retirer le lien tout de suite (pas de boucle si ça échoue).
+rm -f /system-update
+
+plymouth display-message --text="Installation des mises à jour… N'éteignez pas l'ordinateur." >/dev/null 2>&1 || true
+mount -o remount,rw / >/dev/null 2>&1 || true
+
+export DEBIAN_FRONTEND=noninteractive LC_ALL=C.UTF-8
+apt-get -y --no-download \
+    -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold \
+    full-upgrade >/var/log/noos-offline-update.log 2>&1
+status=$?
+echo "$status $(date +%s)" >"$MARK.result"
+rm -f "$MARK"
+sync
+systemctl reboot

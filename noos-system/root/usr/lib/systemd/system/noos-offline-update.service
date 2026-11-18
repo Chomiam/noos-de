@@ -1,0 +1,19 @@
+# Mises à jour « au redémarrage » de Logiciels (systemd.offline-updates(7)) : Logiciels
+# télécharge les paquets, crée le lien /system-update → /var/lib/noos/offline-update et
+# redémarre ; au démarrage suivant, systemd entre dans system-update.target et lance ce service,
+# qui installe les paquets déjà téléchargés (sans réseau) puis redémarre.
+[Unit]
+Description=Installation des mises à jour de NOOS au redémarrage
+DefaultDependencies=no
+Requires=sysinit.target dbus.socket
+After=sysinit.target dbus.socket systemd-journald.socket local-fs.target
+Before=shutdown.target system-update.target
+ConditionPathExists=/system-update
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/noos-offline-update
+FailureAction=reboot
+
+[Install]
+WantedBy=system-update.target

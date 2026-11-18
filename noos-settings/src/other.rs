@@ -153,7 +153,7 @@ fn fill_updates(app: &Rc<App>, content: &gtk::Box) {
     content.append(&h);
 
     let g = group("Vérification automatique");
-    g.set_description(Some("Un service de votre session interroge les dépôts en arrière-plan, sans mot de passe et à basse priorité. Rien n'est installé sans votre accord."));
+    g.set_description(Some("Un service de votre session interroge les dépôts en arrière-plan, sans mot de passe et à basse priorité. Rien n'est installé sans votre accord, sauf les applications Flatpak si vous l'activez ci-dessous."));
     let auto = switch("emblem-synchronizing-symbolic", "Rechercher les mises à jour automatiquement", "Une icône apparaît dans la barre des tâches quand il y en a", cfg.updates.auto_check);
     let labels: Vec<String> = upd::INTERVALS.iter().map(|(_, l)| l.to_string()).collect();
     let freq = combo(
@@ -193,6 +193,20 @@ fn fill_updates(app: &Rc<App>, content: &gtk::Box) {
         });
     }
     g.add(&tray);
+    let auto_fp = switch(
+        "application-x-addon-symbolic",
+        "Mettre à jour les applications Flatpak automatiquement",
+        "Pendant la vérification, sans mot de passe ; les paquets du système restent à votre main",
+        cfg.updates.auto_flatpak,
+    );
+    {
+        let app = app.clone();
+        auto_fp.connect_active_notify(move |s| {
+            let v = s.is_active();
+            app.update(|c| c.updates.auto_flatpak = v);
+        });
+    }
+    g.add(&auto_fp);
     content.append(&g);
 
     if !st.items.is_empty() {

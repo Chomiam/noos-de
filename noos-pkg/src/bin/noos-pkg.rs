@@ -229,10 +229,19 @@ fn run() -> anyhow::Result<()> {
             // Service noos-update-check : recherche sans droits root, état enregistré pour
             // l'icône de la barre des tâches. `--force` : métadonnées retéléchargées.
             let force = std::env::args().any(|a| a == "--force");
-            if std::env::args().any(|a| a == "--auto") && !noos_core::NoosConfig::load().updates.auto_check {
+            let auto = std::env::args().any(|a| a == "--auto");
+            let cfg = noos_core::NoosConfig::load();
+            if auto && !cfg.updates.auto_check {
                 return Ok(());
             }
-            let res: Vec<_> = noos_pkg::check_updates(&all, force).into_iter().map(|(k, r)| (k, r.map_err(|e| format!("{e:#}")))).collect();
+            let mut res: Vec<_> = noos_pkg::check_updates(&all, force).into_iter().map(|(k, r)| (k, r.map_err(|e| format!("{e:#}")))).collect();
+            // Mises à jour automatiques des applications Flatpak (Paramètres › Mises à jour).
+            if auto && cfg.updates.auto_flatpak {
+                if let Some(n) = noos_pkg::auto_update_flatpak(&all, &res) {
+                    noos_pkg::notify("Applications mises à jour", &format!("{n} application(s) Flatpak mise(s) à jour automatiquement"));
+                    res = noos_pkg::check_updates(&all, false).into_iter().map(|(k, r)| (k, r.map_err(|e| format!("{e:#}")))).collect();
+                }
+            }
             let st = noos_pkg::record_updates(&res);
             if args.json {
                 println!("{}", serde_json::to_string_pretty(&st)?);

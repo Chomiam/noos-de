@@ -489,11 +489,13 @@ pub struct Updates {
     pub interval_hours: u32,
     /// Icône dans la barre des tâches quand des mises à jour sont disponibles.
     pub tray_icon: bool,
+    /// Le service de vérification installe aussi les mises à jour des applications Flatpak.
+    pub auto_flatpak: bool,
 }
 
 impl Default for Updates {
     fn default() -> Self {
-        Self { auto_check: true, interval_hours: 6, tray_icon: true }
+        Self { auto_check: true, interval_hours: 6, tray_icon: true, auto_flatpak: false }
     }
 }
 

@@ -614,6 +614,73 @@ impl App {
         }
         self.updates_box.append(&header);
 
+        // Mises à jour apt « au redémarrage » (installées avant le démarrage, rien d'ouvert).
+        let apt_total: usize = results.iter().filter(|(i, _)| self.kind(*i) == BackendKind::Apt).filter_map(|(_, r)| r.as_ref().ok()).map(|u| u.len()).sum();
+        if noos_pkg::offline::pending() {
+            let g = adap::PreferencesGroup::new();
+            let r = row("Installation programmée au prochain redémarrage", "Les paquets sont téléchargés : ils s'installeront avant l'ouverture de la session.");
+            r.add_prefix(&gtk::Image::from_icon_name("system-reboot-symbolic"));
+            let cancel = gtk::Button::with_label("Annuler");
+            cancel.set_valign(gtk::Align::Center);
+            let app = self.clone();
+            cancel.connect_clicked(move |_| {
+                let app2 = app.clone();
+                app.ops.enqueue("Annulation de l'installation au redémarrage", 0, |_| Ok(noos_pkg::offline::cancel_plan()), move |_| app2.load_updates());
+            });
+            r.add_suffix(&cancel);
+            let reboot = gtk::Button::with_label("Redémarrer");
+            reboot.add_css_class("suggested-action");
+            reboot.set_valign(gtk::Align::Center);
+            reboot.connect_clicked(|_| {
+                let _ = std::process::Command::new("systemctl").arg("reboot").spawn();
+            });
+            r.add_suffix(&reboot);
+            g.add(&r);
+            self.updates_box.append(&g);
+        } else if apt_total > 0 {
+            let g = adap::PreferencesGroup::new();
+            let r = row(
+                "Installer au redémarrage",
+                "Recommandé pour les mises à jour du système : téléchargement maintenant, installation au prochain démarrage, quand rien n'est ouvert.",
+            );
+            r.add_prefix(&gtk::Image::from_icon_name("system-reboot-symbolic"));
+            let b = gtk::Button::with_label("Programmer");
+            b.set_valign(gtk::Align::Center);
+            if let Some(idx) = self.backend_index(BackendKind::Apt) {
+                let app = self.clone();
+                b.connect_clicked(move |_| {
+                    let app2 = app.clone();
+                    app.ops.enqueue("Téléchargement des mises à jour (installation au redémarrage)", idx, |_| Ok(noos_pkg::offline::schedule_plan()), move |ok| {
+                        app2.load_updates();
+                        if ok {
+                            app2.confirm(
+                                "Redémarrer maintenant ?",
+                                "Les mises à jour sont téléchargées. Elles s'installeront au prochain démarrage de l'ordinateur.",
+                                "Redémarrer",
+                                false,
+                                || {
+                                    let _ = std::process::Command::new("systemctl").arg("reboot").spawn();
+                                },
+                            );
+                        }
+                    });
+                });
+            }
+            r.add_suffix(&b);
+            g.add(&r);
+            self.updates_box.append(&g);
+        }
+        if let Some((code, when)) = noos_pkg::offline::last_result() {
+            let recent = glib::DateTime::now_utc().map(|n| n.to_unix() - when < 3 * 86400).unwrap_or(false);
+            if recent && code != 0 {
+                let g = adap::PreferencesGroup::new();
+                let r = row("La dernière installation au redémarrage a échoué", "Journal : /var/log/noos-offline-update.log. Relancez la mise à jour depuis cette page.");
+                r.add_prefix(&gtk::Image::from_icon_name("dialog-warning-symbolic"));
+                g.add(&r);
+                self.updates_box.append(&g);
+            }
+        }
+
         if total == 0 && results.iter().all(|(_, r)| r.is_ok()) {
             self.updates_box.append(&status_page("emblem-ok-symbolic", "Votre système est à jour", "Aucune mise à jour pour l'instant."));
         }
