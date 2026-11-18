@@ -20,6 +20,8 @@
 //! noos-pkg details -b backend <id>           fiche détaillée (Logiciels) et simulation
 //! noos-pkg cleanup [--dry-run]              ce qui peut être nettoyé (orphelins, cache, noyaux…)
 //! noos-pkg hardware                         paquets recommandés pour le matériel
+//! noos-pkg provides [--hint] <commande>      paquets qui fournissent une commande
+//!                                            (--hint : message de « commande introuvable »)
 //! noos-pkg owner <lanceur.desktop>           paquet (apt, Flatpak, AppImage) d'une application
 //!
 //! Options : --dry-run (affiche le plan sans l'exécuter), --json
@@ -161,6 +163,32 @@ fn run() -> anyhow::Result<()> {
             println!("{:?}", noos_pkg::hardware::probe());
             for r in noos_pkg::hardware::recommendations() {
                 println!("{} — {} ({})", r.package, r.title, r.reason);
+            }
+        }
+        "provides" => {
+            let cmd = args.rest.iter().find(|a| !a.starts_with('-')).cloned().unwrap_or_default();
+            let list = noos_pkg::commands::providers(&cmd);
+            if std::env::args().any(|a| a == "--hint") {
+                eprintln!("{}", noos_pkg::commands::hint(&cmd, &list));
+                // Une seule proposition et un vrai terminal : ouvrir la fiche dans Logiciels ?
+                use std::io::IsTerminal;
+                if list.len() == 1 && std::io::stdin().is_terminal() && std::env::var_os("WAYLAND_DISPLAY").is_some() {
+                    eprint!("Ouvrir sa fiche dans Logiciels ? [o/N] ");
+                    let mut answer = String::new();
+                    let _ = std::io::stdin().read_line(&mut answer);
+                    if matches!(answer.trim(), "o" | "O" | "oui" | "y") {
+                        let _ = std::process::Command::new("noos-software")
+                            .args(["--details", &format!("apt:{}", list[0])])
+                            .stdin(std::process::Stdio::null())
+                            .stdout(std::process::Stdio::null())
+                            .stderr(std::process::Stdio::null())
+                            .spawn();
+                    }
+                }
+                std::process::exit(127);
+            }
+            for p in list {
+                println!("{p}");
             }
         }
         "owner" => {

@@ -14,6 +14,7 @@ pub mod appimage;
 pub mod appimagehub;
 pub mod backends;
 pub mod catalog;
+pub mod commands;
 pub mod cleanup;
 pub mod deb;
 pub mod details;
