@@ -2,7 +2,10 @@
 
 Novembre 2026. Code : `noos-software/src/` (interface GTK4 + libAdapta), `noos-pkg/src/`
 (bibliothèque et CLI `noos-pkg` : backends apt et Flatpak, sources, AppImage, .deb, fiches).
-Ce document est une **proposition** : rien de la partie 3 n'est fait, sauf mention contraire.
+Ce document était une proposition. **Les idées 1 à 10 (§ 3.1) sont faites** (branche
+`claude/nervous-swartz-d8b944`, novembre 2026, détail dans `docs/GUIDE.md` › Logiciels) ; restent
+à valider en VM l'installation au redémarrage, la règle polkit Flatpak et le clic droit du menu
+Démarrer. Les idées 11 et suivantes restent à faire.
 
 ## 1. État des lieux
 
@@ -53,7 +56,7 @@ tuiles de la vitrine Flathub avaient une fiche. Désormais, un clic sur la ligne
 Impact : ★★★ change l'usage quotidien, ★★ utile souvent, ★ confort. Effort : **F** (≤ 1 jour),
 **M** (quelques jours), **É** (une semaine ou plus, ou dépend d'un service externe).
 
-### 3.1 Gros impact, effort faible ou moyen — à faire d'abord
+### 3.1 Gros impact, effort faible ou moyen — faites
 
 | # | Idée | Impact | Effort | Comment |
 |---|---|---|---|---|

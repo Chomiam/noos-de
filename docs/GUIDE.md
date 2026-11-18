@@ -622,6 +622,46 @@ NOOS est basé sur Debian sid : Logiciels gère les **paquets Debian (apt)** et 
   a un onglet par façon de l'installer, pour comparer. Les fichiers DEP-11 sont lus par un petit
   lecteur YAML intégré (pas de dépendance). Aperçu : `NOOS_SOFTWARE_DETAILS=gimp@apt`,
   `apt:htop`, `flatpak:org.gimp.GIMP` (+ `NOOS_SOFTWARE_SCROLL=px`).
+- **Recherche** : noms de paquets, puis noms, résumés, mots-clés et catégories AppStream
+  (index DEP-11, en C et en français), puis descriptions traduites (`apt-cache search` avec
+  `Acquire::Languages=fr,en`) : « retouche photo » trouve GIMP, digiKam, Photoflare. Les
+  applications passent avant les simples paquets ; les sous-paquets (`-help-*`, `-l10n-*`,
+  `-data`, `-doc`…) sont repliés sous leur logiciel (« 36 paquets associés »).
+- **Fiche de partout** : `noos-software --details apt:gimp|flatpak:<id>|gimp`, `--app
+  <lanceur.desktop>` (paquet retrouvé par `noos_pkg::owner` : `dpkg-query -S`, `X-Flatpak`,
+  `X-NOOS-AppImage`), `--uninstall`, liens `appstream://<id>` et fichiers `.flatpakref`.
+  Barre des tâches : « Désinstaller… » ; menu Démarrer : clic droit « Fiche dans Logiciels »
+  / « Désinstaller… ».
+- **File d'attente** : bouton « n en attente » de la barre d'en-tête (en cours, en attente,
+  retirer une opération) ; les installations apt en attente partent en une seule commande
+  (un seul mot de passe).
+- **Mises à jour détaillées** : cases à cocher, groupes Applications / Composants du système,
+  « Mettre à jour » par groupe (`apt-get install --only-upgrade`, `flatpak update <id>`),
+  alerte « Redémarrage nécessaire » (noyau, libc, pilotes, noos…), clic → fiche avec les
+  nouveautés (`apt-get changelog`). **Installer au redémarrage** : téléchargement
+  (`--download-only`), lien `/system-update`, `noos-offline-update.service`
+  (system-update.target) installe sans réseau puis redémarre (journal
+  `/var/log/noos-offline-update.log`). Paramètres › Mises à jour : « Mettre à jour les
+  applications Flatpak automatiquement » (`[updates] auto_flatpak`, désactivé par défaut ;
+  règle polkit `50-noos-flatpak-update.rules`, mises à jour seulement).
+- **Faire de la place** (Installées) : dépendances inutiles (`apt-get -s autoremove`), cache
+  apt, anciens noyaux (le courant et le plus récent sont gardés), runtimes Flatpak inutilisés,
+  données `~/.var/app` d'applis supprimées (corbeille) ; tailles mesurées sans root, une
+  seule élévation.
+- **Historique** (bouton horloge) : journal d'apt (y compris les commandes du terminal) et de
+  Logiciels, par jour ; « Annuler » une installation ; « Revenir à l'état d'avant » ouvre
+  Sauvegarder et Restaurer sur l'instantané pris juste avant (rapproché par la date).
+- **Permissions Flatpak** (fiche) : accès accordés en français, accès larges d'abord (tout le
+  dossier personnel, tous les périphériques, X11…), avant l'installation en lecture seule,
+  ensuite des interrupteurs (`flatpak override --user`) et « Rétablir ».
+- **Compléments pour le matériel** (bandeau d'Explorer) : microcode, pilote NVIDIA,
+  firmwares (Intel, AMD, Wi-Fi), `steam-devices` (manette), `fprintd` (lecteur
+  d'empreintes), `auto-cpufreq` (portable), plus `isenkram-lookup` s'il est installé ;
+  seulement ce qui manque et existe dans les dépôts actifs ; « Tout installer ».
+- **Sélection NOOS** : packs Bureautique, Création, Jeux, Multimédia, Développement
+  (`noos-pkg/data/packs.json`, téléchargé depuis GitHub avec cache d'un jour, copie intégrée
+  en repli) ; seul ce qui manque est installé. Les catégories montrent aussi les applications
+  des paquets Debian (« Aussi en paquets Debian »).
 
 En ligne de commande :
 
@@ -635,6 +675,9 @@ noos-pkg appimage-install ~/Téléchargements/App.AppImage
 noos-pkg deb ~/Téléchargements/paquet.deb          # fiche + simulation des dépendances
 noos-pkg details -b apt gimp                       # fiche détaillée (Logiciels) + simulation
 noos-pkg details -b flatpak org.gimp.GIMP
+noos-pkg cleanup                                   # ce qui peut être nettoyé
+noos-pkg hardware                                  # compléments recommandés pour le matériel
+noos-pkg owner org.gnome.SimpleScan                # paquet d'une application
 noos-pkg repo-add -b apt apt-repo https://repo.example.org/apt stable main clé=https://repo.example.org/key.asc --dry-run
 ```
 
@@ -651,7 +694,9 @@ noos-pkg repo-add -b apt apt-repo https://repo.example.org/apt stable main clé=
 **À faire :**
 - un **agent polkit** propre à NOOS : dans la vraie session, il n'y en a pas encore pour afficher la demande de mot de passe ;
 - zypper (openSUSE) ;
-- idées d'amélioration classées par impact / effort : `docs/plans/logiciels.md`.
+- idées d'amélioration classées par impact / effort : `docs/plans/logiciels.md` (les 10
+  premières sont faites ; à valider en VM : installation au redémarrage, règle polkit
+  Flatpak, menu contextuel du menu Démarrer).
 
 ## Paramètres (noos-settings)
 
