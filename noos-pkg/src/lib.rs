@@ -16,6 +16,7 @@ pub mod catalog;
 pub mod deb;
 pub mod details;
 pub mod exec;
+pub mod owner;
 pub mod sources;
 pub mod system;
 

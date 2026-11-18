@@ -18,6 +18,7 @@
 //! noos-pkg appimage-install <fichier>        déplace dans ~/Applications + menu Démarrer
 //! noos-pkg deb <fichier.deb>                 fiche du paquet et simulation (sans root)
 //! noos-pkg details -b backend <id>           fiche détaillée (Logiciels) et simulation
+//! noos-pkg owner <lanceur.desktop>           paquet (apt, Flatpak, AppImage) d'une application
 //!
 //! Options : --dry-run (affiche le plan sans l'exécuter), --json
 //! Élévation : pkexec par défaut ; NOOS_PKG_ELEVATE=sudo|none
@@ -141,6 +142,13 @@ fn run() -> anyhow::Result<()> {
                 }
             }
             print_packages(&results, args.json);
+        }
+        "owner" => {
+            let id = args.rest.first().ok_or_else(|| anyhow::anyhow!("précisez le lanceur (gimp.desktop)"))?;
+            match noos_pkg::owner::owner_of_desktop(id) {
+                Some(o) => println!("{o:?}"),
+                None => anyhow::bail!("aucun paquet trouvé pour {id}"),
+            }
         }
         "details" => {
             let b = one()?;

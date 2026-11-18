@@ -1077,6 +1077,7 @@ fn task_button(item: Item, icon_px: i32, shell: &Weak<Shell>, hold: Hold) -> gtk
         apps::find(&item.app_id).and_then(|a| a.id()).map(|id| id.trim_end_matches(".desktop").to_string())
     };
     if let Some(desktop_id) = desktop_id {
+        let (rm_pop, rm_id) = (popover.clone(), desktop_id.clone());
         let pinned = item.pinned;
         let label = if pinned { "Désépingler de la barre des tâches" } else { "Épingler à la barre des tâches" };
         let pin = entry(label, "view-pin-symbolic");
@@ -1098,6 +1099,14 @@ fn task_button(item: Item, icon_px: i32, shell: &Weak<Shell>, hold: Hold) -> gtk
             });
         });
         menu.append(&pin);
+
+        // Désinstaller : Logiciels retrouve le paquet (apt, Flatpak, AppImage) du lanceur.
+        let rm = entry("Désinstaller…", "user-trash-symbolic");
+        rm.connect_clicked(move |_| {
+            rm_pop.popdown();
+            apps::spawn(&format!("noos-software --app '{}' --uninstall", rm_id.replace('\'', "")));
+        });
+        menu.append(&rm);
     }
 
     if !item.windows.is_empty() {

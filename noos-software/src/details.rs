@@ -380,6 +380,12 @@ impl App {
     /// Fiche ouverte au démarrage (`NOOS_SOFTWARE_DETAILS=gimp`, `apt:htop`,
     /// `flatpak:org.gimp.GIMP`, suffixe `@apt` / `@flatpak` pour l'onglet).
     pub(crate) fn open_details_spec(self: &Rc<Self>, spec: &str) {
+        self.open_details_spec_with(spec, false);
+    }
+
+    /// Comme `open_details_spec` ; `uninstall` : propose aussitôt de supprimer la version installée
+    /// (« Désinstaller » du menu Démarrer).
+    pub(crate) fn open_details_spec_with(self: &Rc<Self>, spec: &str, uninstall: bool) {
         let (spec, prefer) = match spec.rsplit_once('@') {
             Some((s, k)) => (s.to_string(), BackendKind::parse(k)),
             None => (spec.to_string(), None),
@@ -397,6 +403,11 @@ impl App {
                 found.extend(b.search(&q).unwrap_or_default());
                 if b.kind() == BackendKind::Apt {
                     appstream = b.appstream_ids();
+                    // Identifiant AppStream (`org.gimp.GIMP`, lien appstream://) → paquet Debian.
+                    let lower = q.to_lowercase();
+                    if let Some(pkg) = appstream.iter().find(|(_, v)| **v == lower.trim_end_matches(".desktop")).map(|(k, _)| k.clone()) {
+                        found.extend(b.search(&pkg).unwrap_or_default().into_iter().filter(|p| p.id == pkg));
+                    }
                 }
             }
             (found, appstream)
@@ -412,11 +423,16 @@ impl App {
             let lower = id.to_lowercase();
             let pick = software
                 .iter()
-                .find(|s| s.offers.iter().any(|o| o.id == id) || s.key == lower)
+                .find(|s| s.offers.iter().any(|o| o.id == id) || s.key == lower.trim_end_matches(".desktop"))
                 .or(software.first())
                 .cloned();
             match pick {
-                Some(sw) => app.show_software(&sw, prefer),
+                Some(sw) => {
+                    app.show_software(&sw, prefer);
+                    if let Some(p) = uninstall.then(|| sw.installed().next().cloned()).flatten() {
+                        app.remove(p);
+                    }
+                }
                 None => app.toasts.add_toast(adap::Toast::new(&format!("{id} : introuvable"))),
             }
         });

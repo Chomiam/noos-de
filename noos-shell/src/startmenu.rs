@@ -336,6 +336,7 @@ impl StartMenu {
                     continue;
                 }
                 let tile = app_tile(&app);
+                self.attach_app_menu(&tile, &app);
                 let m = self.clone();
                 tile.connect_clicked(move |_| m.launch(&app));
                 self.pinned.insert(&tile, -1);
@@ -351,8 +352,48 @@ impl StartMenu {
         }
         self.all.remove_all();
         for app in apps::all() {
-            self.all.append(&app_row(&app));
+            let row = app_row(&app);
+            self.attach_app_menu(&row, &app);
+            self.all.append(&row);
         }
+    }
+
+    /// Clic droit sur une appli : « Fiche dans Logiciels », « Désinstaller » (Logiciels retrouve
+    /// le paquet apt, Flatpak ou l'AppImage du lanceur).
+    fn attach_app_menu(self: &Rc<Self>, widget: &impl IsA<gtk::Widget>, app: &gio::AppInfo) {
+        let Some(id) = app.id().map(|i| i.to_string()) else { return };
+        let gesture = gtk::GestureClick::new();
+        gesture.set_button(3);
+        let (m, w) = (self.clone(), widget.clone().upcast::<gtk::Widget>());
+        gesture.connect_pressed(move |g, _, x, y| {
+            g.set_state(gtk::EventSequenceState::Claimed);
+            let pop = gtk::Popover::new();
+            pop.set_parent(&w);
+            pop.set_has_arrow(false);
+            pop.set_pointing_to(Some(&gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
+            let list = gtk::Box::new(gtk::Orientation::Vertical, 2);
+            for (label, icon, extra) in [("Fiche dans Logiciels", "system-software-install-symbolic", ""), ("Désinstaller…", "user-trash-symbolic", " --uninstall")] {
+                let b = gtk::Button::new();
+                let c = adap::ButtonContent::builder().label(label).icon_name(icon).build();
+                c.set_halign(gtk::Align::Start);
+                b.set_child(Some(&c));
+                b.add_css_class("flat");
+                let (m, pop2, cmd) = (m.clone(), pop.clone(), format!("noos-software --app '{}'{extra}", id.replace('\'', "")));
+                b.connect_clicked(move |_| {
+                    pop2.popdown();
+                    apps::spawn(&cmd);
+                    m.hide();
+                });
+                list.append(&b);
+            }
+            pop.set_child(Some(&list));
+            pop.connect_closed(|p| {
+                let p = p.clone();
+                glib::idle_add_local_once(move || p.unparent());
+            });
+            pop.popup();
+        });
+        widget.add_controller(gesture);
     }
 
     fn on_search(&self, text: &str) {

@@ -1159,13 +1159,36 @@ fn main() -> glib::ExitCode {
         // Fichiers ouverts (Explorateur : `noos-software %F`). AppImage déjà installées :
         // lancées sans ouvrir de fenêtre ; sinon fenêtre « Installer ». Paquets .deb : fiche
         // du paquet puis installation par apt.
-        let paths: Vec<std::path::PathBuf> = cmd
-            .arguments()
-            .iter()
-            .skip(1)
-            .filter(|a| !a.to_string_lossy().starts_with("--"))
-            .filter_map(|a| cmd.create_file_for_arg(a).path())
-            .collect();
+        // Options : `--details <apt:gimp|flatpak:id|gimp>`, `--app <lanceur.desktop>` (menu
+        // Démarrer, barre des tâches), `--uninstall` (avec --app / --details), `--updates` ;
+        // liens `appstream://<id>` et fichiers `.flatpakref` : fiche du logiciel.
+        let args: Vec<String> = cmd.arguments().iter().skip(1).map(|a| a.to_string_lossy().to_string()).collect();
+        let mut spec: Option<String> = None;
+        let mut uninstall = false;
+        let mut appimage_page = false;
+        let mut rest: Vec<String> = Vec::new();
+        let mut it = args.iter();
+        while let Some(a) = it.next() {
+            match a.as_str() {
+                "--details" => spec = it.next().cloned(),
+                "--app" => match it.next().and_then(|d| noos_pkg::owner::owner_of_desktop(d)) {
+                    Some(noos_pkg::owner::Owner::AppImage(_)) => appimage_page = true,
+                    Some(o) => spec = o.spec(),
+                    None => eprintln!("noos-software : paquet du lanceur introuvable"),
+                },
+                "--uninstall" => uninstall = true,
+                _ if a.starts_with("appstream:") => {
+                    spec = Some(a.trim_start_matches("appstream:").trim_start_matches("//").trim_end_matches('/').to_string());
+                }
+                _ if a.ends_with(".flatpakref") => {
+                    let text = std::fs::read_to_string(a.trim_start_matches("file://")).unwrap_or_default();
+                    spec = noos_pkg::owner::desktop_key(&text.replace("[Flatpak Ref]", "[Desktop Entry]"), "Name").map(|n| format!("flatpak:{n}"));
+                }
+                _ if a.starts_with("--") => {}
+                _ => rest.push(a.clone()),
+            }
+        }
+        let paths: Vec<std::path::PathBuf> = rest.iter().filter_map(|a| cmd.create_file_for_arg(a).path()).collect();
         let (files, debs): (Vec<_>, Vec<_>) =
             paths.into_iter().filter(|p| noos_pkg::appimage::is_appimage(p) || noos_pkg::deb::is_deb(p)).partition(|p| noos_pkg::appimage::is_appimage(p));
         if !files.is_empty() && debs.is_empty() && app.active_window().is_none() {
@@ -1191,6 +1214,20 @@ fn main() -> glib::ExitCode {
                 }
             }
         });
+        if let Some(spec) = &spec {
+            APP.with(|a| {
+                if let Some(a) = a.borrow().as_ref() {
+                    a.open_details_spec_with(spec, uninstall);
+                }
+            });
+        }
+        if appimage_page {
+            STACK.with(|s| {
+                if let Some(s) = s.borrow().as_ref() {
+                    s.set_visible_child_name("installed");
+                }
+            });
+        }
         // `noos-software --updates` : page Mises à jour (icône de la barre des tâches).
         if cmd.arguments().iter().any(|a| a.to_str() == Some("--updates")) {
             STACK.with(|s| {
