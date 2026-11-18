@@ -69,6 +69,11 @@ impl App {
             "Elle sera déplacée dans ~/Applications et ajoutée au menu Démarrer."
         });
         body.push_str("\nLes AppImage ne sont pas isolées du système : n'installez que celles d'une source de confiance.");
+        // Marqueur : l'AppImage sait-elle se mettre à jour ?
+        body.push_str(&match noos_pkg::appimage_update::update_info(&insp.path) {
+            Some(info) => format!("\n\n↻ {} : Logiciels vérifiera les nouvelles versions (page Mises à jour).", noos_pkg::appimage_update::describe(&info)),
+            None => "\n\nPas de mises à jour intégrées : surveillez le site de l'éditeur pour les nouvelles versions.".to_string(),
+        });
         let heading = match &insp.version {
             Some(v) => format!("Installer {} {v} ?", insp.name),
             None => format!("Installer {} ?", insp.name),
@@ -187,6 +192,75 @@ impl App {
     }
 
     /// Groupe « AppImage » de la page Installées (filtré comme les autres groupes).
+    /// Bouton « Mettre à jour » d'une AppImage (téléchargement, intégration, ancienne à la corbeille).
+    pub(crate) fn appimage_update_button(self: &Rc<Self>, path: &std::path::Path, up: noos_pkg::appimage_update::Available) -> gtk::Button {
+        let b = gtk::Button::with_label("Mettre à jour");
+        b.add_css_class("suggested-action");
+        b.set_valign(gtk::Align::Center);
+        let (app, path) = (self.clone(), path.to_path_buf());
+        b.connect_clicked(move |b| {
+            b.set_sensitive(false);
+            b.set_label("Téléchargement…");
+            let (p, u) = (path.clone(), up.clone());
+            let task = background(move || noos_pkg::appimage_update::apply(&p, &u).map_err(|e| format!("{e:#}")));
+            let (app2, path2) = (app.clone(), path.clone());
+            glib::spawn_future_local(async move {
+                match task.await {
+                    Ok(newp) => {
+                        app2.appimage_updates.borrow_mut().remove(&path2);
+                        app2.toasts.add_toast(adap::Toast::new(&format!("Mise à jour installée : {}", tilde(&newp))));
+                    }
+                    Err(e) => app2.appimage_error("Mise à jour impossible", &e),
+                }
+                app2.render_installed();
+                app2.fill_appimage_updates();
+            });
+        });
+        b
+    }
+
+    /// Recherche des nouvelles versions des AppImage installées (réseau, en arrière-plan).
+    pub(crate) fn check_appimage_updates(self: &Rc<Self>) {
+        let task = background(|| {
+            appimage::installed()
+                .into_iter()
+                .filter_map(|i| {
+                    let info = noos_pkg::appimage_update::update_info(&i.path)?;
+                    let up = noos_pkg::appimage_update::check(&i.path, &info).ok()??;
+                    Some((i.path, up))
+                })
+                .collect::<std::collections::HashMap<_, _>>()
+        });
+        let app = self.clone();
+        glib::spawn_future_local(async move {
+            *app.appimage_updates.borrow_mut() = task.await;
+            app.fill_appimage_updates();
+            app.render_installed();
+        });
+    }
+
+    /// Groupe « AppImage » de la page Mises à jour.
+    pub(crate) fn fill_appimage_updates(self: &Rc<Self>) {
+        crate::clear(&self.appimage_box);
+        let ups = self.appimage_updates.borrow().clone();
+        if ups.is_empty() {
+            return;
+        }
+        let g = adap::PreferencesGroup::new();
+        g.set_title(&format!("AppImage — {} nouvelle(s) version(s)", ups.len()));
+        g.set_description(Some("Téléchargées depuis l'éditeur ; l'ancienne version est mise à la corbeille"));
+        let names: std::collections::HashMap<PathBuf, (String, Option<PathBuf>)> =
+            appimage::installed().into_iter().map(|i| (i.path, (i.name, i.icon))).collect();
+        for (path, up) in ups {
+            let (name, icon) = names.get(&path).cloned().unwrap_or_else(|| (path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(), None));
+            let r = row(&name, &format!("{} → {}", tilde(&path), up.file_name));
+            r.add_prefix(&app_icon(icon.as_deref(), 32));
+            r.add_suffix(&self.appimage_update_button(&path, up));
+            g.add(&r);
+        }
+        self.appimage_box.append(&g);
+    }
+
     pub(crate) fn appimage_group(self: &Rc<Self>, filter: &str) -> adap::PreferencesGroup {
         let list = appimage::installed();
         let loose = appimage::unintegrated();
@@ -221,6 +295,19 @@ impl App {
             sub.push(tilde(&inst.path));
             let r = row(&inst.name, &sub.join(" · "));
             r.add_prefix(&app_icon(inst.icon.as_deref(), 32));
+            // Marqueur des mises à jour intégrées, et bouton si une nouvelle version est trouvée.
+            if let Some(info) = noos_pkg::appimage_update::update_info(&inst.path) {
+                let available = self.appimage_updates.borrow().get(&inst.path).cloned();
+                let b = gtk::Label::new(Some(if available.is_some() { "↻ Nouvelle version" } else { "↻ Mises à jour intégrées" }));
+                b.add_css_class("noos-badge");
+                b.add_css_class(if available.is_some() { "system" } else { "flatpak" });
+                b.set_valign(gtk::Align::Center);
+                b.set_tooltip_text(Some(noos_pkg::appimage_update::describe(&info)));
+                r.add_suffix(&b);
+                if let Some(up) = available {
+                    r.add_suffix(&self.appimage_update_button(&inst.path, up));
+                }
+            }
             if !inst.path.exists() {
                 r.set_subtitle(&format!("Fichier introuvable : {}", tilde(&inst.path)));
             }

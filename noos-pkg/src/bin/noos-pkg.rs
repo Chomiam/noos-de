@@ -16,6 +16,7 @@
 //! noos-pkg appimage [fichier.AppImage]       lit une AppImage (sans l'exécuter) ; sans
 //!                                            fichier : AppImage installées
 //! noos-pkg appimage-install <fichier>        déplace dans ~/Applications + menu Démarrer
+//! noos-pkg appimage-update <fichier> [--apply]  mise à jour intégrée disponible ? (--apply : l'installer)
 //! noos-pkg deb <fichier.deb>                 fiche du paquet et simulation (sans root)
 //! noos-pkg details -b backend <id>           fiche détaillée (Logiciels) et simulation
 //! noos-pkg cleanup [--dry-run]              ce qui peut être nettoyé (orphelins, cache, noyaux…)
@@ -101,6 +102,23 @@ fn run() -> anyhow::Result<()> {
                 }
                 for p in appimage::unintegrated() {
                     println!("(hors menu) {}", p.display());
+                }
+            }
+        }
+        "appimage-update" => {
+            let f = std::path::PathBuf::from(args.rest.first().ok_or_else(|| anyhow::anyhow!("précisez le fichier"))?);
+            match noos_pkg::appimage_update::update_info(&f) {
+                None => println!("Pas de mises à jour intégrées"),
+                Some(info) => {
+                    println!("{} — {info}", noos_pkg::appimage_update::describe(&info));
+                    match noos_pkg::appimage_update::check(&f, &info)? {
+                        Some(a) if std::env::args().any(|x| x == "--apply") => {
+                            println!("Installation de {}…", a.file_name);
+                            println!("→ {}", noos_pkg::appimage_update::apply(&f, &a)?.display());
+                        }
+                        Some(a) => println!("Mise à jour disponible : {} ({})", a.file_name, a.url),
+                        None => println!("À jour"),
+                    }
                 }
             }
         }

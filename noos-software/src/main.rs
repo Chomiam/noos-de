@@ -57,6 +57,10 @@ struct App {
     installed_filter: gtk::SearchEntry,
     /// Tri de la page Installées : 0 nom, 1 place occupée.
     installed_sort: gtk::DropDown,
+    /// Nouvelles versions des AppImage installées (chemin → version disponible).
+    appimage_updates: RefCell<HashMap<std::path::PathBuf, noos_pkg::appimage_update::Available>>,
+    /// Groupe « AppImage » de la page Mises à jour (rempli en arrière-plan).
+    appimage_box: gtk::Box,
     /// Place occupée (clé `noos_pkg::space::key`), mesurée en arrière-plan.
     sizes: RefCell<HashMap<String, noos_pkg::space::Sizes>>,
     installed: RefCell<Vec<(usize, Vec<Package>, Option<String>)>>,
@@ -565,6 +569,7 @@ impl App {
 
     fn load_updates(self: &Rc<Self>) {
         self.search_updates(false);
+        self.check_appimage_updates();
     }
 
     /// Recherche des mises à jour (sans mot de passe) ; `force` : les métadonnées des dépôts
@@ -609,6 +614,9 @@ impl App {
     }
 
     fn render_updates(self: &Rc<Self>, results: Vec<(usize, Result<Vec<Update>, String>)>) {
+        if let Some(p) = self.appimage_box.parent() {
+            p.downcast::<gtk::Box>().unwrap().remove(&self.appimage_box);
+        }
         clear(&self.updates_box);
         let total: usize = results.iter().filter_map(|(_, r)| r.as_ref().ok()).map(|u| u.len()).sum();
         self.updates_page.set_badge_number(total as u32);
@@ -655,6 +663,7 @@ impl App {
             header.append(&all);
         }
         self.updates_box.append(&header);
+        self.updates_box.append(&self.appimage_box);
 
         // Mises à jour apt « au redémarrage » (installées avant le démarrage, rien d'ouvert).
         let apt_total: usize = results.iter().filter(|(i, _)| self.kind(*i) == BackendKind::Apt).filter_map(|(_, r)| r.as_ref().ok()).map(|u| u.len()).sum();
@@ -1234,6 +1243,8 @@ fn build(gapp: &adap::Application) {
         installed_filter: installed_filter.clone(),
         installed_sort: installed_sort.clone(),
         sizes: RefCell::new(HashMap::new()),
+        appimage_updates: RefCell::new(HashMap::new()),
+        appimage_box: gtk::Box::new(gtk::Orientation::Vertical, 0),
         installed: RefCell::new(vec![]),
         updates_box,
         updates_page,

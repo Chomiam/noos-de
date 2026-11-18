@@ -11,6 +11,7 @@
 //! backends en **logiciels** proposant une ou plusieurs installations (voir [`catalog`]).
 
 pub mod appimage;
+pub mod appimage_update;
 pub mod appimagehub;
 pub mod backends;
 pub mod catalog;
