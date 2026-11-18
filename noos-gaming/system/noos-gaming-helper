@@ -1,0 +1,166 @@
+#!/bin/bash
+# noos-gaming-helper — réglages système du mode jeu Steam (Paramètres › Jeux), en root par
+# pkexec (action polkit org.noos.gaming.helper : mot de passe administrateur). Agit toujours
+# pour le compte qui l'a lancé (PKEXEC_UID), jamais pour un autre.
+#
+#   session on|off          session « Steam (mode jeu) » proposée par l'écran de connexion
+#                           (/usr/local/share/wayland-sessions/noos-steam.desktop) ;
+#                           « off » retire aussi le démarrage direct dans Steam
+#   boot login|desktop|steam
+#                           au démarrage du PC : écran de connexion, bureau NOOS ou mode jeu
+#                           Steam (connexion automatique greetd [initial_session] du compte)
+#   decky install|remove    Decky Loader (greffons de l'interface Steam), comme le script
+#                           officiel decky-installer mais sans exécuter de script téléchargé :
+#                           version publiée sur GitHub, empreinte SHA-256 vérifiée,
+#                           ~/homebrew/services/PluginLoader, service plugin_loader (root)
+set -euo pipefail
+export LC_ALL=C.UTF-8
+die() { echo "noos-gaming-helper : $*" >&2; exit 1; }
+
+STEAM_DESKTOP=/usr/local/share/wayland-sessions/noos-steam.desktop
+GREETD_CONF=/etc/greetd/config.toml
+DECKY_UNIT=/etc/systemd/system/plugin_loader.service
+DECKY_API=https://api.github.com/repos/SteamDeckHomebrew/decky-loader/releases/latest
+
+[ "$(id -u)" -eq 0 ] || die "à lancer en root (pkexec)"
+uid="${PKEXEC_UID:-}"
+[ -n "$uid" ] || die "à lancer par pkexec (PKEXEC_UID absent)"
+user="$(getent passwd "$uid" | cut -d: -f1)"
+home="$(getent passwd "$uid" | cut -d: -f6)"
+[ -n "$user" ] && [ -d "$home" ] || die "compte inconnu : $uid"
+as_user() { runuser -u "$user" -- "$@"; }
+
+# /etc/greetd/config.toml sans sa section [initial_session].
+without_initial_session() {
+    awk '/^\[/{skip = ($0 ~ /^\[initial_session\][[:space:]]*$/)} !skip && !/^# (Connexion automatique au démarrage|Bascule ponctuelle)/' "$GREETD_CONF" \
+        | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}'   # lignes vides finales
+}
+
+set_initial_session() {   # $1 = commande ou vide (pas de connexion automatique)
+    [ -f "$GREETD_CONF" ] || die "$GREETD_CONF introuvable (greetd n'est pas l'écran de connexion)"
+    local tmp
+    tmp="$(mktemp "$GREETD_CONF.XXXXXX")"
+    {
+        without_initial_session
+        if [ -n "$1" ]; then
+            printf '\n# Connexion automatique au démarrage (Paramètres › Jeux).\n'
+            printf '[initial_session]\nuser = "%s"\ncommand = "%s"\n' "$user" "$1"
+        fi
+    } >"$tmp"
+    chmod 644 "$tmp"
+    mv -f "$tmp" "$GREETD_CONF"
+}
+
+desktop_exec() {
+    local f exec
+    for f in /usr/share/wayland-sessions/noos.desktop /usr/local/share/wayland-sessions/noos.desktop; do
+        [ -f "$f" ] && exec="$(sed -n 's/^Exec=//p' "$f" | head -1)" && [ -n "$exec" ] && { echo "$exec"; return; }
+    done
+    echo /usr/bin/noos-session
+}
+
+case "${1:-} ${2:-}" in
+"session on")
+    command -v gamescope >/dev/null || [ -x /usr/games/gamescope ] || die "gamescope n'est pas installé"
+    install -d -m755 "$(dirname "$STEAM_DESKTOP")"
+    cat >"$STEAM_DESKTOP" <<'EOF'
+[Desktop Entry]
+Name=Steam (mode jeu)
+Name[en]=Steam (Game Mode)
+Comment=Steam en plein écran comme sur le Steam Deck (gamescope), sans le bureau
+Comment[en]=Steam Big Picture like on the Steam Deck (gamescope), without the desktop
+Exec=/usr/libexec/noos-steam-session
+TryExec=/usr/libexec/noos-steam-session
+Type=Application
+DesktopNames=gamescope
+EOF
+    chmod 644 "$STEAM_DESKTOP"
+    echo "session « Steam (mode jeu) » ajoutée"
+    ;;
+"session off")
+    rm -f "$STEAM_DESKTOP"
+    if [ -f "$GREETD_CONF" ] && grep -q 'noos-steam-session' "$GREETD_CONF"; then
+        set_initial_session ""
+        echo "démarrage direct dans Steam retiré"
+    fi
+    echo "session « Steam (mode jeu) » retirée"
+    ;;
+"boot login")
+    set_initial_session ""
+    echo "au démarrage : écran de connexion"
+    ;;
+"boot desktop")
+    set_initial_session "env XDG_SESSION_TYPE=wayland XDG_SESSION_DESKTOP=noos XDG_CURRENT_DESKTOP=NOOS $(desktop_exec)"
+    echo "au démarrage : bureau NOOS ($user)"
+    ;;
+"boot steam")
+    [ -f "$STEAM_DESKTOP" ] || die "activez d'abord le mode jeu Steam"
+    set_initial_session "env XDG_SESSION_TYPE=wayland XDG_SESSION_DESKTOP=noos-steam XDG_CURRENT_DESKTOP=gamescope /usr/libexec/noos-steam-session"
+    echo "au démarrage : mode jeu Steam ($user)"
+    ;;
+"decky install")
+    command -v curl >/dev/null || die "curl manquant"
+    hb="$home/homebrew"
+    echo "→ dernière version publiée : $DECKY_API"
+    release="$(curl -fsSL -H 'Accept: application/vnd.github+json' "$DECKY_API")" || die "GitHub injoignable"
+    version="$(sed -n 's/^  "tag_name": "\(.*\)",$/\1/p' <<<"$release" | head -1)"
+    [[ "$version" =~ ^v[0-9][0-9A-Za-z.+-]*$ ]] || die "version illisible : $version"
+    # Empreinte SHA-256 publiée par GitHub pour le fichier « PluginLoader » (Linux x86_64).
+    digest="$(awk '/"name": "PluginLoader",/{f=1} f && /"digest":/{gsub(/.*"sha256:|".*/, ""); print; exit}' <<<"$release")"
+    [[ "$digest" =~ ^[0-9a-f]{64}$ ]] || die "empreinte SHA-256 absente de la publication $version"
+    url="https://github.com/SteamDeckHomebrew/decky-loader/releases/download/$version/PluginLoader"
+    echo "→ téléchargement de Decky Loader $version : $url"
+    tmp="$(mktemp)"
+    trap 'rm -f "$tmp"' EXIT
+    curl -fL --retry 3 -o "$tmp" "$url" || die "téléchargement impossible"
+    echo "$digest  $tmp" | sha256sum -c --quiet - || die "empreinte SHA-256 incorrecte : fichier rejeté"
+    echo "→ empreinte vérifiée ($digest)"
+    systemctl disable --now plugin_loader.service >/dev/null 2>&1 || true
+    as_user mkdir -p "$hb/plugins"
+    # Débogage distant de l'interface de Steam (CEF) : c'est par lui que Decky s'y greffe.
+    for steam_dir in "$home/.steam/steam" "$home/.local/share/Steam" "$home/.var/app/com.valvesoftware.Steam/data/Steam"; do
+        [ -d "$steam_dir" ] && as_user touch "$steam_dir/.cef-enable-remote-debugging"
+    done
+    rm -rf "$hb/services"
+    as_user mkdir -p "$hb/services/.systemd"
+    install -m755 "$tmp" "$hb/services/PluginLoader"
+    echo "$version" >"$hb/services/.loader.version"
+    unit="[Unit]
+Description=SteamDeck Plugin Loader
+After=network.target
+[Service]
+Type=simple
+User=root
+Restart=always
+KillMode=process
+TimeoutStopSec=15
+ExecStart=$hb/services/PluginLoader
+WorkingDirectory=$hb/services
+Environment=UNPRIVILEGED_PATH=$hb
+Environment=PRIVILEGED_PATH=$hb
+Environment=LOG_LEVEL=INFO
+[Install]
+WantedBy=multi-user.target"
+    printf '%s\n' "$unit" >"$DECKY_UNIT"
+    # Modèles que le système de mise à jour intégré de Decky réutilise.
+    printf '%s\n' "${unit//"$hb"/\$\{HOMEBREW_FOLDER\}}" >"$hb/services/.systemd/plugin_loader-release.service"
+    cp "$hb/services/.systemd/plugin_loader-release.service" "$hb/services/.systemd/plugin_loader-backup.service"
+    systemctl daemon-reload
+    systemctl enable --now plugin_loader.service
+    echo "Decky Loader $version installé (service plugin_loader)"
+    ;;
+"decky remove")
+    hb="$home/homebrew"
+    systemctl disable --now plugin_loader.service >/dev/null 2>&1 || true
+    rm -f "$DECKY_UNIT"
+    systemctl daemon-reload
+    rm -rf "$hb/services"
+    for steam_dir in "$home/.steam/steam" "$home/.local/share/Steam" "$home/.var/app/com.valvesoftware.Steam/data/Steam"; do
+        rm -f "$steam_dir/.cef-enable-remote-debugging"
+    done
+    echo "Decky Loader désinstallé (greffons et réglages gardés dans $hb)"
+    ;;
+*)
+    die "usage : session on|off | boot login|desktop|steam | decky install|remove"
+    ;;
+esac

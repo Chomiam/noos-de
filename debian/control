@@ -196,7 +196,18 @@ Recommends: grim,
             glycin-loaders,
 # Drapeaux des pays (Paramètres › Réseau › DNS) ; noms des cartes graphiques
             libtimezonemap1,
-            pci.ids
+            pci.ids,
+# Paramètres › Jeux : GameMode (gamemoderun), proposé aussi dans « Composants pour le jeu »
+            gamemode
+# Paramètres › Jeux : outils du jeu courants (64 et 32 bits). Le mode jeu Steam installe
+# lui-même gamescope et steam-installer (contrib) à la demande.
+Suggests: gamescope,
+          steam-installer,
+          mangoapp,
+          mangohud,
+          vkbasalt,
+          lutris,
+          protontricks
 Description: Bureau Wayland NOOS (Smithay, GTK4 + libAdapta), façon Windows 11
  NOOS est un environnement de bureau Wayland écrit en Rust : compositeur Smithay,
  barre des tâches et menu Démarrer façon Windows 11, Paramètres, explorateur de

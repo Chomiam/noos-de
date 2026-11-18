@@ -1,0 +1,113 @@
+#!/bin/bash
+# noos-steam-session — session « Steam (mode jeu) » : Steam en grand écran (interface du
+# Steam Deck) dans gamescope, sans le bureau NOOS. Lancée par greetd (écran de connexion,
+# connexion automatique ou bascule depuis le bureau : noos-session-switch).
+#
+# Réglages : ~/.config/noos/steam-session.conf (écrit par Paramètres › Jeux), lignes CLÉ=valeur :
+#   OUTPUT=        connecteur à utiliser (ex. DP-1), vide = automatique
+#   RESOLUTION=    LARGEURxHAUTEUR, vide = définition native de l'écran
+#   REFRESH=       fréquence en Hz, vide = automatique
+#   HDR=0|1        HDR10 (écran compatible)
+#   VRR=0|1        fréquence variable (FreeSync / G-Sync compatible)
+#   FPS_LIMIT=     limite d'images par seconde, 0 = aucune (Steam peut aussi la régler)
+#   FILTER=        mise à l'échelle : vide (auto), fsr, nis, linear, nearest, pixel
+#   MANGOAPP=0|1   statistiques de performances de Steam (mangoapp)
+#   STEAMDECK=0|1  Steam se présente comme un Steam Deck (-steamdeck)
+#
+# « Passer au bureau » dans Steam appelle steamos-session-select (fourni par NOOS dans
+# /usr/lib/noos/steamos, ajouté en tête du PATH) : retour à la session NOOS sans mot de passe.
+set -u
+
+CONF="${XDG_CONFIG_HOME:-$HOME/.config}/noos/steam-session.conf"
+LOG="${XDG_STATE_HOME:-$HOME/.local/state}/noos/steam-session.log"
+mkdir -p "$(dirname "$LOG")"
+exec >>"$LOG" 2>&1
+echo "── $(date '+%F %T') : démarrage du mode jeu Steam"
+
+# Langue : /etc/pam.d/greetd ne lit pas /etc/default/locale (même correctif que noos-session).
+if [ -z "${LANG:-}" ] && [ -r /etc/default/locale ]; then
+    set -a
+    # shellcheck disable=SC1091
+    . /etc/default/locale
+    set +a
+fi
+
+OUTPUT="" RESOLUTION="" REFRESH="" HDR=0 VRR=1 FPS_LIMIT=0 FILTER="" MANGOAPP=1 STEAMDECK=1
+if [ -r "$CONF" ]; then
+    # Lecture stricte (pas de « source ») : seules les clés connues, valeurs vérifiées.
+    while IFS='=' read -r key value; do
+        value="${value%%#*}"
+        value="${value//[[:space:]]/}"
+        case "$key" in
+            OUTPUT) [[ "$value" =~ ^[A-Za-z0-9-]*$ ]] && OUTPUT="$value" ;;
+            RESOLUTION) [[ "$value" =~ ^([0-9]+x[0-9]+)?$ ]] && RESOLUTION="$value" ;;
+            REFRESH) [[ "$value" =~ ^[0-9]*$ ]] && REFRESH="$value" ;;
+            HDR | VRR | MANGOAPP | STEAMDECK) [[ "$value" =~ ^[01]$ ]] && printf -v "$key" '%s' "$value" ;;
+            FPS_LIMIT) [[ "$value" =~ ^[0-9]+$ ]] && FPS_LIMIT="$value" ;;
+            FILTER) [[ "$value" =~ ^(|fsr|nis|linear|nearest|pixel)$ ]] && FILTER="$value" ;;
+        esac
+    done <"$CONF"
+fi
+
+GAMESCOPE="$(command -v gamescope || echo /usr/games/gamescope)"
+STEAM="$(command -v steam || echo /usr/games/steam)"
+if [ ! -x "$GAMESCOPE" ] || [ ! -x "$STEAM" ]; then
+    echo "gamescope ou Steam manquant : ouverture du bureau NOOS à la place"
+    for s in /usr/bin/noos-session /usr/local/bin/noos-session; do [ -x "$s" ] && exec "$s"; done
+    exit 1
+fi
+
+args=(-e --xwayland-count 2)
+[ -n "$OUTPUT" ] && args+=(--prefer-output "$OUTPUT")
+if [ -n "$RESOLUTION" ]; then
+    args+=(-W "${RESOLUTION%x*}" -H "${RESOLUTION#*x}")
+fi
+[ -n "$REFRESH" ] && [ "$REFRESH" -gt 0 ] && args+=(-r "$REFRESH")
+[ "$VRR" = 1 ] && args+=(--adaptive-sync)
+[ "$HDR" = 1 ] && args+=(--hdr-enabled)
+[ "$FPS_LIMIT" -gt 0 ] && args+=(--framerate-limit "$FPS_LIMIT")
+[ -n "$FILTER" ] && args+=(-F "$FILTER")
+[ "$MANGOAPP" = 1 ] && command -v mangoapp >/dev/null && args+=(--mangoapp)
+
+# Session façon SteamOS (mêmes variables que gamescope-session de ChimeraOS / Bazzite).
+export XDG_CURRENT_DESKTOP=gamescope
+export XDG_SESSION_DESKTOP=noos-steam
+export XDG_SESSION_TYPE=wayland
+export PATH="/usr/lib/noos/steamos:$PATH:/usr/games"
+export STEAM_MULTIPLE_XWAYLANDS=1
+export STEAM_ENABLE_VOLUME_HANDLER=1
+export STEAM_DISABLE_AUDIO_DEVICE_SWITCHING=1
+export STEAM_GAMESCOPE_VRR_SUPPORTED=1
+export STEAM_GAMESCOPE_TEARING_SUPPORTED=1
+export STEAM_GAMESCOPE_HAS_TEARING_SUPPORT=1
+export STEAM_GAMESCOPE_DYNAMIC_FPSLIMITER=1
+export STEAM_GAMESCOPE_NIS_SUPPORTED=1
+export STEAM_GAMESCOPE_COLOR_TOYS=1
+export STEAM_GAMESCOPE_FANCY_SCALING_SUPPORT=1
+export STEAM_ALLOW_DRIVE_UNMOUNT=1
+export STEAM_ALLOW_DRIVE_ADOPT=1
+export STEAM_USE_DYNAMIC_VRS=1
+export SRT_URLOPEN_PREFER_STEAM=1
+export SDL_VIDEO_MINIMIZE_ON_FOCUS_LOSS=0
+export QT_IM_MODULE=steam
+export GTK_IM_MODULE=Steam
+export ENABLE_GAMESCOPE_WSI=1
+export vk_xwayland_wait_ready=false
+[ "$HDR" = 1 ] && export STEAM_GAMESCOPE_HDR_SUPPORTED=1 DXVK_HDR=1
+if [ "$MANGOAPP" = 1 ] && command -v mangoapp >/dev/null; then
+    export STEAM_USE_MANGOAPP=1 STEAM_MANGOAPP_PRESETS_SUPPORTED=1 STEAM_DISABLE_MANGOAPP_ATOM_WORKAROUND=1
+    export MANGOHUD_CONFIGFILE="${XDG_RUNTIME_DIR:-/tmp}/noos-mangohud.conf"
+    : >"$MANGOHUD_CONFIGFILE"
+fi
+
+steam_args=(-gamepadui -steamos3 -steampal)
+[ "$STEAMDECK" = 1 ] && steam_args+=(-steamdeck)
+
+# Services de la session utilisateur (PipeWire, portails) : environnement à jour.
+systemctl --user import-environment XDG_CURRENT_DESKTOP XDG_SESSION_TYPE PATH 2>/dev/null || true
+
+echo "gamescope ${args[*]} -- steam ${steam_args[*]}"
+"$GAMESCOPE" "${args[@]}" -- "$STEAM" "${steam_args[@]}"
+status=$?
+echo "── $(date '+%F %T') : fin du mode jeu (code $status)"
+exit "$status"

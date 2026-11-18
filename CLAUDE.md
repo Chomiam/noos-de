@@ -67,6 +67,7 @@ donne le contexte de travail.
 | `noos-save/` | « Sauvegarder et Restaurer » : instantanés Btrfs (snapper, `ALLOW_GROUPS=sudo`), avant / après chaque opération apt (`/etc/apt/apt.conf.d/80noos-save` → `noos-save-helper apt-pre/apt-post`, numéro « avant » dans `/run/noos-save/apt-pre`), restauration au redémarrage ; comparaison des paquets par `dpkg-query --admindir` |
 | `noos-grub/` | Thème GRUB (`generate.py` produit images et polices .pf2, déjà générées) ; `install.sh` le copie dans `/boot/grub/themes/noos` |
 | `noos-shell/src/power.rs` + `noos-core/src/power.rs` | **Énergie** (élément `power` de la barre, `[taskbar] show_power`) : batterie dessinée (UPower par D-Bus, `PropertiesChanged` ; repli `/sys/class/power_supply`), jauge du mode sur PC fixe, panneau (santé, consommation, modes). Modes : power-profiles-daemon, sinon **auto-cpufreq** (portables : PPD masqué, `pkexec /usr/libexec/noos-power-helper profile <mode>`, action `org.noos.power.helper`) |
+| `noos-gaming/` + `noos-settings/src/gaming/` | **Mode jeu Steam** (Paramètres › Jeux) : session gamescope `noos-steam-session` (réglages `~/.config/noos/steam-session.conf`), bascule bureau ↔ Steam sans mot de passe `noos-session-switch` (pkexec `org.noos.gaming.switch`, unité `systemd-run` + `[initial_session]` ponctuel de greetd par `/run/noos-gaming/greetd.toml`), `noos-gaming-helper` (pkexec `org.noos.gaming.helper` : session, démarrage, Decky Loader), `steamos-session-select` dans `/usr/lib/noos/steamos` ; composants pour le jeu (apt + Flatpak par noos-pkg) |
 | `noos-system/` | Réglages système livrés par le paquet : Wi-Fi/Ethernet sans économie d'énergie, WirePlumber sans mise en veille, sudo `pwfeedback`, PAM `noos-lock`, `GRUB_DISTRIBUTOR=NOOS` (`/etc/default/grub.d/90-noos.cfg`), `noos-boot-setup` (initramfs-tools), fastfetch, fish |
 
 ## Environnement de travail
@@ -182,6 +183,7 @@ compositeur y écrit (`[desktops] names`).
 | `NOOS_PKG_ELEVATE=sudo\|none` | noos-pkg : élévation par `sudo -n` ou aucune (tests), au lieu de pkexec |
 | `NOOS_SHARE_DEMO=1\|nopass\|off\|missing` (+ `NOOS_SHARE_QR=1`) | noos-settings › Partage (`noos-settings samba\|ssh\|webdav`) : services, dossiers, connexions, clés fictifs (sans mot de passe / tout désactivé / paquets absents) ; premier QR code ouvert |
 | `NOOS_POWER_DEMO=battery\|charging\|low\|critical\|full\|plugged\|desktop` (+ `NOOS_POWER_OPEN=1`) | noos-shell : batterie fictive (ou PC fixe) dans la barre, modes fictifs ; panneau Énergie ouvert après 2 s. noos-installer : portable simulé (sauf `desktop`) |
+| `NOOS_GAMING_DEMO=1\|on\|installing` (+ `NOOS_GAMING_DIALOG=enable\|disable\|decky\|switch`) | noos-settings › Jeux (`noos-settings gaming`) : mode jeu Steam désactivé / activé (Decky, démarrage dans Steam, composants installés) / activation en cours, sans rien exécuter ; fenêtre de confirmation ouverte |
 | `NOOS_FILE_NET_DEMO=1` | noos-file : appareils, partages et serveurs fictifs dans la page Réseau (`NOOS_FILE_DEMO='network:///;connect'` ou `;auth` : dialogue « Se connecter à un serveur » / fenêtre d'identifiants) |
 
 ### Règles de sécurité (erreurs déjà commises)

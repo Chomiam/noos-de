@@ -9,6 +9,7 @@ mod default_apps;
 mod desktops;
 mod devices;
 mod display_hdr;
+mod gaming;
 mod lockscreen;
 mod login;
 mod network;
@@ -36,7 +37,7 @@ const CATEGORIES: &[(&str, &str, &str, Builder)] = &[
     ("Personnalisation", "applications-graphics-symbolic", "nav-orange", personalization::root),
     ("Applications", "view-app-grid-symbolic", "nav-purple", apps::root),
     ("Bureaux virtuels", "window-restore-symbolic", "nav-purple", desktops::root),
-    ("Jeux", "input-gaming-symbolic", "nav-green", other::gaming),
+    ("Jeux", "input-gaming-symbolic", "nav-green", gaming::page),
     ("Confidentialité et sécurité", "security-high-symbolic", "nav-grey", security::root),
     ("Mises à jour", "software-update-available-symbolic", "nav-teal", other::updates),
 ];
@@ -83,6 +84,9 @@ const SEARCH: &[(&str, &str, usize, Option<Builder>)] = &[
     ("Disposition des écrans", "plusieurs écrans moniteurs disposition principal second écran multi", 0, Some(system::display)),
     ("VRR / FreeSync", "vrr freesync gsync variable jeux", 6, None),
     ("Mode Jeu", "mode jeu gaming", 6, None),
+    ("Mode jeu Steam", "steam gamescope big picture steam deck session console manette", 6, None),
+    ("Decky Loader", "decky greffons plugins steam deck", 6, None),
+    ("Composants pour le jeu", "gamemode mangohud goverlay protonplus proton-ge lutris heroic bottles vkbasalt protontricks", 6, None),
     ("Pare-feu", "pare-feu firewall ports sécurité nftables connexions bloquées", 7, Some(security::firewall_page)),
     ("Applications autorisées par le pare-feu", "pare-feu autoriser bloquer application programme règle révoquer internet", 7, Some(security::firewall_page)),
     ("Ouvrir un port", "port ouvrir pare-feu serveur", 7, Some(security::firewall_page)),
@@ -124,6 +128,8 @@ const PAGES: &[(&str, usize, Option<Builder>)] = &[
     ("default-apps", 4, Some(apps::default_apps)),
     ("desktops", 5, None),
     ("gaming", 6, None),
+    // Raccourci « Mode jeu Steam » : page Jeux puis confirmation de la bascule.
+    ("steam-mode", 6, None),
     ("privacy", 7, None),
     ("firewall", 7, Some(security::firewall_page)),
     ("updates", 8, None),
@@ -310,6 +316,9 @@ fn build(gapp: &adap::Application) {
                 let p = sub(&app);
                 app.nav.push(&p);
             }
+            if name == "steam-mode" {
+                gaming::ask_switch(&app);
+            }
         };
         OPEN_PAGE.with(|o| *o.borrow_mut() = Some(Box::new(open)));
     }
@@ -345,7 +354,7 @@ fn main() -> glib::ExitCode {
         trace("startup (GTK/libAdapta initialisés)");
         std::mem::forget(noos_theme::Theming::init());
         let css = gtk::CssProvider::new();
-        css.load_from_string(ui::CSS);
+        css.load_from_string(&format!("{}{}", ui::CSS, gaming::CSS));
         gtk::style_context_add_provider_for_display(&gdk::Display::default().unwrap(), &css, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
         trace("startup : thème");
         // Comme sous Windows, Paramètres reste en mémoire pour la session : fermer la

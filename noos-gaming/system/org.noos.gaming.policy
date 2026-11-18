@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <vendor>NOOS</vendor>
+  <vendor_url>https://github.com/Chomiam/noos-de</vendor_url>
+  <!-- Paramètres › Jeux : session Steam, démarrage automatique, Decky Loader (root). -->
+  <action id="org.noos.gaming.helper">
+    <description>Configure Steam Game Mode</description>
+    <description xml:lang="fr">Configurer le mode jeu Steam</description>
+    <message>Authentication is required to configure Steam Game Mode</message>
+    <message xml:lang="fr">Une authentification est nécessaire pour configurer le mode jeu Steam</message>
+    <icon_name>input-gaming</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/noos-gaming-helper</annotate>
+  </action>
+  <!-- Bascule bureau ↔ mode jeu : on rouvre une session pour son propre compte, déjà
+       connecté. Sans mot de passe pour la session active (la session gamescope n'a pas
+       d'agent polkit pour en demander un). -->
+  <action id="org.noos.gaming.switch">
+    <description>Switch between the desktop and Steam Game Mode</description>
+    <description xml:lang="fr">Passer du bureau au mode jeu Steam</description>
+    <message>Authentication is required to switch sessions</message>
+    <message xml:lang="fr">Une authentification est nécessaire pour changer de session</message>
+    <icon_name>input-gaming</icon_name>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/noos-session-switch</annotate>
+  </action>
+</policyconfig>

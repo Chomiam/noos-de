@@ -17,6 +17,7 @@
 | `noos-firewall/` | **Pare-feu applicatif** : démon `noos-firewalld` (root, nftables + NFQUEUE), CLI `noos-firewall`, bibliothèque partagée (règles, protocole) |
 | `noos-firewall-prompt/` | Fenêtre d'autorisation du pare-feu (agent de session, GTK4 + libAdapta) |
 | `noos-share/` | **Partage de fichiers** en réseau local : modèle et fichiers générés (Samba, sshd, Avahi, règles du pare-feu), état des services, `noos-share-helper` (pkexec), `noos-webdav` (service utilisateur, rclone) |
+| `noos-gaming/` | **Mode jeu Steam** : session gamescope (`noos-steam-session`), bascule bureau ↔ Steam (`noos-session-switch`), `noos-gaming-helper` (pkexec), `steamos-session-select` et autres outils attendus par Steam |
 | `noos-keys/` | **Porte-clés** : mots de passe du Secret Service (gnome-keyring, oo7), trousseaux, clés SSH |
 | `noos-term/` | **Terminal** (VTE) : onglets, menu clic droit, thèmes, taille du texte, barre latérale d'alias (ex. `claude`) |
 | `noos-snip/` | **Outil Capture d'écran** (Win+Maj+S) : rectangle, fenêtre, plein écran, forme libre, annotation |
@@ -627,9 +628,96 @@ L'organisation reprend celle de Windows 11 : compte et recherche dans la barre l
 | Système › Informations | Processeur, mémoire, carte graphique, renommer le PC |
 | Personnalisation | Thèmes rapides, arrière-plan (images du jour Bing, avec changement quotidien automatique et bouton « Jours précédents » : l'archive de Bing s'arrête à 15 jours ; fonds Wallhaven au hasard ou par recherche, 24 par page, bouton « Charger plus d'images » jusqu'à la dernière page — retour à la page 1 à chaque nouvelle recherche, graine conservée pour que le hasard ne repasse pas les mêmes images), couleurs, thèmes libAdapta, barre des tâches (hauteur 28 à 96 px, icônes des applis actives regroupées dans « ^ » ou étalées), polices |
 | Bluetooth et appareils | Bluetooth (BlueZ) : appareils associés en tuiles (état, batterie, connecter / renommer / supprimer), assistant « Ajouter un appareil », visibilité ; liens vers Imprimantes et scanners, Souris, Clavier (voir « Bluetooth et appareils ») |
+| Jeux | Mode jeu Steam (session gamescope, démarrage, Decky Loader, affichage de gamescope), composants pour le jeu, VRR / scanout direct / HDR du bureau (voir « Jeux et mode jeu Steam ») |
 | Confidentialité › Pare-feu | Pare-feu applicatif NOOS : activation, mode, règles par application, ports, demandes en attente, journal (voir « Pare-feu ») |
 
 Une page s'ouvre directement avec `noos-settings <page>` (`display`, `power`, `firewall`, `taskbar`, `colors`, `bluetooth`, `printers`…).
+
+## Jeux et mode jeu Steam (Paramètres › Jeux)
+
+Code : `noos-settings/src/gaming/` (`model.rs` : état, réglages, catalogue — testé ; `mod.rs` :
+page), scripts système dans `noos-gaming/` (installés par `noos-gaming/install-system.sh`).
+
+**Mode jeu Steam** — l'interface du Steam Deck (`steam -gamepadui -steamos3`) dans sa propre
+session **gamescope**, sans le bureau, comme SteamOS, Bazzite ou ChimeraOS. Le grand
+interrupteur de la bannière l'active en une fois (une seule demande de mot de passe,
+`pkexec sh -c` de `noos-pkg`), après une fenêtre qui liste ce qui va être fait :
+
+1. contrib et non-free ajoutés aux sources Debian s'il le faut (préréglage `debian-nonfree` de
+   noos-pkg : **gamescope** et **steam-installer** sont dans contrib) ;
+2. licence de Steam acceptée par l'utilisateur dans la fenêtre, puis transmise à debconf
+   (`steam-installer steam/question select I AGREE`), sinon l'installation non interactive échoue ;
+3. `apt-get install gamescope steam-installer mangoapp` (i386 déjà actif sur NOOS) ;
+4. `noos-gaming-helper session on` : `/usr/local/share/wayland-sessions/noos-steam.desktop`
+   (« Steam (mode jeu) »), que noos-login liste juste après NOOS (icône manette) ;
+5. raccourci **« Mode jeu Steam »** (`~/.local/share/applications/org.noos.SteamGameMode.desktop`,
+   copié sur le bureau) = `noos-settings steam-mode` : confirmation, puis bascule.
+
+Désactiver retire la session, le raccourci et le démarrage direct ; Steam et les jeux restent.
+
+**Session** — `/usr/libexec/noos-steam-session` (journal `~/.local/state/noos/steam-session.log`)
+lit `~/.config/noos/steam-session.conf` (écrit par la page, lecture stricte : clés connues,
+valeurs vérifiées, jamais de `source`) et lance
+`gamescope -e --xwayland-count 2 [--prefer-output] [-W -H] [-r] [--adaptive-sync] [--hdr-enabled]
+[--framerate-limit] [-F fsr|nis|…] [--mangoapp] -- steam -gamepadui -steamos3 -steampal [-steamdeck]`
+avec les variables de gamescope-session (`STEAM_GAMESCOPE_*`, `STEAM_USE_MANGOAPP`…). La page
+affiche la commande obtenue. Définitions et fréquences proposées = modes de l'écran (IPC
+`GetOutputs`), disponibilité VRR / HDR expliquée par écran.
+
+**Passer d'une session à l'autre sans mot de passe** — `/usr/libexec/noos-session-switch
+steam|desktop`, par pkexec avec l'action `org.noos.gaming.switch` (**yes** pour la session
+active : on rouvre une session pour son propre compte, et la session gamescope n'a pas d'agent
+polkit) :
+
+- il retrouve la session logind active de l'appelant (`PKEXEC_UID`, seat0), puis confie la suite
+  à une unité passagère `systemd-run --unit=noos-session-switch` qui survit à la fin de session ;
+- l'appelant ferme sa session proprement : le bureau par l'IPC `Quit` du compositeur
+  (noos-settings, après la réussite de pkexec), Steam par `steam -shutdown` ;
+- l'unité attend la fermeture (30 s, puis `loginctl terminate-session`), écrit
+  `/run/noos-gaming/greetd.toml` (= `/etc/greetd/config.toml` + `[initial_session]` vers la
+  session voulue), ajoute un complément `/run/systemd/system/greetd.service.d/zz-noos-session-switch.conf`
+  (`ExecStart=greetd --config …`), relance greetd puis **retire aussitôt** le complément : la
+  connexion automatique ne vaut qu'une fois, un redémarrage de greetd retrouve la configuration
+  normale.
+
+Dans Steam, **Marche/Arrêt › Passer au bureau** appelle `steamos-session-select plasma` : NOOS
+fournit cet outil dans `/usr/lib/noos/steamos/` (en tête du `PATH` de la session seulement),
+avec `steamos-update` (code 7 = pas de mise à jour : le système se met à jour par apt),
+`steamos-select-branch` et `jupiter-biosupdate` (sans effet), comme ChimeraOS.
+
+**Démarrage du PC** — écran de connexion, bureau NOOS ou mode jeu Steam :
+`noos-gaming-helper boot login|desktop|steam` réécrit la section `[initial_session]` de
+`/etc/greetd/config.toml` pour le compte appelant (connexion automatique de greetd, sans
+authentification : c'est le principe). Lu par la page (`model::parse_boot`).
+
+**Decky Loader** — `noos-gaming-helper decky install|remove` refait le script officiel
+`decky-installer` **sans exécuter de script téléchargé** : version publiée (API GitHub), fichier
+`PluginLoader` dont l'empreinte SHA-256 publiée par GitHub est vérifiée, installé dans
+`~/homebrew/services` (emplacement attendu par le système de mise à jour intégré de Decky),
+`.cef-enable-remote-debugging` dans le dossier de Steam, service `plugin_loader` (root, comme
+l'original). La fenêtre de confirmation liste ces étapes et rappelle que Decky et ses greffons
+tournent en root. La désinstallation garde `~/homebrew/plugins`.
+
+**Composants pour le jeu** — tuiles installer / supprimer (état par `dpkg-query` et
+`flatpak list`), par `noos-pkg` : paquets Debian (`apt_root`, 32 bits compris si i386 est actif)
+**GameMode** (+ `libgamemode0:i386`), **MangoHud** (+ `:i386`), **vkBasalt** (+ `:i386`),
+**Gamescope**, **Steam**, **Lutris**, **Protontricks** (les quatre derniers dans contrib : activé à la
+demande), et Flatpak de Flathub (installation système si le remote système existe, sinon
+utilisateur) **GOverlay** (`io.github.benjamimgois.goverlay`), **ProtonPlus**
+(`com.vysp3r.ProtonPlus`), **ProtonUp-Qt** (`net.davidotek.pupgui2`), **Heroic**
+(`com.heroicgameslauncher.hgl`), **Bottles** (`com.usebottles.bottles`). Une fois installé, la
+tuile rappelle l'option de lancement Steam (`gamemoderun %command%`, `MANGOHUD=1 %command%`…).
+
+**Démo** (captures, rien n'est exécuté) : `NOOS_GAMING_DEMO=1` (désactivé), `on` (activé,
+Decky, démarrage dans Steam), `installing` (activation en cours) ; `NOOS_GAMING_DIALOG=enable|
+disable|decky|switch` ouvre la fenêtre correspondante. Ex. :
+`tools/preview/run_app.sh jeux.png 4 "env NOOS_GAMING_DEMO=on noos-settings gaming"`.
+
+**Essai sur une vraie machine** (étapes root faites par l'administrateur) : activer depuis la
+page, se déconnecter, choisir « Steam (mode jeu) » ; ou « Lancer le mode jeu ». Secours si la
+session Steam ne s'ouvre pas ou si le PC démarre en boucle dedans : console (Ctrl+Alt+F2), retirer
+la section `[initial_session]` de `/etc/greetd/config.toml`, puis `sudo systemctl restart greetd`
+(`sudo rm /usr/local/share/wayland-sessions/noos-steam.desktop` retire aussi la session).
 
 ## Bluetooth et appareils (Paramètres)
 

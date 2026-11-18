@@ -38,7 +38,7 @@ const NONINTERACTIVE: &[&str] = &[
     "Dpkg::Options::=--force-confold",
 ];
 
-pub(crate) fn apt_root(args: &[&str]) -> Vec<String> {
+pub fn apt_root(args: &[&str]) -> Vec<String> {
     NONINTERACTIVE.iter().chain(args).map(|s| s.to_string()).collect()
 }
 

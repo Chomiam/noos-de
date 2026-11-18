@@ -1,0 +1,8 @@
+#!/bin/bash
+# steamos-select-branch — branche du système demandée par Steam (mode -steamos3). Sur NOOS :
+# toujours « stable » (Debian sid + dépôt NOOS), aucun changement possible depuis Steam.
+case "${1:-}" in
+-c | "") echo stable ;;
+-l) printf 'stable\n' ;;
+*) exit 0 ;;
+esac

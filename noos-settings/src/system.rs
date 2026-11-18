@@ -54,7 +54,7 @@ pub fn root(app: &Rc<App>) -> adap::NavigationPage {
     g.add(&link(app, "video-display-symbolic", "Écran", "Moniteurs, résolution, échelle, HDR et VRR", display));
     g.add(&link(app, "preferences-system-notifications-symbolic", "Notifications", "Alertes des applications, ne pas déranger", notifications));
     g.add(&link(app, "battery-good-symbolic", "Alimentation", "Mode d'alimentation, extinction de l'écran, veille", power));
-    g.add(&link(app, "input-gaming-symbolic", "Jeux", "VRR, scanout direct, mode jeu", crate::other::gaming));
+    g.add(&link(app, "input-gaming-symbolic", "Jeux", "Mode jeu Steam, composants, VRR, HDR", crate::gaming::page));
     g.add(&link(app, "help-about-symbolic", "Informations système", "Caractéristiques de l'appareil et versions", about));
     content.append(&g);
     p

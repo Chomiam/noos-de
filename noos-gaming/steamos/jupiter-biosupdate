@@ -1,0 +1,4 @@
+#!/bin/bash
+# jupiter-biosupdate — mise à jour du BIOS du Steam Deck, demandée par Steam : rien à faire
+# sur un PC (le BIOS se met à jour par l'outil du fabricant ou fwupd).
+exit 0

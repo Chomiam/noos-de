@@ -1,0 +1,114 @@
+#!/bin/bash
+# noos-session-switch — passe du bureau NOOS au mode jeu Steam (gamescope) et inversement,
+# sans repasser par l'écran de connexion ni redemander le mot de passe.
+#
+#   pkexec /usr/libexec/noos-session-switch steam     (raccourci « Mode jeu Steam », Paramètres)
+#   pkexec /usr/libexec/noos-session-switch desktop   (« Passer au bureau » dans Steam :
+#                                                      steamos-session-select)
+#
+# Action polkit org.noos.gaming.switch : sans mot de passe pour la session active (on rouvre
+# une session pour **son propre** compte, déjà connecté). Le script :
+#   1. retrouve la session logind active de l'appelant (PKEXEC_UID) ;
+#   2. confie la suite à une unité systemd passagère (systemd-run), qui survit à la fin de
+#      la session : elle attend que la session se ferme (le bureau quitte proprement par
+#      l'IPC du compositeur, Steam par « steam -shutdown »), puis
+#   3. relance greetd une seule fois avec une configuration temporaire
+#      (/run/noos-gaming/greetd.toml) contenant [initial_session] = la session voulue :
+#      greetd ouvre directement cette session pour ce compte (connexion automatique
+#      ponctuelle). Le complément systemd est retiré aussitôt : un redémarrage ultérieur de
+#      greetd retrouve la configuration normale (/etc/greetd/config.toml).
+set -euo pipefail
+export LC_ALL=C.UTF-8
+die() { echo "noos-session-switch : $*" >&2; exit 1; }
+
+STEAM_DESKTOP=/usr/local/share/wayland-sessions/noos-steam.desktop
+RUNDIR=/run/noos-gaming
+DROPIN=/run/systemd/system/greetd.service.d/zz-noos-session-switch.conf
+GREETD_CONF=/etc/greetd/config.toml
+
+# Commande de la session (ligne Exec du fichier .desktop, comme le fait noos-login).
+session_command() {
+    case "$1" in
+    steam)
+        [ -f "$STEAM_DESKTOP" ] || die "le mode jeu Steam n'est pas activé (Paramètres › Jeux)"
+        echo "env XDG_SESSION_TYPE=wayland XDG_SESSION_DESKTOP=noos-steam XDG_CURRENT_DESKTOP=gamescope /usr/libexec/noos-steam-session"
+        ;;
+    desktop)
+        local exec=""
+        for f in /usr/share/wayland-sessions/noos.desktop /usr/local/share/wayland-sessions/noos.desktop; do
+            [ -f "$f" ] && exec="$(sed -n 's/^Exec=//p' "$f" | head -1)" && [ -n "$exec" ] && break
+        done
+        [ -n "$exec" ] || exec=/usr/bin/noos-session
+        echo "env XDG_SESSION_TYPE=wayland XDG_SESSION_DESKTOP=noos XDG_CURRENT_DESKTOP=NOOS $exec"
+        ;;
+    *) die "session inconnue : $1 (steam ou desktop)" ;;
+    esac
+}
+
+# /etc/greetd/config.toml sans sa section [initial_session] (sortie standard).
+without_initial_session() {
+    awk '/^\[/{skip = ($0 ~ /^\[initial_session\][[:space:]]*$/)} !skip && !/^# (Connexion automatique au démarrage|Bascule ponctuelle)/' "$GREETD_CONF"
+}
+
+session_state() { loginctl show-session "$1" -p State --value 2>/dev/null || echo gone; }
+
+case "${1:-}" in
+steam | desktop)
+    [ "$(id -u)" -eq 0 ] || die "à lancer par pkexec"
+    uid="${PKEXEC_UID:-}"
+    [ -n "$uid" ] || die "à lancer par pkexec (PKEXEC_UID absent)"
+    user="$(getent passwd "$uid" | cut -d: -f1)"
+    [ -n "$user" ] || die "compte inconnu : $uid"
+    session_command "$1" >/dev/null   # vérifie la cible avant de fermer quoi que ce soit
+    # Session active de l'appelant sur le poste (seat0), sinon sa première session graphique.
+    sid="$(loginctl show-seat seat0 -p ActiveSession --value 2>/dev/null || true)"
+    if [ -z "$sid" ] || [ "$(loginctl show-session "$sid" -p User --value 2>/dev/null)" != "$uid" ]; then
+        sid=""
+        for s in $(loginctl show-user "$uid" -p Sessions --value 2>/dev/null); do
+            [ "$(loginctl show-session "$s" -p Type --value)" = wayland ] && sid="$s" && break
+        done
+    fi
+    [ -n "$sid" ] || die "aucune session graphique trouvée pour $user"
+    systemctl reset-failed noos-session-switch.service >/dev/null 2>&1 || true
+    systemd-run --quiet --collect --unit=noos-session-switch \
+        --description="NOOS : bascule vers la session $1 de $user" \
+        /usr/libexec/noos-session-switch --run "$user" "$1" "$sid"
+    echo "bascule programmée : session $sid de $user → $1"
+    ;;
+--run)
+    # Dans l'unité passagère (root, hors de toute session).
+    [ $# -eq 4 ] || die "usage : --run <compte> <steam|desktop> <session>"
+    [ -z "${PKEXEC_UID:-}" ] || die "--run est réservé à systemd-run"
+    user="$2" target="$3" sid="$4"
+    command="$(session_command "$target")"
+    # La session se ferme d'elle-même (bureau : IPC Quit ; Steam : steam -shutdown).
+    for _ in $(seq 1 60); do
+        case "$(session_state "$sid")" in gone | closing) break ;; esac
+        sleep 0.5
+    done
+    if [ "$(session_state "$sid")" != gone ] && [ "$(session_state "$sid")" != closing ]; then
+        echo "la session $sid ne s'est pas fermée en 30 s : fermeture forcée"
+        loginctl terminate-session "$sid" || true
+        sleep 2
+    fi
+    mkdir -p "$RUNDIR"
+    chmod 700 "$RUNDIR"
+    {
+        without_initial_session
+        printf '\n# Bascule ponctuelle (noos-session-switch), retirée aussitôt après.\n'
+        printf '[initial_session]\nuser = "%s"\ncommand = "%s"\n' "$user" "$command"
+    } >"$RUNDIR/greetd.toml"
+    mkdir -p "$(dirname "$DROPIN")"
+    printf '[Service]\nExecStart=\nExecStart=greetd --config %s\n' "$RUNDIR/greetd.toml" >"$DROPIN"
+    systemctl daemon-reload
+    systemctl restart greetd.service
+    # greetd a lu sa configuration au démarrage : on revient tout de suite à la normale.
+    sleep 1
+    rm -f "$DROPIN"
+    systemctl daemon-reload
+    echo "session $target ouverte pour $user"
+    ;;
+*)
+    die "usage : pkexec noos-session-switch <steam|desktop>"
+    ;;
+esac

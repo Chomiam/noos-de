@@ -59,6 +59,8 @@ override_dh_auto_install:
 	./noos-firewall/install-system.sh $(D) /opt/noos
 	# Partage de fichiers (règle polkit du script privilégié, service utilisateur WebDAV).
 	./noos-share/install-system.sh $(D) /opt/noos
+	# Mode jeu Steam (session gamescope, bascule bureau ↔ Steam, Decky Loader, règle polkit).
+	./noos-gaming/install-system.sh $(D)
 	# Thème GRUB : sources ici, copiées dans /boot/grub/themes/noos par postinst.
 	install -d $(D)/usr/share/noos-grub
 	install -m644 noos-grub/noos/* $(D)/usr/share/noos-grub/

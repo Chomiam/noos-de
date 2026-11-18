@@ -1,0 +1,5 @@
+#!/bin/bash
+# steamos-update — Steam (mode -steamos3) demande s'il existe une mise à jour du système.
+# Sur NOOS, le système se met à jour par apt (Paramètres › Mises à jour, Logiciels) : code 7
+# = « aucune mise à jour », comme l'outil de ChimeraOS.
+exit 7

@@ -1,0 +1,19 @@
+#!/bin/bash
+# steamos-session-select — appelé par Steam (interface Steam Deck, option -steamos3) :
+# « Passer au bureau » (argument plasma, desktop…) ou retour au mode jeu (gamescope).
+# NOOS : bascule vers la session NOOS (ou le mode jeu) par noos-session-switch, sans mot de
+# passe, puis ferme Steam proprement ; la fin de la session gamescope déclenche la bascule.
+# Même rôle que l'outil de SteamOS, de ChimeraOS (gamescope-session) ou de Bazzite.
+set -u
+target=desktop
+case "${1:-plasma}" in
+gamescope | steam) target=steam ;;
+esac
+echo "steamos-session-select ${1:-} → $target" >&2
+if ! pkexec /usr/libexec/noos-session-switch "$target"; then
+    echo "steamos-session-select : bascule refusée, simple fermeture de Steam" >&2
+fi
+# Steam quitte proprement (sauvegardes dans le nuage, téléchargements) : gamescope s'arrête
+# avec lui, la session se ferme.
+steam -shutdown >/dev/null 2>&1 &
+exit 0

@@ -93,7 +93,9 @@ impl Session {
     /// Nom d'icône pour la carte de session.
     pub fn icon(&self) -> &'static str {
         let id = self.id.to_lowercase();
-        if id.contains("noos") {
+        if id.contains("steam") || id.contains("gamescope") {
+            "input-gaming-symbolic"
+        } else if id.contains("noos") {
             "computer-symbolic"
         } else if id.contains("gnome") {
             "view-app-grid-symbolic"
@@ -139,8 +141,8 @@ pub fn sessions() -> Vec<Session> {
         }
     }
     let mut v: Vec<Session> = out.into_values().collect();
-    // NOOS en premier, puis ordre alphabétique.
-    v.sort_by_key(|s| (!s.id.contains("noos"), !s.wayland, s.name.to_lowercase()));
+    // NOOS en premier (le bureau, puis son mode jeu Steam), puis ordre alphabétique.
+    v.sort_by_key(|s| (!s.id.contains("noos"), s.id != "noos", !s.wayland, s.name.to_lowercase()));
     v
 }
 

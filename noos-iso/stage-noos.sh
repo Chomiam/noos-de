@@ -54,6 +54,7 @@ install -Dm644 /dev/stdin "$SYS/etc/ld.so.conf.d/noos.conf" <<<"/opt/noos/lib"
 "$ROOT/noos-disk/install-system.sh" "$SYS" /opt/noos
 "$ROOT/noos-firewall/install-system.sh" "$SYS" /opt/noos
 "$ROOT/noos-share/install-system.sh" "$SYS" /opt/noos
+"$ROOT/noos-gaming/install-system.sh" "$SYS"
 install -Dm755 "$ROOT/noos-disk/noos-disk-helper" "$PREFIX/libexec/noos-disk-helper"
 install -Dm755 "$ROOT/noos-save/noos-save-helper" "$PREFIX/libexec/noos-save-helper"
 # Thème GRUB : sources dans /usr/share/noos-grub (l'installateur le copie dans /boot).
