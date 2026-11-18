@@ -662,6 +662,32 @@ NOOS est basé sur Debian sid : Logiciels gère les **paquets Debian (apt)** et 
   (`noos-pkg/data/packs.json`, téléchargé depuis GitHub avec cache d'un jour, copie intégrée
   en repli) ; seul ce qui manque est installé. Les catégories montrent aussi les applications
   des paquets Debian (« Aussi en paquets Debian »).
+- **Place occupée** : taille et données (`~/.var/app/<id>`, `~/.config|.local/share|.cache/<paquet>`)
+  sous chaque logiciel d'Installées, tri par place occupée ; fiche : ouvrir le dossier de
+  données, « Effacer… » (corbeille).
+- **Arrière-plan** : fermer la fenêtre pendant une opération la cache, la file continue,
+  Logiciels quitte une fois fini ; notification à la fin de chaque opération quand la fenêtre
+  n'est pas au premier plan.
+- **Comparer** (fiche d'un logiciel proposé en apt et en Flatpak) : version, tailles, mises à
+  jour, isolement (accès larges Flatpak), conseil ; colonne AppImage d'après AppImageHub
+  (`appimage.github.io/feed.json`, gardé un jour).
+- **Avis** (odrs.gnome.org, comme GNOME Logiciels et KDE Discover) : désactivés par défaut
+  (`[software] reviews`, « Activer » dans une fiche) ; note moyenne, répartition, avis dans la
+  langue de la session, « Écrire un avis », vote « utile », signalement ; identifiant anonyme
+  (SHA-1 local du compte et de `/etc/machine-id`).
+- **Commande introuvable** (fish, bash) : `noos-pkg provides --hint` propose le paquet qui
+  fournit la commande (champ `Commands` des listes apt, index `~/.cache/noos/commands.tsv`, et
+  paquet du même nom) et peut ouvrir sa fiche.
+- **Mises à jour des AppImage** : section ELF `.upd_info` (`zsync|…`, `gh-releases-zsync|…`)
+  lue sans exécuter ; empreinte SHA-1 de l'en-tête zsync comparée au fichier ; mise à jour =
+  téléchargement complet, intégration, ancienne version à la corbeille. Marqueur
+  « ↻ Mises à jour intégrées » à l'installation et dans Installées, groupe AppImage dans
+  Mises à jour (`noos-pkg appimage-update <fichier> [--apply]`).
+- **Miroir Debian** (Sources) : liste officielle (`mirror-master.debian.org`, gardée 7 jours),
+  tableau drapeau / pays / miroir / hébergeur / débit, « Tester » (1 Mio de `Packages.xz`),
+  « Tester les premiers » (réseau mondial et pays de la session), « Utiliser » (sources
+  réécrites, `apt-get update`).
+- **Liste virtualisée** : la page Installées est un `GtkListView` (plus de limite de 300).
 
 En ligne de commande :
 
@@ -678,6 +704,8 @@ noos-pkg details -b flatpak org.gimp.GIMP
 noos-pkg cleanup                                   # ce qui peut être nettoyé
 noos-pkg hardware                                  # compléments recommandés pour le matériel
 noos-pkg owner org.gnome.SimpleScan                # paquet d'une application
+noos-pkg provides htop                             # paquet qui fournit une commande
+noos-pkg appimage-update ~/Applications/App.AppImage   # nouvelle version ? (--apply : l'installer)
 noos-pkg repo-add -b apt apt-repo https://repo.example.org/apt stable main clé=https://repo.example.org/key.asc --dry-run
 ```
 

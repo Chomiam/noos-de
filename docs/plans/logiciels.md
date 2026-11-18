@@ -5,7 +5,11 @@ Novembre 2026. Code : `noos-software/src/` (interface GTK4 + libAdapta), `noos-p
 Ce document était une proposition. **Les idées 1 à 10 (§ 3.1) sont faites** (branche
 `claude/nervous-swartz-d8b944`, novembre 2026, détail dans `docs/GUIDE.md` › Logiciels) ; restent
 à valider en VM l'installation au redémarrage, la règle polkit Flatpak et le clic droit du menu
-Démarrer. Les idées 11 et suivantes restent à faire.
+Démarrer. Deuxième série faite ensuite (même branche) : 11 avis ODRS, 12 commande introuvable,
+13 comparaison, 15 place occupée, 16 arrière-plan et notifications, 18 liste virtualisée
+(Installées), 19 mises à jour des AppImage, 21 miroir Debian le plus rapide. Restent : 14
+(versions et épinglage), 17 (sécurité des sources), 20 (Distrobox), 22 (mode hors ligne),
+23 (.rpm).
 
 ## 1. État des lieux
 
