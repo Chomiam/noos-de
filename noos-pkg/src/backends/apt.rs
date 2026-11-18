@@ -18,6 +18,7 @@ use std::{
 use super::aptsources;
 use crate::{
     Backend, BackendKind, Package, Plan, Preset, Repo, SystemInfo, Update,
+    details::{self, Details, Effect},
     exec::{capture, capture_codes},
 };
 
@@ -131,6 +132,8 @@ pub struct Policy {
     pub installed: Option<String>,
     pub candidate: Option<String>,
     pub origin: String,
+    /// Ligne de source de la version candidate (« 500 http://deb.debian.org/debian sid/main amd64 Packages »).
+    pub source: String,
 }
 
 /// Lit la sortie de `apt-cache policy <paquets…>` (en `LC_ALL=C`).
@@ -170,6 +173,7 @@ pub fn parse_policy(out: &str) -> HashMap<String, Policy> {
                 in_candidate = cur.candidate.as_deref() == Some(words[0]);
             } else if in_candidate && cur.origin.is_empty() && words.len() >= 2 && !t.contains("/var/lib/dpkg/status") {
                 cur.origin = origin_of(t);
+                cur.source = t.to_string();
             }
         }
     }
@@ -251,7 +255,7 @@ pub fn parse_dep11(text: &str, map: &mut HashMap<String, String>) {
         } else if let Some(v) = line.strip_prefix("ID: ") {
             id = Some(v.trim().trim_matches('\'').trim_matches('"').to_string());
         } else if let Some(v) = line.strip_prefix("Package: ") {
-            pkg = Some(v.trim().to_string());
+            pkg = Some(v.trim().trim_matches('\'').trim_matches('"').to_string());
         }
     }
     commit(&mut id, &mut pkg, map);
@@ -593,22 +597,95 @@ impl Backend for Apt {
         add_preset_plan(preset, argument)
     }
 
+    fn details(&self, package: &Package) -> anyhow::Result<Details> {
+        let name = package.id.as_str();
+        let pol = Self::policy(&[name.to_string()], &[]).remove(name).unwrap_or_default();
+        let mut argv: Vec<String> = vec!["apt-cache".into()];
+        argv.extend(details::apt_languages_opts());
+        argv.extend(["show".into(), name.into()]);
+        let refs: Vec<&str> = argv.iter().map(String::as_str).collect();
+        let out = capture(&refs).map_err(|e| anyhow::anyhow!("paquet {name} introuvable dans les dépôts : {e:#}"))?;
+        let stanzas = details::parse_show(&out);
+        let stanza = details::pick_stanza(&stanzas, &[pol.candidate.as_deref(), pol.installed.as_deref()])
+            .ok_or_else(|| anyhow::anyhow!("paquet {name} introuvable dans les dépôts"))?;
+        let mut d = details::details_from_stanza(stanza);
+        d.installed_version = pol.installed.clone();
+        d.available_version = pol.candidate.clone();
+        d.origin = if pol.origin.is_empty() { package.origin.clone() } else { pol.origin.clone() };
+        d.repository = if pol.source.is_empty() { String::new() } else { details::repository_label(&pol.source) };
+        if pol.installed.is_some() {
+            // Licence du fichier copyright ; lanceur installé pour « Ouvrir ».
+            if let Some(l) = std::fs::read_to_string(format!("/usr/share/doc/{name}/copyright")).ok().and_then(|t| details::license_from_copyright(&t)) {
+                d.license = l;
+            }
+            d.launchable = capture_codes(&["dpkg-query", "-L", name], &[0, 1])
+                .unwrap_or_default()
+                .lines()
+                .filter(|l| l.starts_with("/usr/share/applications/") && l.ends_with(".desktop"))
+                .find_map(|l| l.rsplit('/').next().map(str::to_string));
+        }
+        // AppStream (DEP-11) : nom lisible, description, captures, icône.
+        if self.appstream_ids().contains_key(name) {
+            let langs = details::languages();
+            let comp = details::dep11_files(native_arch_cached())
+                .iter()
+                .filter_map(|f| read_maybe_compressed(f))
+                .find_map(|text| details::dep11_component(&text, name, &langs));
+            if let Some(c) = comp {
+                d.appstream_id = Some(c.id.trim_end_matches(".desktop").to_string()).filter(|s| !s.is_empty());
+                if !c.name.is_empty() {
+                    d.name = c.name;
+                }
+                // Le résumé et la description d'apt sont traduits plus souvent que ceux d'AppStream :
+                // on ne les remplace que s'ils sont absents.
+                if d.summary.is_empty() {
+                    d.summary = c.summary;
+                }
+                if d.description.is_empty() {
+                    d.description = c.description;
+                }
+                if !c.license.is_empty() {
+                    d.license = c.license;
+                }
+                if !c.developer.is_empty() {
+                    d.developer = c.developer;
+                }
+                if d.homepage.is_empty() {
+                    d.homepage = c.homepage;
+                }
+                d.icon_name = c.icon_stock;
+                d.icon_url = c.icon_url;
+                d.screenshots = c.screenshots;
+                if d.launchable.is_none() && pol.installed.is_some() {
+                    d.launchable = c.launchable;
+                }
+            }
+        }
+        Ok(d)
+    }
+
+    fn simulate(&self, package: &Package, install: bool) -> anyhow::Result<Effect> {
+        let opts = freshest_lists_opts();
+        let mut argv: Vec<&str> = vec!["apt-get", "-s", "-o", "Debug::NoLocking=1"];
+        argv.extend(opts.iter().map(String::as_str));
+        argv.extend([if install { "install" } else { "remove" }, package.id.as_str()]);
+        let out = std::process::Command::new(argv[0])
+            .args(&argv[1..])
+            .env("LC_ALL", "C.UTF-8")
+            .stdin(std::process::Stdio::null())
+            .output()?;
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        if !out.status.success() {
+            anyhow::bail!("{}", details::apt_refusal(&stdout, &String::from_utf8_lossy(&out.stderr)));
+        }
+        Ok(details::parse_apt_simulation(&stdout, &package.id))
+    }
+
     fn appstream_ids(&self) -> HashMap<String, String> {
         self.appstream
             .get_or_init(|| {
                 let mut map = HashMap::new();
-                let arch = native_arch_cached();
-                let Ok(rd) = std::fs::read_dir("/var/lib/apt/lists") else { return map };
-                let mut files: Vec<PathBuf> = rd
-                    .filter_map(Result::ok)
-                    .map(|e| e.path())
-                    .filter(|p| {
-                        let n = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-                        n.contains("_dep11_Components-") && n.contains(&format!("-{arch}.yml"))
-                    })
-                    .collect();
-                files.sort();
-                for f in files {
+                for f in details::dep11_files(native_arch_cached()) {
                     if let Some(text) = read_maybe_compressed(&f) {
                         parse_dep11(&text, &mut map);
                     }
@@ -629,7 +706,15 @@ mod tests {
                    noos:\n  Installed: 0.1.0~git1-1\n  Candidate: 0.1.0~git2-1\n  Version table:\n     0.1.0~git2-1 500\n        500 https://chomiam.github.io/noos-de sid/main amd64 Packages\n *** 0.1.0~git1-1 100\n        100 /var/lib/dpkg/status\n\
                    vlc:\n  Installed: 3.0.21-1\n  Candidate: 3.0.21-1\n  Version table:\n *** 3.0.21-1 500\n        500 http://deb.debian.org/debian sid/main amd64 Packages\n        100 /var/lib/dpkg/status\n";
         let p = parse_policy(out);
-        assert_eq!(p["gimp"], Policy { installed: None, candidate: Some("3.0.4-1".into()), origin: "debian".into() });
+        assert_eq!(
+            p["gimp"],
+            Policy {
+                installed: None,
+                candidate: Some("3.0.4-1".into()),
+                origin: "debian".into(),
+                source: "500 http://deb.debian.org/debian sid/main amd64 Packages".into()
+            }
+        );
         assert_eq!(p["noos"].origin, "noos");
         assert_eq!(p["noos"].installed.as_deref(), Some("0.1.0~git1-1"));
         assert_eq!(p["vlc"].origin, "debian");
@@ -649,12 +734,13 @@ mod tests {
 
     #[test]
     fn dep11() {
-        let y = "---\nFile: DEP-11\nVersion: '1.0'\n---\nType: desktop-application\nID: org.gimp.GIMP\nPackage: gimp\nName:\n  C: GIMP\n---\nType: desktop-application\nID: vlc.desktop\nPackage: vlc\n";
+        let y = "---\nFile: DEP-11\nVersion: '1.0'\n---\nType: desktop-application\nID: org.gimp.GIMP\nPackage: gimp\nName:\n  C: GIMP\n---\nType: desktop-application\nID: vlc.desktop\nPackage: vlc\n---\nID: 2048.desktop\nPackage: \"2048\"\n";
         let mut m = HashMap::new();
         parse_dep11(y, &mut m);
         assert_eq!(m["gimp"], "org.gimp.gimp");
         assert_eq!(m["vlc"], "vlc");
-        assert_eq!(m.len(), 2);
+        assert_eq!(m["2048"], "2048");
+        assert_eq!(m.len(), 3);
     }
 
     #[test]

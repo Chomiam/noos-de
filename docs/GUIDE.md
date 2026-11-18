@@ -606,6 +606,22 @@ NOOS est basé sur Debian sid : Logiciels gère les **paquets Debian (apt)** et 
   jour, conflits ; un paquet aux dépendances introuvables est refusé avec l'explication
   d'apt. Installation par la file d'opérations (pkexec, `apt-get install <chemin>`,
   `--reinstall` si la même version est installée) ; « Ouvrir » si le paquet a un lanceur.
+- **Fiche d'un paquet** (`noos-pkg/src/details.rs`, `noos-software/src/details.rs`) : un clic
+  sur une ligne de résultat de recherche ou de la page Installées (hors bouton) ouvre la fiche,
+  pour les paquets apt (avec ou sans données AppStream) comme pour les Flatpak. Contenu : nom,
+  résumé et description longue **traduits** (`apt-cache show` avec `Acquire::Languages=fr,en`,
+  paragraphes « . » ; Flatpak : `appstream.xml` du remote), captures et icône AppStream
+  (DEP-11 de `/var/lib/apt/lists` — images JPEG XL décodées par glycin — ou cache AppStream de
+  Flatpak), versions installée / disponible, tailles téléchargée / installée (`apt-cache show`,
+  `flatpak remote-info`), source et dépôt (`apt-cache policy`), catégorie Debian en français,
+  licence (AppStream ou `/usr/share/doc/<paquet>/copyright` lisible par machine), développeur,
+  mainteneur, commandes fournies, runtime Flatpak, dépendances / recommandations /
+  suggestions. **Simulation** sans mot de passe : ce qu'installer ajoutera (`apt-get -s install`,
+  runtime Flatpak absent) ou ce que supprimer retirera (`apt-get -s remove`). Boutons Installer,
+  Supprimer, Ouvrir (lanceur `.desktop` du paquet). Un logiciel disponible en apt et en Flatpak
+  a un onglet par façon de l'installer, pour comparer. Les fichiers DEP-11 sont lus par un petit
+  lecteur YAML intégré (pas de dépendance). Aperçu : `NOOS_SOFTWARE_DETAILS=gimp@apt`,
+  `apt:htop`, `flatpak:org.gimp.GIMP` (+ `NOOS_SOFTWARE_SCROLL=px`).
 
 En ligne de commande :
 
@@ -617,19 +633,25 @@ noos-pkg presets
 noos-pkg appimage ~/Téléchargements/App.AppImage   # nom, version, icône (sans l'exécuter)
 noos-pkg appimage-install ~/Téléchargements/App.AppImage
 noos-pkg deb ~/Téléchargements/paquet.deb          # fiche + simulation des dépendances
+noos-pkg details -b apt gimp                       # fiche détaillée (Logiciels) + simulation
+noos-pkg details -b flatpak org.gimp.GIMP
 noos-pkg repo-add -b apt apt-repo https://repo.example.org/apt stable main clé=https://repo.example.org/key.asc --dry-run
 ```
 
 **Testé :**
 - tests unitaires (analyse des sources une ligne / deb822, `apt-cache policy`, simulations
-  `apt-get -s`, DEP-11, regroupement des sources) dans la CI Debian sid ;
+  `apt-get -s`, DEP-11, regroupement des sources, `apt-cache show`, lecteur YAML DEP-11,
+  AppStream XML, `flatpak remote-info`) dans la CI Debian sid ;
+- fiche détaillée vérifiée dans l'aperçu (18/11/2026) : apt sans AppStream (`htop`), apt avec
+  AppStream et captures JPEG XL (`gimp`, `simple-scan` installé : Ouvrir / Supprimer), Flatpak
+  (`org.gimp.GIMP`, `app.fluxer.Fluxer` installé), onglets apt / Flatpak ;
 - à revalider sur une vraie Debian sid : installation et suppression, mises à jour, ajout,
   activation et suppression de dépôts.
 
 **À faire :**
 - un **agent polkit** propre à NOOS : dans la vraie session, il n'y en a pas encore pour afficher la demande de mot de passe ;
 - zypper (openSUSE) ;
-- les fiches détaillées des paquets non Flatpak.
+- idées d'amélioration classées par impact / effort : `docs/plans/logiciels.md`.
 
 ## Paramètres (noos-settings)
 

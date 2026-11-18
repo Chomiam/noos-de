@@ -17,6 +17,7 @@
 //!                                            fichier : AppImage installées
 //! noos-pkg appimage-install <fichier>        déplace dans ~/Applications + menu Démarrer
 //! noos-pkg deb <fichier.deb>                 fiche du paquet et simulation (sans root)
+//! noos-pkg details -b backend <id>           fiche détaillée (Logiciels) et simulation
 //!
 //! Options : --dry-run (affiche le plan sans l'exécuter), --json
 //! Élévation : pkexec par défaut ; NOOS_PKG_ELEVATE=sudo|none
@@ -140,6 +141,28 @@ fn run() -> anyhow::Result<()> {
                 }
             }
             print_packages(&results, args.json);
+        }
+        "details" => {
+            let b = one()?;
+            let id = args.rest.first().ok_or_else(|| anyhow::anyhow!("précisez le paquet"))?;
+            // La recherche donne le remote, l'installation et l'état du paquet.
+            let pkg = b
+                .search(id)
+                .unwrap_or_default()
+                .into_iter()
+                .find(|p| &p.id == id)
+                .unwrap_or_else(|| Package { backend: Some(b.kind()), id: id.clone(), name: id.clone(), ..Default::default() });
+            let d = b.details(&pkg)?;
+            if args.json {
+                println!("{d:#?}");
+            } else {
+                println!("{} — {}\n\n{}\n", d.name, d.summary, d.description);
+                println!("{d:#?}");
+            }
+            match b.simulate(&pkg, !pkg.installed) {
+                Ok(e) => println!("simulation ({}) : {e:?}", if pkg.installed { "suppression" } else { "installation" }),
+                Err(e) => println!("simulation impossible : {e:#}"),
+            }
         }
         "installed" => {
             let mut results = Vec::new();

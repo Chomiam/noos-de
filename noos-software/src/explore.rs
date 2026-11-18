@@ -14,25 +14,38 @@ use crate::{
     ops::background,
 };
 
+/// Image distante (cache local) décodée dans le fil de travail : PNG, JPEG, JPEG XL (glycin)…
+fn load_texture(url: String) -> Option<gtk::gdk::Texture> {
+    let path = flathub::cached_image(&url)?;
+    match gtk::gdk::Texture::from_filename(&path) {
+        Ok(t) => Some(t),
+        Err(e) => {
+            eprintln!("noos-software : image illisible {} : {e}", path.display());
+            None
+        }
+    }
+}
+
 /// Charge une image distante (cache local) dans un `gtk::Image`.
-fn async_image(img: &gtk::Image, url: &str) {
+pub(crate) fn async_image(img: &gtk::Image, url: &str) {
     let url = url.to_string();
     let img = img.clone();
-    let task = background(move || flathub::cached_image(&url));
+    let task = background(move || load_texture(url));
     glib::spawn_future_local(async move {
-        if let Some(path) = task.await {
-            img.set_from_file(Some(&path));
+        if let Some(t) = task.await {
+            img.set_paintable(Some(&t));
         }
     });
 }
 
-fn async_picture(pic: &gtk::Picture, url: &str) {
+pub(crate) fn async_picture(pic: &gtk::Picture, url: &str) {
     let url = url.to_string();
     let pic = pic.clone();
-    let task = background(move || flathub::cached_image(&url));
+    // Décodage dans le fil de travail (captures JPEG XL de Debian : `set_filename` restait vide).
+    let task = background(move || load_texture(url));
     glib::spawn_future_local(async move {
-        if let Some(path) = task.await {
-            pic.set_filename(Some(&path));
+        if let Some(t) = task.await {
+            pic.set_paintable(Some(&t));
         }
     });
 }
@@ -437,6 +450,7 @@ impl App {
         let tv = adap::ToolbarView::new();
         tv.add_top_bar(&adap::HeaderBar::new());
         tv.set_content(Some(&scroll));
+        tv.add_css_class("noos-sheet");
         let dialog = adap::Dialog::builder().content_width(820).content_height(700).child(&tv).build();
         dialog.present(Some(&self.window));
 

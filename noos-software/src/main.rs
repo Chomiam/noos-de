@@ -9,6 +9,7 @@
 
 mod appimage;
 mod deb;
+mod details;
 mod explore;
 mod flathub;
 mod ops;
@@ -72,13 +73,13 @@ fn page_container() -> (gtk::ScrolledWindow, gtk::Box) {
     (gtk::ScrolledWindow::builder().child(&clamp).hscrollbar_policy(gtk::PolicyType::Never).vexpand(true).build(), content)
 }
 
-fn clear(b: &gtk::Box) {
+pub(crate) fn clear(b: &gtk::Box) {
     while let Some(c) = b.first_child() {
         b.remove(&c);
     }
 }
 
-fn badge(text: &str, kind: BackendKind) -> gtk::Label {
+pub(crate) fn badge(text: &str, kind: BackendKind) -> gtk::Label {
     let l = gtk::Label::new(Some(text));
     l.add_css_class("noos-badge");
     l.add_css_class(match kind {
@@ -102,7 +103,7 @@ fn origin_label(p: &Package) -> String {
 }
 
 /// Texte court de la source d'un paquet : « Flatpak · Flathub », « apt · Debian ».
-fn source_text(p: &Package) -> String {
+pub(crate) fn source_text(p: &Package) -> String {
     let base = match p.backend.unwrap_or(BackendKind::Flatpak) {
         BackendKind::Flatpak => "Flatpak",
         BackendKind::Apt => "apt",
@@ -113,7 +114,7 @@ fn source_text(p: &Package) -> String {
 }
 
 /// Description d'une façon d'installer, pour le choix apt / Flatpak.
-fn offer_explanation(p: &Package) -> &'static str {
+pub(crate) fn offer_explanation(p: &Package) -> &'static str {
     match p.backend {
         Some(BackendKind::Flatpak) => "Application isolée (bac à sable), mise à jour par son éditeur",
         _ => "Paquet du système, intégré et mis à jour avec Debian",
@@ -121,7 +122,7 @@ fn offer_explanation(p: &Package) -> &'static str {
 }
 
 /// Icône : thème d'icônes, puis données AppStream de Flatpak, sinon icône générique.
-fn icon_for(p: &Package, size: i32) -> gtk::Image {
+pub(crate) fn icon_for(p: &Package, size: i32) -> gtk::Image {
     let theme = gtk::IconTheme::for_display(&gdk::Display::default().unwrap());
     let img = if theme.has_icon(&p.id) {
         gtk::Image::from_icon_name(&p.id)
@@ -164,7 +165,7 @@ pub(crate) fn status_page(icon: &str, title: &str, desc: &str) -> adap::StatusPa
     adap::StatusPage::builder().icon_name(icon).title(title).description(desc).build()
 }
 
-fn loading(text: &str) -> gtk::Box {
+pub(crate) fn loading(text: &str) -> gtk::Box {
     let b = gtk::Box::new(gtk::Orientation::Vertical, 12);
     b.set_valign(gtk::Align::Center);
     b.set_vexpand(true);
@@ -365,6 +366,11 @@ impl App {
         }
         r.add_suffix(&info);
         r.add_suffix(&self.action_button(sw));
+        // Clic sur la ligne (hors bouton) : fiche détaillée.
+        r.set_activatable(true);
+        r.set_tooltip_text(Some("Afficher la fiche"));
+        let (app, sw) = (self.clone(), sw.clone());
+        r.connect_activated(move |_| app.show_software(&sw, None));
         r
     }
 
@@ -903,6 +909,8 @@ const CSS: &str = r#"
 .noos-tile:hover { background-color: mix(@card_bg_color, @accent_bg_color, 0.08); }
 .noos-category { padding: 14px 16px; border-radius: 12px; background-color: @card_bg_color; font-weight: 600; }
 .noos-category:hover { background-color: mix(@card_bg_color, @accent_bg_color, 0.12); }
+.noos-shot { border-radius: 10px; }
+.noos-sheet { background-color: @dialog_bg_color; }
 .noos-search { min-height: 44px; font-size: 1.1em; border-radius: 99px; }
 "#;
 
@@ -1106,6 +1114,9 @@ fn build(gapp: &adap::Application) {
     }
     if let Ok(q) = std::env::var("NOOS_SOFTWARE_SEARCH") {
         search.set_text(&q);
+    }
+    if let Ok(spec) = std::env::var("NOOS_SOFTWARE_DETAILS") {
+        app.open_details_spec(&spec);
     }
 }
 

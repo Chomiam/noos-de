@@ -30,16 +30,8 @@ pub struct DebInfo {
     pub installed_version: Option<String>,
 }
 
-/// Résultat de la simulation `apt-get -s install`.
-#[derive(Debug, Clone, Default)]
-pub struct Simulation {
-    /// Paquets supplémentaires installés (dépendances), hors le paquet lui-même.
-    pub extra: Vec<String>,
-    /// Paquets mis à jour au passage.
-    pub upgraded: Vec<String>,
-    /// Paquets retirés (conflits).
-    pub removed: Vec<String>,
-}
+/// Résultat de la simulation `apt-get -s install` (dépendances ajoutées, mises à jour, retraits).
+pub type Simulation = crate::details::Effect;
 
 /// Le fichier ressemble-t-il à un paquet Debian (archive ar « debian-binary ») ?
 pub fn is_deb(path: &Path) -> bool {
@@ -125,28 +117,9 @@ pub fn simulate(info: &DebInfo) -> Result<Simulation> {
     if !out.status.success() {
         // apt explique le problème sur stdout (« The following packages have unmet
         // dependencies ») puis résume sur stderr (« E: … »).
-        let explain: Vec<&str> = stdout
-            .lines()
-            .skip_while(|l| !l.contains("unmet dependencies"))
-            .chain(stderr.lines().filter(|l| l.starts_with("E:")))
-            .collect();
-        bail!("{}", if explain.is_empty() { "apt refuse ce paquet".to_string() } else { explain.join("\n") });
+        bail!("{}", crate::details::apt_refusal(&stdout, &stderr));
     }
-    let mut sim = Simulation::default();
-    for line in stdout.lines() {
-        let mut words = line.split_whitespace();
-        let (Some(kind), Some(name)) = (words.next(), words.next()) else { continue };
-        let name = name.split(':').next().unwrap_or(name).to_string();
-        match kind {
-            // « Inst nom [ancienne] (nouvelle …) » : un crochet = mise à jour.
-            "Inst" if name == info.package => {}
-            "Inst" if line.contains(" [") => sim.upgraded.push(name),
-            "Inst" => sim.extra.push(name),
-            "Remv" => sim.removed.push(name),
-            _ => {}
-        }
-    }
-    Ok(sim)
+    Ok(crate::details::parse_apt_simulation(&stdout, &info.package))
 }
 
 /// Plan d'installation (pkexec) : `apt-get install <chemin>`, avec `--reinstall` si la même

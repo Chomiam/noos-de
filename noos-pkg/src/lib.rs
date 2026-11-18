@@ -14,6 +14,7 @@ pub mod appimage;
 pub mod backends;
 pub mod catalog;
 pub mod deb;
+pub mod details;
 pub mod exec;
 pub mod sources;
 pub mod system;
@@ -162,6 +163,18 @@ pub trait Backend: Send + Sync {
     /// reconnaître le même logiciel en paquet Debian et en Flatpak.
     fn appstream_ids(&self) -> std::collections::HashMap<String, String> {
         Default::default()
+    }
+
+    /// Fiche détaillée d'un paquet (descriptif, versions, tailles, dépôt, dépendances,
+    /// AppStream). Lecture seule, sans droits root.
+    fn details(&self, package: &Package) -> anyhow::Result<details::Details> {
+        anyhow::bail!("pas de fiche détaillée pour {}", package.id)
+    }
+
+    /// Simule l'installation (`install`) ou la suppression d'un paquet : ce qui sera ajouté,
+    /// mis à jour ou retiré en plus de lui.
+    fn simulate(&self, _package: &Package, _install: bool) -> anyhow::Result<details::Effect> {
+        Ok(Default::default())
     }
 }
 

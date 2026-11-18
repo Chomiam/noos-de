@@ -5,6 +5,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{
     Backend, BackendKind, Package, Plan, Preset, Repo, Scope, SystemInfo, Update,
+    details::{self, Details, Effect},
     exec::{capture, capture_codes},
 };
 
@@ -60,6 +61,43 @@ impl Flatpak {
         }
         groups
     }
+}
+
+/// Dossier d'une installation Flatpak (utilisateur ou système).
+fn install_root(scope: Scope) -> std::path::PathBuf {
+    match scope {
+        Scope::User => {
+            let data = std::env::var_os("XDG_DATA_HOME").map(std::path::PathBuf::from).unwrap_or_else(|| noos_core::paths::home().join(".local/share"));
+            data.join("flatpak")
+        }
+        Scope::System => "/var/lib/flatpak".into(),
+    }
+}
+
+fn arch() -> &'static str {
+    match std::env::consts::ARCH {
+        "x86" => "i386",
+        a => a,
+    }
+}
+
+/// Remote et installation d'un paquet : ceux du paquet, sinon le premier remote actif qui le propose.
+fn remote_of(p: &Package) -> (String, Scope) {
+    let scope = p.scope.unwrap_or(Scope::System);
+    if !p.origin.is_empty() {
+        return (p.origin.clone(), scope);
+    }
+    ("flathub".into(), scope)
+}
+
+/// `flatpak remote-info` analysé (nom, résumé, champs) ; `cached` : sans réseau.
+fn remote_info(scope: Scope, remote: &str, id: &str, cached: bool) -> Option<(String, String, Vec<(String, String)>)> {
+    let mut argv = vec!["flatpak", "remote-info"];
+    if cached {
+        argv.push("--cached");
+    }
+    argv.extend([scope.flag(), remote, id]);
+    capture_codes(&argv, &[0]).ok().map(|o| details::parse_flatpak_info(&o))
 }
 
 impl Backend for Flatpak {
@@ -209,6 +247,93 @@ impl Backend for Flatpak {
             plan = plan.user(&["flatpak", "update", "--noninteractive", "-y", "--system"]);
         }
         plan
+    }
+
+    fn details(&self, package: &Package) -> anyhow::Result<Details> {
+        let (remote, scope) = remote_of(package);
+        let id = package.id.as_str();
+        let get = |f: &[(String, String)], k: &str| f.iter().find(|(a, _)| a == k).map(|(_, v)| v.clone()).unwrap_or_default();
+        // Installé : `flatpak info` ; dépôt : `remote-info` (résumé en cache, puis réseau).
+        let installed = if package.installed {
+            capture_codes(&["flatpak", "info", scope.flag(), id], &[0]).ok().map(|o| details::parse_flatpak_info(&o))
+        } else {
+            None
+        };
+        // Le résumé en cache (`--cached`) n'a ni les tailles ni le runtime : dépôt d'abord.
+        let remote_info = remote_info(scope, &remote, id, false).or_else(|| remote_info(scope, &remote, id, true));
+        let Some((name, summary, fields)) = installed.clone().or_else(|| remote_info.clone()) else {
+            anyhow::bail!("{id} est introuvable dans le dépôt {remote}");
+        };
+        let remote_fields = remote_info.as_ref().map(|r| r.2.clone()).unwrap_or_default();
+        let origin = { let o = get(&fields, "Origin"); if o.is_empty() { remote.clone() } else { o } };
+        let mut d = Details {
+            id: id.to_string(),
+            name: if name.is_empty() { package.name.clone() } else { name },
+            summary: if summary.is_empty() { package.summary.clone() } else { summary },
+            installed_version: installed.as_ref().map(|_| get(&fields, "Version")).or_else(|| package.installed.then(|| package.version.clone())),
+            available_version: remote_info.as_ref().map(|_| get(&remote_fields, "Version")).filter(|v| !v.is_empty()),
+            download_size: details::parse_size(&get(&remote_fields, "Download Size")),
+            installed_size: details::parse_size(&{ let s = get(&fields, "Installed Size"); if s.is_empty() { get(&remote_fields, "Installed Size") } else { s } }),
+            repository: format!("{origin} ({})", if scope == Scope::User { "votre compte" } else { "système" }),
+            origin,
+            license: get(&fields, "License"),
+            runtime: get(&fields, "Runtime"),
+            architecture: get(&fields, "Arch"),
+            appstream_id: Some(id.to_string()),
+            launchable: package.installed.then(|| format!("{id}.desktop")),
+            ..Default::default()
+        };
+        if d.installed_version.as_deref() == Some("") {
+            d.installed_version = Some("installée".into());
+        }
+        // AppStream du remote : description, captures, site, développeur.
+        let root = install_root(scope);
+        if let Some(file) = details::flatpak_appstream_file(&root, &d.origin, arch()) {
+            let text = if file.extension().is_some_and(|e| e == "gz") {
+                capture(&["gzip", "-dc", &file.to_string_lossy()]).unwrap_or_default()
+            } else {
+                std::fs::read_to_string(&file).unwrap_or_default()
+            };
+            if let Some(c) = details::appstream_xml_component(&text, id, &details::languages()) {
+                if !c.name.is_empty() {
+                    d.name = c.name;
+                }
+                if !c.summary.is_empty() {
+                    d.summary = c.summary;
+                }
+                d.description = c.description;
+                d.developer = c.developer;
+                d.homepage = c.homepage;
+                if d.license.is_empty() {
+                    d.license = c.license;
+                }
+                d.icon_name = c.icon_stock;
+                d.icon_url = c.icon_url;
+                d.screenshots = c.screenshots;
+                if let Some(l) = c.launchable.filter(|_| package.installed) {
+                    d.launchable = Some(l);
+                }
+            }
+        }
+        d.icon_file = details::flatpak_icon(&root, &d.origin, arch(), id);
+        Ok(d)
+    }
+
+    fn simulate(&self, package: &Package, install: bool) -> anyhow::Result<Effect> {
+        if !install {
+            // La suppression laisse les runtimes (« flatpak uninstall --unused » les retire).
+            return Ok(Effect::default());
+        }
+        let (remote, scope) = remote_of(package);
+        let runtime = remote_info(scope, &remote, &package.id, false)
+            .map(|(_, _, f)| f.into_iter().find(|(k, _)| k == "Runtime").map(|(_, v)| v).unwrap_or_default())
+            .ok_or_else(|| anyhow::anyhow!("{} est introuvable dans le dépôt {remote}", package.id))?;
+        let runtimes: HashSet<String> = capture(&["flatpak", "list", "--runtime", "--columns=ref"]).unwrap_or_default().lines().map(|l| l.trim().to_string()).collect();
+        let mut e = Effect::default();
+        if !runtime.is_empty() && !runtimes.contains(&runtime) {
+            e.extra.push(runtime);
+        }
+        Ok(e)
     }
 
     fn repos(&self) -> anyhow::Result<Vec<Repo>> {
