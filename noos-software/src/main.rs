@@ -55,6 +55,9 @@ struct App {
     home_built: Cell<bool>,
 
     installed_box: gtk::Box,
+    /// Liste virtualisée de la page Installées.
+    installed_store: gio::ListStore,
+    installed_view: gtk::ListView,
     installed_filter: gtk::SearchEntry,
     /// Tri de la page Installées : 0 nom, 1 place occupée.
     installed_sort: gtk::DropDown,
@@ -70,6 +73,16 @@ struct App {
     updates_page: adap::ViewStackPage,
 
     repos_box: gtk::Box,
+}
+
+/// Élément de la liste virtualisée de la page Installées (seules les lignes visibles existent).
+enum InstalledItem {
+    /// Widget déjà construit (Faire de la place, groupe AppImage, chargement).
+    Widget(gtk::Widget),
+    /// Titre d'un groupe (gestionnaire de paquets) et sa description.
+    Header(String, String),
+    Pkg(Package),
+    Note(String, String),
 }
 
 // ───────────────────────────── Utilitaires d'interface ─────────────────────────────
@@ -472,8 +485,7 @@ impl App {
     // ───────────────────────── Installées ─────────────────────────
 
     fn load_installed(self: &Rc<Self>) {
-        clear(&self.installed_box);
-        self.installed_box.append(&loading("Chargement des logiciels installés…"));
+        self.set_installed_items(vec![InstalledItem::Widget(loading("Chargement des logiciels installés…").upcast())]);
         let backends = self.backends.clone();
         let task = background(move || {
             (0..backends.len())
@@ -519,15 +531,15 @@ impl App {
             }
         }
         clear(&self.installed_box);
-        self.installed_box.append(&self.cleanup_group());
         let line = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         line.append(&self.installed_filter);
         line.append(&self.installed_sort);
         self.installed_box.append(&line);
         let by_size = self.installed_sort.selected() == 1;
         let filter = self.installed_filter.text().to_lowercase();
+        let mut items: Vec<InstalledItem> = vec![InstalledItem::Widget(self.cleanup_group().upcast())];
         // AppImage en tête : peu nombreuses, et c'est là qu'on cherche juste après une installation.
-        self.installed_box.append(&self.appimage_group(&filter));
+        items.push(InstalledItem::Widget(self.appimage_group(&filter).upcast()));
         for (idx, list, err) in self.installed.borrow().iter() {
             let kind = self.kind(*idx);
             let mut shown: Vec<&Package> = list
@@ -537,19 +549,64 @@ impl App {
             if by_size {
                 shown.sort_by_key(|p| std::cmp::Reverse(self.size_of(p).map(|s| s.installed + s.data).unwrap_or(0)));
             }
-            let g = adap::PreferencesGroup::new();
-            g.set_title(&format!("{} — {}", kind.label(), list.len()));
-            g.set_description(Some(match kind {
-                BackendKind::Flatpak => "Applications isolées (Flathub)",
-                BackendKind::Apt => "Paquets installés explicitement (hors dépendances)",
-            }));
+            items.push(InstalledItem::Header(
+                format!("{} — {}", kind.label(), list.len()),
+                match kind {
+                    BackendKind::Flatpak => "Applications isolées (Flathub)",
+                    BackendKind::Apt => "Paquets installés explicitement (hors dépendances)",
+                }
+                .into(),
+            ));
             if let Some(e) = err {
-                g.add(&row("Erreur", e));
+                items.push(InstalledItem::Note("Erreur".into(), e.clone()));
             } else if shown.is_empty() {
-                g.add(&row(if list.is_empty() { "Aucun" } else { "Aucun résultat pour ce filtre" }, ""));
+                items.push(InstalledItem::Note(if list.is_empty() { "Aucun".into() } else { "Aucun résultat pour ce filtre".into() }, String::new()));
             }
-            for p in shown.iter().take(300) {
+            // Plus de limite : la liste ne crée que les lignes visibles.
+            items.extend(shown.into_iter().map(|p| InstalledItem::Pkg(p.clone())));
+        }
+        self.set_installed_items(items);
+    }
+
+    fn set_installed_items(&self, items: Vec<InstalledItem>) {
+        let objs: Vec<glib::BoxedAnyObject> = items.into_iter().map(glib::BoxedAnyObject::new).collect();
+        self.installed_store.splice(0, self.installed_store.n_items(), &objs);
+    }
+
+    /// Ligne d'un élément de la liste virtualisée (construite à l'affichage).
+    fn installed_item_widget(self: &Rc<Self>, item: &InstalledItem) -> gtk::Widget {
+        match item {
+            InstalledItem::Widget(w) => {
+                if let Some(p) = w.parent() {
+                    if let Ok(b) = p.downcast::<gtk::Box>() {
+                        b.remove(w);
+                    }
+                }
+                w.set_margin_bottom(18);
+                w.clone()
+            }
+            InstalledItem::Header(t, d) => {
+                let v = gtk::Box::new(gtk::Orientation::Vertical, 2);
+                v.set_margin_top(12);
+                v.set_margin_bottom(8);
+                let title = gtk::Label::new(Some(t));
+                title.add_css_class("heading");
+                title.set_xalign(0.0);
+                v.append(&title);
+                let desc = gtk::Label::new(Some(d));
+                desc.add_css_class("dim-label");
+                desc.set_xalign(0.0);
+                v.append(&desc);
+                v.upcast()
+            }
+            InstalledItem::Note(t, d) => {
+                let r = row(t, d);
+                r.add_css_class("noos-vrow");
+                r.upcast()
+            }
+            InstalledItem::Pkg(p) => {
                 let r = self.package_row(p);
+                r.add_css_class("noos-vrow");
                 if let Some(sz) = self.size_of(p) {
                     let mut t = glib::format_size(sz.installed).to_string();
                     if sz.data > 0 {
@@ -557,12 +614,8 @@ impl App {
                     }
                     r.set_subtitle(&if p.summary.is_empty() { t } else { format!("{}\n{t}", p.summary) });
                 }
-                g.add(&r);
+                r.upcast()
             }
-            if shown.len() > 300 {
-                g.add(&row(&format!("… et {} autres (affinez le filtre)", shown.len() - 300), ""));
-            }
-            self.installed_box.append(&g);
         }
     }
 
@@ -1132,6 +1185,10 @@ const CSS: &str = r#"
 .noos-category:hover { background-color: mix(@card_bg_color, @accent_bg_color, 0.12); }
 .noos-shot { border-radius: 10px; }
 .noos-sheet { background-color: @dialog_bg_color; }
+.noos-vlist { background: transparent; }
+.noos-vlist > row { padding: 0; background: transparent; }
+.noos-vlist > row:hover, .noos-vlist > row:selected { background: transparent; }
+.noos-vrow { background-color: @card_bg_color; box-shadow: inset 0 -1px alpha(@window_fg_color, 0.06); }
 .noos-search { min-height: 44px; font-size: 1.1em; border-radius: 99px; }
 "#;
 
@@ -1186,7 +1243,26 @@ fn build(gapp: &adap::Application) {
     explore_content.append(&explore_stack);
 
     // ── Installées ──
-    let (installed_scroll, installed_box) = page_container();
+    // Page Installées : filtre fixe en haut, puis une liste virtualisée (GtkListView).
+    let installed_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    installed_box.set_margin_top(18);
+    installed_box.set_margin_bottom(12);
+    installed_box.set_margin_start(12);
+    installed_box.set_margin_end(12);
+    let installed_store = gio::ListStore::new::<glib::BoxedAnyObject>();
+    let installed_view = gtk::ListView::new(Some(gtk::NoSelection::new(Some(installed_store.clone()))), None::<gtk::ListItemFactory>);
+    installed_view.add_css_class("noos-vlist");
+    installed_view.set_margin_start(12);
+    installed_view.set_margin_end(12);
+    installed_view.set_margin_bottom(24);
+    let installed_list_scroll = gtk::ScrolledWindow::builder()
+        .child(&adap::ClampScrollable::builder().maximum_size(920).child(&installed_view).build())
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .vexpand(true)
+        .build();
+    let installed_scroll = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    installed_scroll.append(&adap::Clamp::builder().maximum_size(920).child(&installed_box).build());
+    installed_scroll.append(&installed_list_scroll);
     let installed_filter = gtk::SearchEntry::new();
     installed_filter.set_placeholder_text(Some("Filtrer les logiciels installés"));
     installed_filter.set_hexpand(true);
@@ -1244,6 +1320,8 @@ fn build(gapp: &adap::Application) {
         dynamic_css: gtk::CssProvider::new(),
         home_built: Cell::new(false),
         installed_box,
+        installed_store,
+        installed_view: installed_view.clone(),
         installed_filter: installed_filter.clone(),
         installed_sort: installed_sort.clone(),
         sizes: RefCell::new(HashMap::new()),
@@ -1254,6 +1332,34 @@ fn build(gapp: &adap::Application) {
         updates_page,
         repos_box,
     });
+
+    {
+        // Lignes de la liste virtualisée : construites quand elles deviennent visibles.
+        let factory = gtk::SignalListItemFactory::new();
+        factory.connect_setup(|_, li| {
+            let li = li.downcast_ref::<gtk::ListItem>().unwrap();
+            li.set_activatable(false);
+            li.set_focusable(false);
+            li.set_child(Some(&gtk::Box::new(gtk::Orientation::Vertical, 0)));
+        });
+        let app2 = Rc::downgrade(&app);
+        factory.connect_bind(move |_, li| {
+            let li = li.downcast_ref::<gtk::ListItem>().unwrap();
+            let (Some(app), Some(holder), Some(obj)) =
+                (app2.upgrade(), li.child().and_downcast::<gtk::Box>(), li.item().and_downcast::<glib::BoxedAnyObject>())
+            else {
+                return;
+            };
+            clear(&holder);
+            holder.append(&app.installed_item_widget(&obj.borrow::<InstalledItem>()));
+        });
+        factory.connect_unbind(|_, li| {
+            if let Some(holder) = li.downcast_ref::<gtk::ListItem>().unwrap().child().and_downcast::<gtk::Box>() {
+                clear(&holder);
+            }
+        });
+        app.installed_view.set_factory(Some(&factory));
+    }
 
     // ── Signaux ──
     {
@@ -1376,8 +1482,12 @@ fn build(gapp: &adap::Application) {
     }
     if let (Some(px), None) = (std::env::var("NOOS_SOFTWARE_SCROLL").ok().and_then(|v| v.parse::<f64>().ok()), std::env::var_os("NOOS_SOFTWARE_DETAILS")) {
         // Aperçu : page Explorer défilée (packs, catégories Debian…).
-        let sc = explore_scroll.clone();
-        glib::timeout_add_local_once(Duration::from_millis(6000), move || sc.vadjustment().set_value(px));
+        // Page Installées : la liste virtualisée (px très grand = tout en bas).
+        let sc = if std::env::var("NOOS_SOFTWARE_PAGE").is_ok_and(|p| p == "installed") { installed_list_scroll.clone() } else { explore_scroll.clone() };
+        glib::timeout_add_local_once(Duration::from_millis(6000), move || {
+            let adj = sc.vadjustment();
+            adj.set_value(px.min(adj.upper() - adj.page_size()));
+        });
     }
     if let Ok(c) = std::env::var("NOOS_SOFTWARE_COLLECTION") {
         // Aperçu : une collection ou une catégorie (`category/Graphics`).
