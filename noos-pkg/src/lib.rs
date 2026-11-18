@@ -23,6 +23,7 @@ pub mod owner;
 pub mod packs;
 pub mod permissions;
 pub mod sources;
+pub mod space;
 pub mod system;
 
 use std::fmt;

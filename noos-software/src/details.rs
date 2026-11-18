@@ -343,6 +343,11 @@ impl App {
         sim.add(&waiting);
         content.append(&sim);
 
+        // ── Données de l'application (installée) ──
+        if pkg.installed {
+            content.append(&self.data_group(pkg));
+        }
+
         // ── Accès (Flatpak) ──
         if kind == BackendKind::Flatpak {
             content.append(&self.permissions_group(pkg));
@@ -478,6 +483,59 @@ impl App {
 }
 
 impl App {
+    /// Place occupée et données de l'utilisateur d'un logiciel installé.
+    fn data_group(self: &Rc<Self>, pkg: &Package) -> adap::PreferencesGroup {
+        let g = adap::PreferencesGroup::new();
+        g.set_title("Place occupée");
+        let kind = pkg.backend.unwrap_or(BackendKind::Apt);
+        let id = pkg.id.clone();
+        let task = background(move || noos_pkg::space::sizes(&[(kind, id.clone())]).remove(&noos_pkg::space::key(kind, &id)).unwrap_or_default());
+        let (app, g2) = (self.clone(), g.clone());
+        glib::spawn_future_local(async move {
+            let sz = task.await;
+            g2.add(&row("Logiciel", &size(Some(sz.installed))));
+            let dirs: Vec<String> = sz.data_dirs.iter().map(|d| d.display().to_string().replace(&glib::home_dir().display().to_string(), "~")).collect();
+            let r = row("Vos données", &if dirs.is_empty() { "Aucun dossier de données trouvé".to_string() } else { format!("{} · {}", glib::format_size(sz.data), dirs.join(", ")) });
+            r.set_subtitle_lines(3);
+            if let Some(first) = sz.data_dirs.first().cloned() {
+                let open = gtk::Button::from_icon_name("folder-open-symbolic");
+                open.add_css_class("flat");
+                open.set_valign(gtk::Align::Center);
+                open.set_tooltip_text(Some("Ouvrir le dossier"));
+                open.connect_clicked(move |_| {
+                    let _ = gio::AppInfo::launch_default_for_uri(&gio::File::for_path(&first).uri(), None::<&gio::AppLaunchContext>);
+                });
+                r.add_suffix(&open);
+                let clear = gtk::Button::with_label("Effacer…");
+                clear.set_valign(gtk::Align::Center);
+                let (app2, dirs2) = (app.clone(), sz.data_dirs.clone());
+                clear.connect_clicked(move |b| {
+                    let (dirs3, b2, toasts) = (dirs2.clone(), b.clone(), app2.toasts.clone());
+                    app2.confirm(
+                        "Effacer les données de l'application ?",
+                        "Réglages, comptes et fichiers internes de l'application sont mis à la corbeille (récupérables). Elle repartira comme au premier lancement.",
+                        "Mettre à la corbeille",
+                        true,
+                        move || {
+                            let plan = noos_pkg::space::clear_data_plan(&dirs3);
+                            let task = background(move || plan.run(&|_| {}).is_ok());
+                            let (b3, toasts) = (b2.clone(), toasts.clone());
+                            glib::spawn_future_local(async move {
+                                if task.await {
+                                    b3.set_sensitive(false);
+                                    toasts.add_toast(adap::Toast::new("Données mises à la corbeille"));
+                                }
+                            });
+                        },
+                    );
+                });
+                r.add_suffix(&clear);
+            }
+            g2.add(&r);
+        });
+        g
+    }
+
     /// Permissions d'une appli Flatpak : lecture seule avant l'installation, interrupteurs
     /// (`flatpak override --user`) ensuite.
     fn permissions_group(self: &Rc<Self>, pkg: &Package) -> adap::PreferencesGroup {

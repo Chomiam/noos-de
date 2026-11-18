@@ -55,6 +55,10 @@ struct App {
 
     installed_box: gtk::Box,
     installed_filter: gtk::SearchEntry,
+    /// Tri de la page Installées : 0 nom, 1 place occupée.
+    installed_sort: gtk::DropDown,
+    /// Place occupée (clé `noos_pkg::space::key`), mesurée en arrière-plan.
+    sizes: RefCell<HashMap<String, noos_pkg::space::Sizes>>,
     installed: RefCell<Vec<(usize, Vec<Package>, Option<String>)>>,
 
     updates_box: gtk::Box,
@@ -478,6 +482,7 @@ impl App {
         glib::spawn_future_local(async move {
             *app.installed.borrow_mut() = task.await;
             app.render_installed();
+            app.load_sizes();
             // La vitrine a besoin de savoir ce qui est déjà installé.
             if !app.home_built.replace(true) {
                 app.build_home();
@@ -485,19 +490,48 @@ impl App {
         });
     }
 
+    /// Place occupée par chaque logiciel installé (taille + données), puis nouvel affichage.
+    fn load_sizes(self: &Rc<Self>) {
+        let items: Vec<(BackendKind, String)> =
+            self.installed.borrow().iter().flat_map(|(i, list, _)| list.iter().map(move |p| (*i, p.id.clone()))).map(|(i, id)| (self.kind(i), id)).collect();
+        let task = background(move || noos_pkg::space::sizes(&items));
+        let app = self.clone();
+        glib::spawn_future_local(async move {
+            *app.sizes.borrow_mut() = task.await;
+            app.render_installed();
+        });
+    }
+
+    fn size_of(&self, p: &Package) -> Option<noos_pkg::space::Sizes> {
+        self.sizes.borrow().get(&noos_pkg::space::key(p.backend.unwrap_or(BackendKind::Apt), &p.id)).cloned()
+    }
+
     fn render_installed(self: &Rc<Self>) {
+        // Le filtre et le tri restent dans la page : on les détache avant de vider.
+        for w in [self.installed_filter.clone().upcast::<gtk::Widget>(), self.installed_sort.clone().upcast()] {
+            if let Some(parent) = w.parent().and_then(|p| p.downcast::<gtk::Box>().ok()) {
+                parent.remove(&w);
+            }
+        }
         clear(&self.installed_box);
         self.installed_box.append(&self.cleanup_group());
-        self.installed_box.append(&self.installed_filter);
+        let line = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        line.append(&self.installed_filter);
+        line.append(&self.installed_sort);
+        self.installed_box.append(&line);
+        let by_size = self.installed_sort.selected() == 1;
         let filter = self.installed_filter.text().to_lowercase();
         // AppImage en tête : peu nombreuses, et c'est là qu'on cherche juste après une installation.
         self.installed_box.append(&self.appimage_group(&filter));
         for (idx, list, err) in self.installed.borrow().iter() {
             let kind = self.kind(*idx);
-            let shown: Vec<&Package> = list
+            let mut shown: Vec<&Package> = list
                 .iter()
                 .filter(|p| filter.is_empty() || p.name.to_lowercase().contains(&filter) || p.id.to_lowercase().contains(&filter))
                 .collect();
+            if by_size {
+                shown.sort_by_key(|p| std::cmp::Reverse(self.size_of(p).map(|s| s.installed + s.data).unwrap_or(0)));
+            }
             let g = adap::PreferencesGroup::new();
             g.set_title(&format!("{} — {}", kind.label(), list.len()));
             g.set_description(Some(match kind {
@@ -510,7 +544,15 @@ impl App {
                 g.add(&row(if list.is_empty() { "Aucun" } else { "Aucun résultat pour ce filtre" }, ""));
             }
             for p in shown.iter().take(300) {
-                g.add(&self.package_row(p));
+                let r = self.package_row(p);
+                if let Some(sz) = self.size_of(p) {
+                    let mut t = glib::format_size(sz.installed).to_string();
+                    if sz.data > 0 {
+                        t.push_str(&format!(" · données {}", glib::format_size(sz.data)));
+                    }
+                    r.set_subtitle(&if p.summary.is_empty() { t } else { format!("{}\n{t}", p.summary) });
+                }
+                g.add(&r);
             }
             if shown.len() > 300 {
                 g.add(&row(&format!("… et {} autres (affinez le filtre)", shown.len() - 300), ""));
@@ -1134,6 +1176,9 @@ fn build(gapp: &adap::Application) {
     let (installed_scroll, installed_box) = page_container();
     let installed_filter = gtk::SearchEntry::new();
     installed_filter.set_placeholder_text(Some("Filtrer les logiciels installés"));
+    installed_filter.set_hexpand(true);
+    let installed_sort = gtk::DropDown::from_strings(&["Trier par nom", "Trier par place occupée"]);
+    installed_sort.set_valign(gtk::Align::Center);
 
     // ── Mises à jour ──
     let (updates_view, updates_box) = page_container();
@@ -1187,6 +1232,8 @@ fn build(gapp: &adap::Application) {
         home_built: Cell::new(false),
         installed_box,
         installed_filter: installed_filter.clone(),
+        installed_sort: installed_sort.clone(),
+        sizes: RefCell::new(HashMap::new()),
         installed: RefCell::new(vec![]),
         updates_box,
         updates_page,
@@ -1228,6 +1275,10 @@ fn build(gapp: &adap::Application) {
     {
         let app2 = app.clone();
         installed_filter.connect_search_changed(move |_| app2.render_installed());
+    }
+    {
+        let app2 = app.clone();
+        installed_sort.connect_selected_notify(move |_| app2.render_installed());
     }
     // Chargement paresseux des pages.
     {
@@ -1305,6 +1356,9 @@ fn build(gapp: &adap::Application) {
     if let Ok(c) = std::env::var("NOOS_SOFTWARE_COLLECTION") {
         // Aperçu : une collection ou une catégorie (`category/Graphics`).
         app.show_collection(&c, c.trim_start_matches("category/"));
+    }
+    if std::env::var("NOOS_SOFTWARE_SORT").is_ok_and(|v| v == "size") {
+        installed_sort.set_selected(1);
     }
     if std::env::var_os("NOOS_SOFTWARE_HISTORY").is_some() {
         app.show_history();
