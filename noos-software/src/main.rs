@@ -222,13 +222,7 @@ impl App {
             return;
         };
         let app = self.clone();
-        let p = pkg.clone();
-        self.ops.enqueue(
-            format!("Installation de {} ({})", pkg.name, source_text(&pkg)),
-            idx,
-            move |b| Ok(b.install(&[p])),
-            move |_| app.after_change(),
-        );
+        self.ops.enqueue_install(format!("Installation de {} ({})", pkg.name, source_text(&pkg)), idx, vec![pkg.clone()], move |_| app.after_change());
     }
 
     pub(crate) fn remove(self: &Rc<Self>, pkg: Package) {
@@ -534,7 +528,22 @@ impl App {
         clear(&self.updates_box);
         self.updates_box.append(&loading(if force { "Recherche des mises à jour auprès des dépôts…" } else { "Recherche des mises à jour…" }));
         let backends = self.backends.clone();
+        if std::env::var_os("NOOS_SOFTWARE_UPDATES_DEMO").is_some() {
+            // Aperçu : mises à jour fictives, rien n'est enregistré.
+            let demo = demo_updates(&backends);
+            let task = background(move || backends.iter().find(|b| b.kind() == BackendKind::Apt).map(|b| b.appstream_ids()));
+            let app = self.clone();
+            glib::spawn_future_local(async move {
+                if let Some(ids) = task.await {
+                    *app.appstream.borrow_mut() = ids;
+                }
+                app.render_updates(demo);
+            });
+            return;
+        }
         let task = background(move || {
+            // Table AppStream (applications / composants du système) : déjà en cache le plus souvent.
+            let ids = backends.iter().find(|b| b.kind() == BackendKind::Apt).map(|b| b.appstream_ids());
             let res: Vec<(usize, Result<Vec<Update>, String>)> = if force {
                 noos_pkg::check_updates(&backends, true).into_iter().enumerate().map(|(i, (_, r))| (i, r.map_err(|e| format!("{e:#}")))).collect()
             } else {
@@ -542,11 +551,14 @@ impl App {
             };
             let rec: Vec<_> = res.iter().map(|(i, r)| (backends[*i].kind(), r.clone())).collect();
             noos_pkg::record_updates(&rec);
-            res
+            (res, ids)
         });
         let app = self.clone();
         glib::spawn_future_local(async move {
-            let results = task.await;
+            let (results, ids) = task.await;
+            if let Some(ids) = ids {
+                *app.appstream.borrow_mut() = ids;
+            }
             app.render_updates(results);
         });
     }
@@ -603,39 +615,108 @@ impl App {
             self.updates_box.append(&status_page("emblem-ok-symbolic", "Votre système est à jour", "Aucune mise à jour pour l'instant."));
         }
 
-        for (idx, res) in results {
-            let kind = self.kind(idx);
+        // Noyau, libc, pilotes, compositeur… : redémarrage à prévoir.
+        let apt_names: Vec<String> = results
+            .iter()
+            .filter(|(i, _)| self.kind(*i) == BackendKind::Apt)
+            .filter_map(|(_, r)| r.as_ref().ok())
+            .flatten()
+            .map(|u| u.package.id.clone())
+            .collect();
+        if noos_pkg::needs_reboot(&apt_names.iter().map(String::as_str).collect::<Vec<_>>()) {
             let g = adap::PreferencesGroup::new();
-            g.set_title(kind.label());
-            match res {
-                Err(e) => g.add(&row("Impossible de vérifier les mises à jour", &e)),
-                Ok(list) if list.is_empty() => continue,
-                Ok(list) => {
-                    g.set_description(Some(&format!("{} mise(s) à jour", list.len())));
-                    let b = gtk::Button::with_label("Mettre à jour");
-                    b.add_css_class("flat");
-                    let app = self.clone();
-                    b.connect_clicked(move |_| app.upgrade(idx));
-                    g.set_header_suffix(Some(&b));
-                    for u in list.iter().take(200) {
-                        let sub = match (u.old_version.is_empty(), u.new_version.is_empty()) {
-                            (false, false) if u.old_version != u.new_version => format!("{} → {}", u.old_version, u.new_version),
-                            (_, false) => u.new_version.clone(),
-                            _ => String::new(),
-                        };
-                        let sub = if u.package.summary.is_empty() { sub } else { format!("{sub}\n{}", u.package.summary) };
-                        let r = row(&u.package.name, sub.trim());
-                        r.add_prefix(&icon_for(&u.package, 32));
-                        r.add_suffix(&badge(&source_text(&u.package), kind));
-                        g.add(&r);
-                    }
-                    if list.len() > 200 {
-                        g.add(&row(&format!("… et {} autres", list.len() - 200), ""));
-                    }
-                }
-            }
+            let r = row("Un redémarrage sera nécessaire", "Le noyau, des pilotes ou des composants essentiels du système sont mis à jour : redémarrez une fois l'installation terminée.");
+            r.add_prefix(&gtk::Image::from_icon_name("system-reboot-symbolic"));
+            g.add(&r);
             self.updates_box.append(&g);
         }
+
+        for (idx, res) in results {
+            let kind = self.kind(idx);
+            let list = match res {
+                Err(e) => {
+                    let g = adap::PreferencesGroup::new();
+                    g.set_title(kind.label());
+                    g.add(&row("Impossible de vérifier les mises à jour", &e));
+                    self.updates_box.append(&g);
+                    continue;
+                }
+                Ok(list) if list.is_empty() => continue,
+                Ok(list) => list,
+            };
+            // Applications (AppStream, Flatpak) d'un côté, composants du système de l'autre.
+            let (apps, system): (Vec<Update>, Vec<Update>) =
+                list.into_iter().partition(|u| kind == BackendKind::Flatpak || self.appstream.borrow().contains_key(&u.package.id));
+            let short = match kind {
+                BackendKind::Flatpak => "Flatpak",
+                BackendKind::Apt => "paquets Debian",
+            };
+            for (title, desc, items) in [
+                (format!("Applications ({short})"), "Logiciels que vous utilisez", apps),
+                (format!("Composants du système ({short})"), "Bibliothèques, pilotes, outils : à garder à jour pour la sécurité", system),
+            ] {
+                if items.is_empty() {
+                    continue;
+                }
+                let g = adap::PreferencesGroup::new();
+                g.set_title(&title);
+                g.set_description(Some(&format!("{desc} · {} mise(s) à jour", items.len())));
+                let checks: Rc<RefCell<Vec<(gtk::CheckButton, Package)>>> = Rc::new(RefCell::new(Vec::new()));
+                let b = gtk::Button::with_label("Mettre à jour");
+                b.add_css_class("flat");
+                b.set_tooltip_text(Some("Met à jour les éléments cochés de ce groupe"));
+                {
+                    let (app, checks) = (self.clone(), checks.clone());
+                    b.connect_clicked(move |_| {
+                        let pkgs: Vec<Package> = checks.borrow().iter().filter(|(c, _)| c.is_active()).map(|(_, p)| p.clone()).collect();
+                        app.upgrade_selected(idx, pkgs);
+                    });
+                }
+                g.set_header_suffix(Some(&b));
+                for u in items.iter().take(300) {
+                    let sub = match (u.old_version.is_empty(), u.new_version.is_empty()) {
+                        (false, false) if u.old_version != u.new_version => format!("{} → {}", u.old_version, u.new_version),
+                        (_, false) => u.new_version.clone(),
+                        _ => String::new(),
+                    };
+                    let sub = if u.package.summary.is_empty() { sub } else { format!("{sub}\n{}", u.package.summary) };
+                    let r = row(&u.package.name, sub.trim());
+                    let check = gtk::CheckButton::new();
+                    check.set_active(true);
+                    check.set_valign(gtk::Align::Center);
+                    check.set_tooltip_text(Some("Inclure dans la mise à jour"));
+                    r.add_prefix(&icon_for(&u.package, 32));
+                    r.add_prefix(&check);
+                    r.add_suffix(&badge(&source_text(&u.package), kind));
+                    // Clic : fiche du logiciel (nouveautés de la version).
+                    r.set_activatable(true);
+                    let (app, p) = (self.clone(), u.package.clone());
+                    r.connect_activated(move |_| {
+                        app.show_software(&Software { key: p.id.clone(), name: p.name.clone(), summary: p.summary.clone(), offers: vec![p.clone()] }, None)
+                    });
+                    checks.borrow_mut().push((check, u.package.clone()));
+                    g.add(&r);
+                }
+                if items.len() > 300 {
+                    g.add(&row(&format!("… et {} autres", items.len() - 300), ""));
+                }
+                self.updates_box.append(&g);
+            }
+        }
+    }
+
+    /// Met à jour une sélection de paquets (rien de coché : rien à faire).
+    fn upgrade_selected(self: &Rc<Self>, idx: usize, pkgs: Vec<Package>) {
+        if pkgs.is_empty() {
+            self.toasts.add_toast(adap::Toast::new("Cochez au moins une mise à jour"));
+            return;
+        }
+        let app = self.clone();
+        let title = match pkgs.len() {
+            1 => format!("Mise à jour de {}", pkgs[0].name),
+            n => format!("Mise à jour de {n} éléments ({})", self.kind(idx).label()),
+        };
+        self.ops.enqueue(title, idx, move |b| Ok(b.upgrade(&pkgs)), move |_| app.load_updates());
     }
 
     fn upgrade(self: &Rc<Self>, idx: usize) {
@@ -1003,6 +1084,7 @@ fn build(gapp: &adap::Application) {
     let log_btn = gtk::Button::from_icon_name("utilities-terminal-symbolic");
     log_btn.set_tooltip_text(Some("Journal des opérations"));
     header.pack_end(&log_btn);
+    header.pack_end(&ops.queue_button);
 
     let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
     content.append(&stack);
@@ -1130,9 +1212,52 @@ fn build(gapp: &adap::Application) {
     if let Ok(q) = std::env::var("NOOS_SOFTWARE_SEARCH") {
         search.set_text(&q);
     }
+    if std::env::var_os("NOOS_SOFTWARE_QUEUE_DEMO").is_some() && !app.backends.is_empty() {
+        // Aperçu : une opération fictive en cours et deux en attente, file ouverte.
+        for (t, secs) in [("Installation de Éditeur d’image GIMP (apt · Debian)", "60"), ("Installation de Fluxer (Flatpak · Flathub)", "5"), ("Mise à jour de 3 éléments", "5")] {
+            app.ops.enqueue(t, 0, move |_| Ok(noos_pkg::Plan::new().user(&["sleep", secs])), |_| {});
+        }
+        let ops = app.ops.clone();
+        glib::timeout_add_local_once(Duration::from_millis(2500), move || ops.queue_button.popup());
+    }
     if let Ok(spec) = std::env::var("NOOS_SOFTWARE_DETAILS") {
         app.open_details_spec(&spec);
     }
+}
+
+/// Mises à jour fictives (`NOOS_SOFTWARE_UPDATES_DEMO=1`).
+fn demo_updates(backends: &ops::Backends) -> Vec<(usize, Result<Vec<Update>, String>)> {
+    let up = |kind: BackendKind, id: &str, name: &str, old: &str, new: &str, summary: &str| Update {
+        old_version: old.into(),
+        new_version: new.into(),
+        package: Package {
+            backend: Some(kind),
+            id: id.into(),
+            name: name.into(),
+            version: new.into(),
+            summary: summary.into(),
+            origin: if kind == BackendKind::Flatpak { "flathub".into() } else { "debian".into() },
+            installed: true,
+            scope: (kind == BackendKind::Flatpak).then_some(Scope::System),
+        },
+    };
+    backends
+        .iter()
+        .enumerate()
+        .map(|(i, b)| {
+            let list = match b.kind() {
+                BackendKind::Apt => vec![
+                    up(BackendKind::Apt, "gimp", "Éditeur d’image GIMP", "3.2.6-1", "3.2.8-1+b1", "programme de manipulation d’image GIMP"),
+                    up(BackendKind::Apt, "simple-scan", "Numériseur de documents", "49.1-1", "50.0-2", "utilitaire de numérisation d'images simple"),
+                    up(BackendKind::Apt, "linux-image-amd64", "linux-image-amd64", "6.17.8-1", "6.17.9-1", "Linux pour PC 64 bits (métapaquet)"),
+                    up(BackendKind::Apt, "libc6", "libc6", "2.42-3", "2.43-1", "Bibliothèque C GNU : bibliothèques partagées"),
+                    up(BackendKind::Apt, "htop", "htop", "3.5.2-1", "3.5.3-1", "outil interactif de visualisation de processus"),
+                ],
+                BackendKind::Flatpak => vec![up(BackendKind::Flatpak, "app.fluxer.Fluxer", "Fluxer", "2026.1110", "2026.1114.183423", "A chat app that puts you first")],
+            };
+            (i, Ok(list))
+        })
+        .collect()
 }
 
 thread_local! {

@@ -249,6 +249,16 @@ impl Backend for Flatpak {
         plan
     }
 
+    fn upgrade(&self, packages: &[Package]) -> Plan {
+        let mut plan = Plan::new();
+        for (scope, _, ids) in Self::by_scope(packages) {
+            let mut argv: Vec<String> = vec!["flatpak".into(), "update".into(), "--noninteractive".into(), "-y".into(), scope.flag().into()];
+            argv.extend(ids);
+            plan = plan.user_owned(argv);
+        }
+        plan
+    }
+
     fn details(&self, package: &Package) -> anyhow::Result<Details> {
         let (remote, scope) = remote_of(package);
         let id = package.id.as_str();

@@ -853,6 +853,46 @@ pub fn flatpak_icon(root: &Path, remote: &str, arch: &str, id: &str) -> Option<P
     ["128x128", "64x64"].iter().map(|s| dir.join(s).join(format!("{id}.png"))).find(|p| p.exists())
 }
 
+// ───────────────────────────── Journal des modifications ─────────────────────────────
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ChangelogEntry {
+    pub version: String,
+    /// Lignes de l'entrée (« * Nouvelle version »…), sans la signature.
+    pub text: String,
+    /// Date de la signature (« Sun, 16 Aug 2026 18:12:00 +0200 »).
+    pub date: String,
+}
+
+/// `debian/changelog` (sortie de `apt-get changelog`) : entrées plus récentes que `since`
+/// (version installée), `max` au plus.
+pub fn parse_debian_changelog(text: &str, since: Option<&str>, max: usize) -> Vec<ChangelogEntry> {
+    let mut out: Vec<ChangelogEntry> = Vec::new();
+    let mut cur: Option<ChangelogEntry> = None;
+    for line in text.lines() {
+        if !line.starts_with(' ') && line.contains(" (") && line.contains(';') {
+            let version = line.split_once(" (").and_then(|(_, r)| r.split_once(')')).map(|(v, _)| v.to_string()).unwrap_or_default();
+            if since == Some(version.as_str()) || out.len() >= max {
+                cur = None;
+                break;
+            }
+            cur = Some(ChangelogEntry { version, ..Default::default() });
+        } else if let Some(sig) = line.strip_prefix(" -- ") {
+            if let Some(mut e) = cur.take() {
+                e.date = sig.rsplit_once("  ").map(|(_, d)| d.trim().to_string()).unwrap_or_default();
+                e.text = e.text.trim().to_string();
+                out.push(e);
+            }
+        } else if let Some(e) = cur.as_mut() {
+            if !line.trim().is_empty() {
+                e.text.push_str(line.strip_prefix("  ").unwrap_or(line));
+                e.text.push('\n');
+            }
+        }
+    }
+    out
+}
+
 // ───────────────────────────── Simulation ─────────────────────────────
 
 /// Effet d'une opération, simulé sans droits root.
@@ -1108,6 +1148,21 @@ Releases:\n- version: 3.2.8\n  unix-timestamp: 1700000000\n---\nType: desktop-ap
         assert_eq!(e.removed, ["oldpkg"]);
         let r = parse_apt_simulation("Remv gimp [3.2.8-1+b1]\nRemv gimp-plugin [1]\n", "gimp");
         assert_eq!(r.removed, ["gimp-plugin"]);
+    }
+
+    #[test]
+    fn journal_debian() {
+        let t = "htop (3.5.3-1) unstable; urgency=medium\n\n  * New upstream release\n    - détail\n\n -- Daniel Lange <DLange@debian.org>  Sun, 16 Aug 2026 18:12:00 +0200\n\n\
+htop (3.5.2-1) unstable; urgency=medium\n\n  * Add Netlink\n\n -- Daniel Lange <DLange@debian.org>  Sat, 18 Jul 2026 17:30:00 +0200\n\n\
+htop (3.5.1-1) unstable; urgency=medium\n\n  * Old\n\n -- D <d@d>  Mon, 1 Jun 2026 10:00:00 +0200\n";
+        let e = parse_debian_changelog(t, Some("3.5.1-1"), 10);
+        assert_eq!(e.len(), 2);
+        assert_eq!(e[0].version, "3.5.3-1");
+        assert_eq!(e[0].text, "* New upstream release\n  - détail");
+        assert_eq!(e[0].date, "Sun, 16 Aug 2026 18:12:00 +0200");
+        assert_eq!(parse_debian_changelog(t, None, 1).len(), 1);
+        assert!(crate::needs_reboot(&["vim", "linux-image-6.17-amd64"]));
+        assert!(!crate::needs_reboot(&["vim", "htop"]));
     }
 
     #[test]

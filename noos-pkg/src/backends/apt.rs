@@ -728,6 +728,20 @@ impl Backend for Apt {
         Plan::new().root_owned(apt_root(&["update"])).root_owned(apt_root(&["full-upgrade"]))
     }
 
+    fn upgrade(&self, packages: &[Package]) -> Plan {
+        // `--only-upgrade` : n'installe rien de nouveau par erreur ; les nouvelles dépendances
+        // des paquets choisis sont tout de même ajoutées.
+        let mut argv = apt_root(&["install", "--only-upgrade"]);
+        argv.extend(packages.iter().map(|p| p.id.clone()));
+        Plan::new().root_owned(apt_root(&["update"])).root_owned(argv)
+    }
+
+    fn changelog(&self, package: &Package) -> anyhow::Result<Vec<details::ChangelogEntry>> {
+        let out = capture(&["apt-get", "changelog", "-qq", &package.id])?;
+        let since = dpkg_installed().get(&package.id).map(|(v, _, _)| v.clone());
+        Ok(details::parse_debian_changelog(&out, since.as_deref(), 6))
+    }
+
     fn repos(&self) -> anyhow::Result<Vec<Repo>> {
         aptsources::list()
     }

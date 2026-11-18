@@ -172,6 +172,18 @@ pub trait Backend: Send + Sync {
         anyhow::bail!("pas de fiche détaillée pour {}", package.id)
     }
 
+    /// Met à jour seulement ces paquets (sélection de la page Mises à jour).
+    fn upgrade(&self, packages: &[Package]) -> Plan {
+        let _ = packages;
+        self.upgrade_all()
+    }
+
+    /// Nouveautés d'une version (journal des modifications), de la plus récente à la version
+    /// installée exclue. Peut demander le réseau.
+    fn changelog(&self, package: &Package) -> anyhow::Result<Vec<details::ChangelogEntry>> {
+        anyhow::bail!("pas de journal des modifications pour {}", package.id)
+    }
+
     /// Simule l'installation (`install`) ou la suppression d'un paquet : ce qui sera ajouté,
     /// mis à jour ou retiré en plus de lui.
     fn simulate(&self, _package: &Package, _install: bool) -> anyhow::Result<details::Effect> {
@@ -231,6 +243,19 @@ pub fn record_updates(results: &[(BackendKind, Result<Vec<Update>, String>)]) ->
     }
     let _ = noos_core::updates::save(&st);
     st
+}
+
+/// Une mise à jour de ces paquets demande-t-elle un redémarrage (noyau, libc, systemd,
+/// pilotes, compositeur NOOS…) ?
+pub fn needs_reboot(names: &[&str]) -> bool {
+    names.iter().any(|n| {
+        n.starts_with("linux-image")
+            || n.starts_with("linux-modules")
+            || n.starts_with("nvidia-kernel")
+            || n.starts_with("nvidia-driver")
+            || n.starts_with("firmware-")
+            || matches!(*n, "libc6" | "systemd" | "libsystemd0" | "dbus" | "dbus-daemon" | "noos" | "mesa-vulkan-drivers" | "libgl1-mesa-dri" | "intel-microcode" | "amd64-microcode")
+    })
 }
 
 /// Pertinence d'un nom pour une requête : 0 exact, 1 préfixe, 2 contient, 3 ailleurs

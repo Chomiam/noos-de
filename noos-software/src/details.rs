@@ -299,6 +299,40 @@ impl App {
         }
         content.append(&desc);
 
+        // ── Nouveautés (mise à jour disponible) ──
+        let update = matches!((&d.installed_version, &d.available_version), (Some(i), Some(a)) if i != a && !a.is_empty());
+        if update && let Some(idx) = self.backend_index(kind) {
+            let news = adap::PreferencesGroup::new();
+            news.set_title(&format!("Nouveautés de la version {}", d.available_version.clone().unwrap_or_default()));
+            let wait = row("Lecture du journal des modifications…", "");
+            let sp = gtk::Spinner::new();
+            sp.start();
+            wait.add_suffix(&sp);
+            news.add(&wait);
+            content.append(&news);
+            let (backends, p) = (self.backends.clone(), pkg.clone());
+            let task = background(move || backends[idx].changelog(&p).map_err(|e| format!("{e:#}")));
+            glib::spawn_future_local(async move {
+                let res = task.await;
+                news.remove(&wait);
+                match res {
+                    Ok(entries) if !entries.is_empty() => {
+                        for e in entries {
+                            let r = row(&format!("Version {}", e.version), &e.text);
+                            r.set_subtitle_lines(12);
+                            r.set_subtitle_selectable(true);
+                            if !e.date.is_empty() {
+                                r.set_tooltip_text(Some(&e.date));
+                            }
+                            news.add(&r);
+                        }
+                    }
+                    Ok(_) => news.add(&row("Pas de notes pour cette version", "")),
+                    Err(e) => news.add(&row("Journal des modifications indisponible", &e)),
+                }
+            });
+        }
+
         // ── Simulation ──
         let sim = adap::PreferencesGroup::new();
         sim.set_title(if pkg.installed { "Ce que la suppression retirera" } else { "Ce que l'installation ajoutera" });
@@ -312,7 +346,6 @@ impl App {
         // ── Informations ──
         let info = adap::PreferencesGroup::new();
         info.set_title("Informations");
-        let update = matches!((&d.installed_version, &d.available_version), (Some(i), Some(a)) if i != a && !a.is_empty());
         let rows: Vec<(&str, String)> = vec![
             ("Version installée", d.installed_version.clone().unwrap_or_default()),
             (if update { "Mise à jour disponible" } else if pkg.installed { "Version du dépôt" } else { "Version disponible" }, d.available_version.clone().filter(|a| Some(a) != d.installed_version.as_ref() || !pkg.installed).unwrap_or_default()),

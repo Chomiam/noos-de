@@ -11,7 +11,7 @@ use std::{
 
 use adap::prelude::*;
 use gtk::glib;
-use noos_pkg::{Backend, Plan};
+use noos_pkg::{Backend, BackendKind, Package, Plan};
 
 pub type Backends = Arc<Vec<Box<dyn Backend>>>;
 
@@ -32,6 +32,9 @@ struct Job {
     backend: usize,
     plan: PlanFn,
     done: DoneFn,
+    /// Installation simple : les installations apt en attente sont regroupées en une seule
+    /// commande (une seule demande de mot de passe).
+    install: Option<Vec<Package>>,
 }
 
 pub struct Ops {
@@ -45,6 +48,10 @@ pub struct Ops {
     pub log: gtk::TextBuffer,
     toasts: adap::ToastOverlay,
     window: RefCell<Option<gtk::Window>>,
+    /// Bouton de la barre d'en-tête : opérations en cours et en attente.
+    pub queue_button: gtk::MenuButton,
+    queue_list: gtk::Box,
+    current: RefCell<String>,
 }
 
 impl Ops {
@@ -77,6 +84,19 @@ impl Ops {
         h.append(&details);
         bar.set_child(Some(&h));
 
+        let queue_button = gtk::MenuButton::new();
+        queue_button.set_visible(false);
+        queue_button.set_tooltip_text(Some("File d'attente des opérations"));
+        let queue_list = gtk::Box::new(gtk::Orientation::Vertical, 4);
+        queue_list.set_margin_top(8);
+        queue_list.set_margin_bottom(8);
+        queue_list.set_margin_start(8);
+        queue_list.set_margin_end(8);
+        queue_list.set_width_request(340);
+        let pop = gtk::Popover::new();
+        pop.set_child(Some(&queue_list));
+        queue_button.set_popover(Some(&pop));
+
         let ops = Rc::new(Self {
             backends,
             queue: RefCell::new(VecDeque::new()),
@@ -88,6 +108,9 @@ impl Ops {
             log: gtk::TextBuffer::new(None),
             toasts: toasts.clone(),
             window: RefCell::new(None),
+            queue_button,
+            queue_list,
+            current: RefCell::new(String::new()),
         });
         let o = ops.clone();
         details.connect_clicked(move |_| o.show_log());
@@ -110,12 +133,94 @@ impl Ops {
         plan: impl FnOnce(&dyn Backend) -> anyhow::Result<Plan> + Send + 'static,
         done: impl FnOnce(bool) + 'static,
     ) {
-        let title = title.into();
+        self.push(Job { title: title.into(), backend, plan: Box::new(plan), done: Box::new(done), install: None });
+    }
+
+    /// Installation de paquets : regroupée avec les autres installations apt en attente.
+    pub fn enqueue_install(self: &Rc<Self>, title: impl Into<String>, backend: usize, packages: Vec<Package>, done: impl FnOnce(bool) + 'static) {
+        let p = packages.clone();
+        self.push(Job { title: title.into(), backend, plan: Box::new(move |b| Ok(b.install(&p))), done: Box::new(done), install: Some(packages) });
+    }
+
+    fn push(self: &Rc<Self>, job: Job) {
         if self.busy() {
-            self.toasts.add_toast(adap::Toast::new(&format!("En file d'attente : {title}")));
+            self.toasts.add_toast(adap::Toast::new(&format!("En file d'attente : {}", job.title)));
         }
-        self.queue.borrow_mut().push_back(Job { title, backend, plan: Box::new(plan), done: Box::new(done) });
+        self.queue.borrow_mut().push_back(job);
+        self.refresh_queue();
         self.next();
+    }
+
+    /// Met à jour le bouton et la liste de la file d'attente.
+    fn refresh_queue(self: &Rc<Self>) {
+        let pending = self.queue.borrow().len();
+        let running = self.running.get();
+        self.queue_button.set_visible(running || pending > 0);
+        let content = adap::ButtonContent::builder()
+            .icon_name("view-list-ordered-symbolic")
+            .label(if pending > 0 { format!("{} en attente", pending) } else { "En cours".to_string() })
+            .build();
+        self.queue_button.set_child(Some(&content));
+        while let Some(c) = self.queue_list.first_child() {
+            self.queue_list.remove(&c);
+        }
+        let heading = |t: &str| {
+            let l = gtk::Label::new(Some(t));
+            l.add_css_class("heading");
+            l.set_xalign(0.0);
+            l.set_margin_start(4);
+            l
+        };
+        if running {
+            self.queue_list.append(&heading("En cours"));
+            let line = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+            let sp = gtk::Spinner::new();
+            sp.start();
+            line.append(&sp);
+            let l = gtk::Label::new(Some(&self.current.borrow()));
+            l.set_xalign(0.0);
+            l.set_wrap(true);
+            line.append(&l);
+            line.set_margin_start(4);
+            self.queue_list.append(&line);
+        }
+        if pending > 0 {
+            let h = heading("En attente");
+            h.set_margin_top(6);
+            self.queue_list.append(&h);
+            for (i, job) in self.queue.borrow().iter().enumerate() {
+                let line = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+                line.set_margin_start(4);
+                let l = gtk::Label::new(Some(&job.title));
+                l.set_xalign(0.0);
+                l.set_hexpand(true);
+                l.set_wrap(true);
+                line.append(&l);
+                let rm = gtk::Button::from_icon_name("window-close-symbolic");
+                rm.add_css_class("flat");
+                rm.add_css_class("circular");
+                rm.set_tooltip_text(Some("Retirer de la file"));
+                let ops = self.clone();
+                rm.connect_clicked(move |_| ops.cancel_pending(i));
+                line.append(&rm);
+                self.queue_list.append(&line);
+            }
+        }
+    }
+
+    /// Retire une opération qui n'a pas encore commencé.
+    pub fn cancel_pending(self: &Rc<Self>, index: usize) {
+        let removed = self.queue.borrow_mut().remove(index);
+        if let Some(job) = removed {
+            self.toasts.add_toast(adap::Toast::new(&format!("Retiré de la file : {}", job.title)));
+            self.append_log(&format!("— Retiré de la file : {}", job.title));
+        }
+        self.refresh_queue();
+    }
+
+    /// Titres des opérations en attente (tests, démo).
+    pub fn pending_titles(&self) -> Vec<String> {
+        self.queue.borrow().iter().map(|j| j.title.clone()).collect()
     }
 
     fn append_log(&self, text: &str) {
@@ -128,12 +233,38 @@ impl Ops {
         if self.running.get() {
             return;
         }
-        let Some(job) = self.queue.borrow_mut().pop_front() else {
+        let Some(mut job) = self.queue.borrow_mut().pop_front() else {
             self.bar.set_reveal_child(false);
             self.spinner.stop();
+            self.refresh_queue();
             return;
         };
+        // Installations apt en attente : une seule commande `apt-get install a b c`.
+        let mut extra_done: Vec<DoneFn> = Vec::new();
+        if let Some(mut pkgs) = job.install.take() {
+            if self.backends[job.backend].kind() == BackendKind::Apt {
+                let mut q = self.queue.borrow_mut();
+                let mut i = 0;
+                while i < q.len() {
+                    if q[i].backend == job.backend && q[i].install.is_some() {
+                        let j = q.remove(i).unwrap();
+                        pkgs.extend(j.install.unwrap_or_default());
+                        extra_done.push(j.done);
+                    } else {
+                        i += 1;
+                    }
+                }
+                if !extra_done.is_empty() {
+                    let names: Vec<&str> = pkgs.iter().map(|p| p.name.as_str()).collect();
+                    job.title = format!("Installation de {}", names.join(", "));
+                    let all = pkgs.clone();
+                    job.plan = Box::new(move |b| Ok(b.install(&all)));
+                }
+            }
+        }
+        *self.current.borrow_mut() = job.title.clone();
         self.running.set(true);
+        self.refresh_queue();
         self.bar.set_reveal_child(true);
         self.spinner.start();
         self.title.set_text(&job.title);
@@ -176,6 +307,10 @@ impl Ops {
                 }
             }
             done(res.is_ok());
+            for d in extra_done {
+                d(res.is_ok());
+            }
+            ops.refresh_queue();
             ops.next();
         });
     }
