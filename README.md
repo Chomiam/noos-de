@@ -43,7 +43,7 @@ Tout est écrit en **Rust**, de la première ligne du compositeur jusqu'à la de
 <td><img src="docs/captures/05-mode-edition.webp" alt="Mode édition du bureau"><br><b>Mode édition</b> : on déplace les éléments du dock, les widgets et même le coin des notifications.</td>
 </tr>
 <tr>
-<td><img src="docs/captures/06-dock-gauche.webp" alt="Dock à gauche et barre fine"><br><b>Dock sur le côté</b> et <b>barre fine</b> en haut avec les bureaux virtuels : la disposition, c'est vous qui la choisissez.</td>
+<td><img src="docs/captures/06-dock-gauche.webp" alt="Dock à gauche et barre d'état"><br><b>Dock sur le côté</b> et <b>barre d'état</b> en haut avec les bureaux virtuels : la disposition, c'est vous qui la choisissez.</td>
 <td><img src="docs/captures/07-verrouillage.webp" alt="Écran de verrouillage animé"><br><b>Écran de verrouillage animé</b> (shaders GLSL) : un catalogue d'animations, avec des clins d'œil aux écrans de veille de Windows 95 / 98.</td>
 </tr>
 <tr>
@@ -62,8 +62,11 @@ Tout est écrit en **Rust**, de la première ligne du compositeur jusqu'à la de
   et quarts, Alt+Tab, effet de transparence Mica.
 - 🎨 **Personnalisation sans limite** : palettes, couleur d'accent, mode clair / sombre, coins,
   CSS libre, appliqués à chaud. **Les applis externes suivent aussi** (GTK3, GTK4, Qt).
-- 🧩 **Mode édition** : on réorganise le dock, on retire ou on ajoute des éléments, on pose des
-  widgets sur le bureau (horloge, ressources, note, calendrier).
+- 🧩 **Mode édition** : on réorganise les barres par glisser-déposer, on choisit une mise en
+  page en un clic (Windows 11, macOS, GNOME…) ou on enregistre la sienne, tout s'annule
+  (Ctrl+Z). Une galerie de **widgets** à poser où l'on veut, aimantés et alignés : météo,
+  horloges du monde, lecteur multimédia, calendrier, compte à rebours, cadre photo, dossiers,
+  notes, ressources.
 - 🖥️ **Bureaux virtuels et plusieurs écrans** : vue des tâches, glissement animé, écran
   principal, disposition des moniteurs à la souris.
 - 🎮 **Pensé pour le jeu** : VRR, affichage direct en plein écran, 10 bits, HDR10 (expérimental),
@@ -159,7 +162,7 @@ construisez l'**ISO** avec `./noos-iso/build.sh`. Pour développer, voyez le
 | 📺 | **Session multimédia (HTPC)** | Le PC du salon : interface plein écran lisible à 3 mètres, pilotable à la manette ou à la télécommande, films, musique, photos et streaming. |
 | 💾 | **Flasheur de clés USB** | Une appli pour créer des clés de démarrage, avec encore plus de fonctions que Rufus : ISO Windows et Linux, plusieurs ISO sur une même clé, persistance, vérification des sommes de contrôle, téléchargement des ISO intégré, image d'une clé → fichier, test des secteurs défectueux. |
 | 🖌️ | **Bibliothèque de thèmes** | Des thèmes complets pour NOOS (palette, fond d'écran, animation de verrouillage, icônes) à parcourir, essayer en un clic et partager. |
-| 🧩 | **Encore plus de widgets** | Météo, lecteur multimédia, calendrier enrichi, photos, raccourcis… sur le bureau comme dans la barre. |
+| 🧩 | **Widgets dans la barre** | Météo, lecteur multimédia, compte à rebours… en version compacte dans la barre des tâches, et un agenda relié à vos calendriers en ligne. |
 | 🐛 | **Correctifs et finitions** | Stabilité sur du vrai matériel (multi-écrans, VRR, HDR), performances, et chaque bug remonté. |
 
 ## 🤖 Vibe codé, et fier de l'être

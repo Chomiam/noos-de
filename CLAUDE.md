@@ -62,7 +62,8 @@ donne le contexte de travail.
 | `noos-widget-vitals/` | Widget « Ressources » de la barre : processeur, carte graphique (AMD `gpu_busy_percent`, Intel fréquence, NVIDIA `nvidia-smi`), mémoire, disque, réseau ; noms PCI `/usr/share/misc/pci.ids` ; `[taskbar] show_vitals` ; `NOOS_VITALS_OPEN=1` ouvre le détail |
 | `noos-disk/` | « Disques » (udisks2 par gio, bus système) : partitions, formatage (exFAT, NTFS, FAT32, ext4, Btrfs, XFS, F2FS), LUKS, SMART, test de vitesse, images, éjection. Bibliothèque `noos_disk` partagée avec le shell et l'Explorateur. `noos-disk-helper` (pkexec, `org.noos.disk.helper`) : montage permanent `/mnt/<nom>`, « M'en donner la propriété ». `noos-disk --selftest /dev/loopN` teste les opérations destructives sur une image |
 | `noos-core/src/updates.rs` | Mises à jour en arrière-plan : timer utilisateur `noos-update-check.timer` → `noos-pkg check --auto` (sans root : `apt-get update` dans `~/.cache/noos/apt` au plus toutes les 6 h, puis `apt-get -s full-upgrade` sur les listes les plus récentes ; `flatpak remote-ls --updates`) → `~/.local/state/noos/updates.json`, lu par l'icône de la barre, Logiciels et Paramètres › Mises à jour |
-| `noos-comp/src/desktops.rs` + `outputs.rs` | Bureaux virtuels et plusieurs écrans (`[[output]] position, primary`, Super+Maj+←/→). Shell : `taskview.rs` (Super+Tab), `editmode.rs` (dock sur les 4 bords, 6 zones via `NoosConfig::bar_zones()`, widgets du bureau `[[desktop_widget]]` déplacés par un geste posé sur le `gtk::Fixed` — jamais sur l'élément qui bouge, sinon clignotement). Le shell reconstruit les barres (`rebuild_bars`) quand le bord ou la barre fine change |
+| `noos-comp/src/desktops.rs` + `outputs.rs` | Bureaux virtuels et plusieurs écrans (`[[output]] position, primary`, Super+Maj+←/→). Shell : `taskview.rs` (Super+Tab). Le shell reconstruit les barres (`rebuild_bars`) quand le bord ou la barre d'état change |
+| `noos-shell/src/editmode.rs` + `desk.rs`, `gallery.rs`, `layouts.rs`, `widgets/` | **Mode édition** (plan : `docs/plans/mode-edition.md`) : barre d'outils (Widgets, Barres, Mises en page, annuler / rétablir, visite guidée), 6 zones de barre (`NoosConfig::bar_zones()`, barre des tâches + **barre d'état** = `[statusbar]`, ancien `[topbar]` lu), widgets `[[desktop_widget]]` (`id`, `size`, `style`, table `options`) dans la surface `noos-desktop-widgets` (`desk.rs` : un seul geste sur le `gtk::Fixed` — jamais sur l'élément qui bouge, sinon clignotement ; aimantation `noos_core::layout::snap`). Toute modification passe par `Shell::edit_layout` (instantané `noos_core::layout::Layout`, pile `History`). Météo : `noos_core::weather` (Open-Meteo, `curl`) ; jours fériés : `noos_core::holidays` |
 | `noos-save/` | « Sauvegarder et Restaurer » : instantanés Btrfs (snapper, `ALLOW_GROUPS=sudo`), avant / après chaque opération apt (`/etc/apt/apt.conf.d/80noos-save` → `noos-save-helper apt-pre/apt-post`, numéro « avant » dans `/run/noos-save/apt-pre`), restauration au redémarrage ; comparaison des paquets par `dpkg-query --admindir` |
 | `noos-grub/` | Thème GRUB (`generate.py` produit images et polices .pf2, déjà générées) ; `install.sh` le copie dans `/boot/grub/themes/noos` |
 | `noos-shell/src/power.rs` + `noos-core/src/power.rs` | **Énergie** (élément `power` de la barre, `[taskbar] show_power`) : batterie dessinée (UPower par D-Bus, `PropertiesChanged` ; repli `/sys/class/power_supply`), jauge du mode sur PC fixe, panneau (santé, consommation, modes). Modes : power-profiles-daemon, sinon **auto-cpufreq** (portables : PPD masqué, `pkexec /usr/libexec/noos-power-helper profile <mode>`, action `org.noos.power.helper`) |
@@ -137,7 +138,10 @@ compositeur y écrit (`[desktops] names`).
 | Variable | Effet |
 |---|---|
 | `NOOS_WINIT_OUTPUTS=2` (`3`) / `NOOS_WINIT_SIZE=2400x760` | compositeur imbriqué : fenêtre découpée en plusieurs écrans simulés / taille de la fenêtre |
-| `NOOS_TASKVIEW_DEMO=1` / `NOOS_EDIT_DEMO=1` | noos-shell : vue des tâches / mode édition ouverts après 2,5 s |
+| `NOOS_TASKVIEW_DEMO=1` / `NOOS_EDIT_DEMO=1` | noos-shell : vue des tâches / mode édition ouverts après 2,5 s (sans visite guidée automatique) |
+| `NOOS_EDIT_OPEN=étape;étape…` (+ `NOOS_EDIT_STEP_MS=1500`) | avec `NOOS_EDIT_DEMO=1` : étapes jouées l'une après l'autre — `widgets`, `bars`, `layouts`, `settings:n` (réglages du widget n), `toast:texte`, `preset:windows\|classic\|statusbar\|gnome\|vertical\|minimal`, `add:<type>`, `remove:n`, `undo`, `redo`, `tour:n`, `guides:x,y` (widget 0 « déplacé », repères affichés) |
+| `NOOS_EDIT_SEARCH=mot` / `NOOS_EDIT_TOUR=n` / `NOOS_EDIT_GUIDES=x,y` | galerie de widgets préremplie / visite guidée à l'étape n / repères d'alignement |
+| `NOOS_WEATHER_DEMO=1` / `NOOS_MEDIA_DEMO=1` | widgets Météo (Lyon fictif, sans réseau) / Lecteur multimédia (morceau fictif, sans lecteur MPRIS) |
 | `NOOS_LOGIN_PAGE=login` | noos-login ouvre directement le formulaire |
 | `NOOS_LOGIN_SESSION_DIRS=…` | dossiers de sessions supplémentaires (un conteneur n'en a pas) |
 | `NOOS_LOGIN_STATE=…` | fichier d'état du greeter (au lieu de /var/lib/noos-login) |
@@ -313,6 +317,12 @@ compositeur y écrit (`[desktops] names`).
   Les .pf2 doivent être chargés (`loadfont`) avant `set theme`.
 - **CSS du shell** : le style de la barre est chargé en `STYLE_PROVIDER_PRIORITY_USER + 10` ;
   une feuille ajoutée en plus doit être au-dessus (`USER + 20`), sinon ses couleurs sont ignorées.
+  `@window_bg_color` du thème NOOS est **translucide** (Mica) : un fond opaque se règle dans
+  `style.rs` (couleurs de la palette, ex. `banner_bg`), pas avec `alpha(@window_bg_color, …)`.
+- **Transitions CSS GTK** : jamais de `transition` sur `box-shadow` entre deux listes d'ombres de
+  longueurs différentes — interpolation invalide (`blur_radius >= 0`) puis **plantage** du shell
+  (mode édition, 18/11/2026). `gtk::Fixed` alloue à ses enfants leur taille **minimale** ; un
+  `f64::clamp(min, max)` avec `min > max` fait paniquer (taille d'écran encore inconnue).
 - **Flou Mica** (`noos-comp/src/blur.rs`) : tout commit d'une surface de la couche
   « background » fait recalculer le flou de tout l'écran sur le processeur (≈ 170 ms sur
   l'UHD 630). Rien qui se rafraîchit ne doit vivre dans le fond d'écran : les widgets du bureau

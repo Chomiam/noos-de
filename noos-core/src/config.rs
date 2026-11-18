@@ -23,7 +23,9 @@ pub struct NoosConfig {
     pub autoplay: AutoPlay,
     pub updates: Updates,
     pub desktops: Desktops,
-    /// Barre supérieure fine (bureaux virtuels, éléments déplacés en mode édition).
+    /// Barre d'état : seconde barre, au bord opposé à la barre des tâches (bureaux virtuels,
+    /// éléments déplacés en mode édition). Ancien nom de la section : `[topbar]` (« barre fine »).
+    #[serde(rename = "statusbar", alias = "topbar")]
     pub topbar: TopBar,
     /// Widgets posés sur le bureau (mode édition).
     #[serde(rename = "desktop_widget")]
@@ -186,7 +188,7 @@ impl NoosConfig {
         let t = &self.taskbar;
         let defaults: [&[&str]; 6] = [Taskbar::DEFAULT_LEFT, Taskbar::DEFAULT_CENTER, Taskbar::DEFAULT_RIGHT, &[], Taskbar::DEFAULT_TOP_CENTER, &[]];
         let all: Vec<&str> = defaults.iter().flat_map(|d| d.iter().copied()).collect();
-        // Barre fine désactivée : ses éléments reviennent à leur zone par défaut (le dock).
+        // Barre d'état désactivée : ses éléments reviennent à leur zone par défaut (le dock).
         let none = vec![];
         let tb = |l| if self.topbar.enabled { l } else { &none };
         let lists = [&t.zone_left, &t.zone_center, &t.zone_right, tb(&self.topbar.zone_left), tb(&self.topbar.zone_center), tb(&self.topbar.zone_right)];
@@ -218,7 +220,7 @@ impl NoosConfig {
     pub fn set_bar_zones(&mut self, z: [Vec<String>; 6]) {
         let [a, b, c, d, e, f] = z;
         (self.taskbar.zone_left, self.taskbar.zone_center, self.taskbar.zone_right) = (a, b, c);
-        // Sans barre fine, on garde sa disposition pour la prochaine activation.
+        // Sans barre d'état, on garde sa disposition pour la prochaine activation.
         if self.topbar.enabled {
             (self.topbar.zone_left, self.topbar.zone_center, self.topbar.zone_right) = (d, e, f);
         }
@@ -378,7 +380,7 @@ impl Default for Power {
 
 // ───────────────────────────── Verrouillage ─────────────────────────────
 
-/// Barre fine, au bord opposé du dock.
+/// Barre d'état (anciennement « barre fine »), au bord opposé à la barre des tâches.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct TopBar {
@@ -395,18 +397,61 @@ impl Default for TopBar {
     }
 }
 
-/// Widget du bureau : `clock`, `vitals`, `note`, `calendar`, placé en fraction de l'écran.
+/// Widget du bureau (`clock`, `vitals`, `note`, `calendar`, `weather`, `worldclock`, `media`,
+/// `countdown`, `photo`, `folders`), placé en fraction de l'écran.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(default)]
 pub struct DesktopWidget {
+    /// Identifiant stable (généré au chargement pour les fichiers d'avant).
+    pub id: String,
     pub kind: String,
     /// Écran (nom du connecteur ; vide = principal).
     pub output: String,
     /// Coin supérieur gauche, en fraction de la largeur / hauteur de l'écran.
     pub x: f64,
     pub y: f64,
+    /// Taille : `s`, `m` (défaut) ou `l`.
+    pub size: String,
+    /// Style du fond : `glass` (défaut, translucide), `solid` ou `clear` (sans fond).
+    pub style: String,
     /// Contenu (texte de la note).
     pub text: String,
+    /// Réglages propres au widget (ville de la météo, fuseaux, date du compte à rebours…).
+    pub options: std::collections::BTreeMap<String, String>,
+}
+
+impl DesktopWidget {
+    pub fn new(kind: &str, x: f64, y: f64) -> Self {
+        Self { id: new_widget_id(), kind: kind.into(), x, y, ..Default::default() }
+    }
+
+    pub fn option(&self, key: &str) -> Option<&str> {
+        self.options.get(key).map(String::as_str).filter(|v| !v.is_empty())
+    }
+
+    /// Taille normalisée (`s`, `m` ou `l`).
+    pub fn size(&self) -> &str {
+        match self.size.as_str() {
+            "s" | "l" => &self.size,
+            _ => "m",
+        }
+    }
+
+    /// Style normalisé (`glass`, `solid` ou `clear`).
+    pub fn style(&self) -> &str {
+        match self.style.as_str() {
+            "solid" | "clear" => &self.style,
+            _ => "glass",
+        }
+    }
+}
+
+/// Identifiant de widget unique (horloge + compteur, sans dépendance au hasard).
+pub fn new_widget_id() -> String {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static N: AtomicU32 = AtomicU32::new(0);
+    let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_micros()).unwrap_or(0);
+    format!("w{:x}{:02x}", t & 0xffff_ffff_ffff, N.fetch_add(1, Ordering::Relaxed) & 0xff)
 }
 
 /// Bureaux virtuels.
@@ -665,6 +710,12 @@ impl NoosConfig {
         if Taskbar::OLD_DEFAULT_PINNED.iter().any(|old| *old == pinned.as_slice()) {
             self.taskbar.pinned = Taskbar::DEFAULT_PINNED.iter().map(|s| s.to_string()).collect();
         }
+        // Widgets d'avant les identifiants : on leur en donne un (annuler / rétablir, réglages).
+        for w in &mut self.desktop_widgets {
+            if w.id.is_empty() {
+                w.id = new_widget_id();
+            }
+        }
     }
 
     pub fn output(&self, name: &str) -> Option<&OutputConfig> {
@@ -735,18 +786,42 @@ mod tests {
         // Élément retiré : absent de toutes les zones.
         cfg.taskbar.hidden = vec!["clock".into()];
         assert!(!cfg.bar_zones().iter().any(|l| l.iter().any(|i| i == "clock")));
-        // Élément déplacé dans la barre fine…
+        // Élément déplacé dans la barre d'état…
         cfg.topbar.enabled = true;
         let mut z = cfg.bar_zones();
         z[2].retain(|i| i != "tray");
         z[5].push("tray".into());
         cfg.set_bar_zones(z);
         assert_eq!(cfg.bar_zones()[5], ["tray"]);
-        // … revient dans le dock si la barre fine est désactivée, sans perdre sa place.
+        // … revient dans le dock si la barre d'état est désactivée, sans perdre sa place.
         cfg.topbar.enabled = false;
         assert!(cfg.bar_zones()[2].contains(&"tray".to_string()));
         cfg.topbar.enabled = true;
         assert_eq!(cfg.bar_zones()[5], ["tray"]);
+    }
+
+    #[test]
+    fn ancienne_barre_fine_et_widgets() {
+        // Fichier d'avant : section [topbar], widgets sans identifiant ni options.
+        let dir = std::env::temp_dir().join(format!("noos-cfg-tb-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("noos.toml");
+        fs::write(&f, "[topbar]\nenabled = true\nzone_right = [\"clock\"]\n\n[[desktop_widget]]\nkind = \"note\"\nx = 0.1\ny = 0.2\ntext = \"Bonjour\"\n").unwrap();
+        let cfg = NoosConfig::load_from(&f).unwrap();
+        assert!(cfg.topbar.enabled);
+        assert_eq!(cfg.topbar.zone_right, ["clock"]);
+        let w = &cfg.desktop_widgets[0];
+        assert!(!w.id.is_empty());
+        assert_eq!((w.size(), w.style(), w.text.as_str()), ("m", "glass", "Bonjour"));
+        // Réécrit sous le nouveau nom, options comprises.
+        let mut cfg = cfg;
+        cfg.desktop_widgets[0].options.insert("color".into(), "pink".into());
+        let text = toml::to_string_pretty(&cfg).unwrap();
+        assert!(text.contains("[statusbar]") && !text.contains("[topbar]"));
+        let back: NoosConfig = toml::from_str(&text).unwrap();
+        assert_eq!(back.desktop_widgets[0].option("color"), Some("pink"));
+        assert!(back.topbar.enabled);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

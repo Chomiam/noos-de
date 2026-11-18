@@ -1553,7 +1553,7 @@ pub fn taskbar(app: &Rc<App>) -> adap::NavigationPage {
     const EDGES: [(&str, &str); 4] = [("bottom", "En bas"), ("top", "En haut"), ("left", "À gauche"), ("right", "À droite")];
     let pos = combo(
         "view-dual-symbolic",
-        "Position du dock",
+        "Position de la barre des tâches",
         "Bord de l'écran où se place la barre des tâches",
         &EDGES.iter().map(|e| e.1.to_string()).collect::<Vec<_>>(),
         EDGES.iter().position(|e| e.0 == t.position).unwrap_or(0),
@@ -1568,8 +1568,8 @@ pub fn taskbar(app: &Rc<App>) -> adap::NavigationPage {
     layout.add(&pos);
     let topbar = switch(
         "view-continuous-symbolic",
-        "Barre fine",
-        "Seconde barre, au bord opposé au dock : bureaux virtuels et éléments déplacés en mode édition",
+        "Barre d'état",
+        "Seconde barre, au bord opposé à la barre des tâches : bureaux virtuels et éléments déplacés en mode édition",
         cfg.topbar.enabled,
     );
     {
@@ -1596,7 +1596,7 @@ pub fn taskbar(app: &Rc<App>) -> adap::NavigationPage {
         });
     }
     layout.add(&notif_pos);
-    let edit = card("document-edit-symbolic", "Modifier la disposition", "Mode édition : déplacez les éléments de la barre et ajoutez des widgets au bureau (aussi : clic droit sur le bureau)");
+    let edit = card("document-edit-symbolic", "Modifier la disposition", "Mode édition : déplacez les éléments des barres, ajoutez des widgets (météo, horloges, lecteur…), choisissez une mise en page (aussi : clic droit sur le bureau)");
     edit.set_activatable(true);
     edit.add_suffix(&gtk::Image::from_icon_name("go-next-symbolic"));
     edit.connect_activated(|_| {

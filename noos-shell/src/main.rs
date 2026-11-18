@@ -6,8 +6,11 @@
 
 mod apps;
 mod audio;
+mod desk;
 mod drives;
 mod editmode;
+mod gallery;
+mod layouts;
 mod net;
 mod notify;
 mod polkit;
@@ -21,6 +24,7 @@ mod taskview;
 mod tray;
 mod updates;
 mod wallpaper;
+mod widgets;
 
 use std::{cell::RefCell, rc::Rc, time::Duration};
 
@@ -95,9 +99,11 @@ pub struct Shell {
     pub taskview: RefCell<Option<Rc<taskview::TaskView>>>,
     /// Mode édition du bureau (barre réorganisable, widgets).
     pub editmode: RefCell<Option<Rc<editmode::EditMode>>>,
+    /// Annuler / rétablir du mode édition (instantanés de la mise en page).
+    pub history: RefCell<noos_core::layout::History>,
     /// Panneaux placés contre la barre des tâches (replacés si elle change de bord).
     pub flyouts: RefCell<Vec<glib::WeakRef<gtk::Window>>>,
-    /// Structure des barres construites (barre fine, bord du dock) : reconstruites si elle change.
+    /// Structure des barres construites (barre d'état, bord du dock) : reconstruites si elle change.
     bars_key: RefCell<String>,
     pub slideshow: wallpaper::Slideshow,
     css: gtk::CssProvider,
@@ -121,6 +127,50 @@ impl Shell {
         apps::request(Request::ReloadConfig);
     }
 
+    /// Modifie la mise en page (barres, widgets, notifications) en gardant l'état d'avant pour
+    /// « Annuler » ; un message « `label` — Annuler » s'affiche dans la barre du mode édition.
+    pub fn edit_layout(self: &Rc<Self>, label: &str, f: impl FnOnce(&mut NoosConfig)) {
+        let before = noos_core::layout::Layout::capture(&self.config(), true);
+        self.update_config(f);
+        if noos_core::layout::Layout::capture(&self.config(), true) == before {
+            return;
+        }
+        self.history.borrow_mut().push(label, before);
+        self.after_layout_change();
+        if let Some(e) = self.editmode.borrow().as_ref() {
+            e.toast(label, true);
+        }
+    }
+
+    /// Barres, widgets, notifications et barre d'outils remis en accord avec la configuration.
+    pub fn after_layout_change(self: &Rc<Self>) {
+        let s = self.clone();
+        glib::idle_add_local_once(move || {
+            s.relayout_taskbars();
+            s.rebuild_desktop_widgets();
+            if let Some(e) = s.editmode.borrow().as_ref() {
+                e.sync_labels();
+            }
+        });
+    }
+
+    /// Annuler (`redo = false`) ou rétablir la dernière action du mode édition.
+    pub fn undo(self: &Rc<Self>, redo: bool) {
+        let current = noos_core::layout::Layout::capture(&self.config(), true);
+        let step = if redo { self.history.borrow_mut().redo(current) } else { self.history.borrow_mut().undo(current) };
+        let Some((label, layout)) = step else {
+            if let Some(e) = self.editmode.borrow().as_ref() {
+                e.toast(if redo { "Rien à rétablir" } else { "Rien à annuler" }, false);
+            }
+            return;
+        };
+        self.update_config(|c| layout.apply(c));
+        self.after_layout_change();
+        if let Some(e) = self.editmode.borrow().as_ref() {
+            e.toast(&format!("{} : {}", if redo { "Rétabli" } else { "Annulé" }, label), false);
+        }
+    }
+
     fn rebuild_outputs(self: &Rc<Self>) {
         let display = gdk::Display::default().unwrap();
         let monitors = display.monitors();
@@ -136,10 +186,17 @@ impl Shell {
         self.rebuild_desktop_widgets();
     }
 
-    /// (Re)crée le dock et la barre fine de chaque écran (changement de bord, barre fine).
+    /// (Re)crée le dock et la barre d'état de chaque écran (changement de bord, barre d'état).
     pub fn rebuild_bars(self: &Rc<Self>) {
-        for t in self.taskbars.borrow_mut().drain(..) {
-            t.window.destroy();
+        // Les anciennes barres disparaissent un peu après l'arrivée des nouvelles (sinon le
+        // bureau reste un instant sans barre, le temps que le compositeur les place).
+        let old: Vec<taskbar::Taskbar> = self.taskbars.borrow_mut().drain(..).collect();
+        if !old.is_empty() {
+            glib::timeout_add_local_once(Duration::from_millis(150), move || {
+                for t in old {
+                    t.window.destroy();
+                }
+            });
         }
         let display = gdk::Display::default().unwrap();
         let monitors = display.monitors();
@@ -149,7 +206,7 @@ impl Shell {
             let Some(monitor) = monitors.item(i).and_downcast::<gdk::Monitor>() else { continue };
             let name = monitor.connector().map(|c| c.to_string()).unwrap_or_default();
             if cfg.taskbar.all_outputs || primary.as_ref().is_none_or(|p| *p == name) {
-                // La barre fine d'abord : le dock se place ensuite dans l'espace restant.
+                // La barre d'état d'abord : le dock se place ensuite dans l'espace restant.
                 if cfg.topbar.enabled {
                     self.taskbars.borrow_mut().push(taskbar::Taskbar::new(self, &monitor, true));
                 }
@@ -220,14 +277,14 @@ impl Shell {
             t.set_editing(on);
         }
         for w in self.wallpapers.borrow().iter() {
-            w.build_widgets(self, on);
+            w.desk.sync(self, on);
         }
     }
 
     pub fn rebuild_desktop_widgets(self: &Rc<Self>) {
         let editing = self.editmode.borrow().as_ref().is_some_and(|e| e.active.get());
         for w in self.wallpapers.borrow().iter() {
-            w.build_widgets(self, editing);
+            w.desk.sync(self, editing);
         }
     }
 
@@ -252,7 +309,7 @@ impl Shell {
     }
 
     fn apply_style(self: &Rc<Self>, cfg: &NoosConfig) {
-        // Barre fine activée / bord du dock changé (Paramètres ou mode édition) : nouvelles barres.
+        // Barre d'état activée / bord du dock changé (Paramètres ou mode édition) : nouvelles barres.
         let key = format!("{}|{}|{}", cfg.topbar.enabled, cfg.taskbar.position, cfg.topbar.height);
         let old = self.bars_key.replace(key.clone());
         if !old.is_empty() && old != key && !self.taskbars.borrow().is_empty() {
@@ -270,6 +327,8 @@ impl Shell {
         for w in self.wallpapers.borrow().iter() {
             w.apply_config(cfg);
         }
+        // Widgets du bureau : seuls ceux qui ont changé sont refaits (Paramètres, annuler…).
+        self.rebuild_desktop_widgets();
         // Panneaux : contre la barre, en bas ou en haut.
         self.flyouts.borrow_mut().retain(|w| w.upgrade().is_some());
         for w in self.flyouts.borrow().iter().filter_map(|w| w.upgrade()) {
@@ -497,6 +556,7 @@ fn main() -> glib::ExitCode {
             outputs: RefCell::new(vec![]),
             taskview: RefCell::new(None),
             editmode: RefCell::new(None),
+            history: RefCell::new(noos_core::layout::History::default()),
             flyouts: RefCell::new(vec![]),
             bars_key: RefCell::new(String::new()),
             slideshow: wallpaper::Slideshow::default(),
@@ -516,7 +576,7 @@ fn main() -> glib::ExitCode {
         *shell.editmode.borrow_mut() = Some(editmode::EditMode::new(&shell));
         {
             let provider = gtk::CssProvider::new();
-            provider.load_from_string(editmode::CSS);
+            provider.load_from_string(&[editmode::CSS, desk::CSS, gallery::CSS, layouts::CSS, &widgets::css()].concat());
             if let Some(d) = gdk::Display::default() {
                 // Au-dessus du style de la barre (USER + 10), sinon « .noos-taskbar button » l'emporte.
                 gtk::style_context_add_provider_for_display(&d, &provider, gtk::STYLE_PROVIDER_PRIORITY_USER + 20);

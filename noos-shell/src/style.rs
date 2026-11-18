@@ -18,6 +18,8 @@ pub fn css(cfg: &NoosConfig, dark: bool) -> String {
     let menu_bg = rgba(panel.mix(Rgb::parse(v.window_bg).unwrap_or(panel), 0.5), (alpha + 0.06).min(1.0));
     // Bannières de notification : toujours opaques (lisibles par-dessus n'importe quoi).
     let banner_bg = rgba(panel.mix(Rgb::parse(v.window_bg).unwrap_or(panel), 0.5), 1.0);
+    // Widgets du bureau (style « verre ») : translucides, mais pas autant que le thème.
+    let glass_bg = rgba(panel.mix(Rgb::parse(v.window_bg).unwrap_or(panel), 0.5), 0.74);
     let r = app.corner_radius;
     let height = cfg.taskbar.height.clamp(28, 96);
     // Les boutons suivent la hauteur de la barre (marge de 6 px en haut et en bas).
@@ -26,7 +28,7 @@ pub fn css(cfg: &NoosConfig, dark: bool) -> String {
     let pad_v = if height < 40 { 1 } else { 4 };
     // Sous 40 px, l'horloge n'affiche que l'heure (comme la petite barre de Windows).
     let date_display = if height < 40 { "font-size: 0; min-height: 0; margin: 0;" } else { "" };
-    // Barre fine (bord opposé au dock) et dock vertical (gauche / droite).
+    // Barre d'état (bord opposé au dock) et dock vertical (gauche / droite).
     let top_h = cfg.topbar.height.clamp(24, 48);
     let top_btn = top_h.saturating_sub(8).max(16);
     let side = if cfg.taskbar.position == "right" { "left" } else { "right" };
@@ -165,6 +167,11 @@ popover.tray-menu button {{ border-radius: 4px; padding: 6px 10px; font-weight: 
 .notif-card .notif-image {{ border-radius: 6px; }}
 .notif-card .notif-action {{ border-radius: 6px; }}
 .calendar-panel calendar {{ background: none; border: none; }}
+
+/* ── Mode édition et widgets du bureau : fonds opaques (le fond des fenêtres du thème est
+   translucide, pour le Mica) ── */
+.edit-toolbar, .edit-gallery, .edit-hint, .notif-placeholder, .desk-chip-btn, .desk-card.style-solid {{ background-color: {banner_bg}; }}
+.desk-card.style-glass {{ background-color: {glass_bg}; }}
 "#
     )
 }

@@ -27,7 +27,7 @@ pub struct Taskbar {
     left: gtk::Box,
     end: gtk::Box,
     frames: Vec<(String, gtk::Overlay, gtk::Box)>,
-    /// Barre fine supplémentaire (sinon : le dock).
+    /// Barre d'état supplémentaire (sinon : le dock).
     top: bool,
     desk_box: gtk::Box,
     status_group: gtk::Box,
@@ -66,12 +66,12 @@ pub struct Taskbar {
     vol_icon: gtk::Image,
 }
 
-/// Épaisseur d'une barre (dock ou barre fine).
+/// Épaisseur d'une barre (dock ou barre d'état).
 pub fn bar_height(cfg: &NoosConfig, top: bool) -> i32 {
     if top { cfg.topbar.height.clamp(24, 48) as i32 } else { cfg.taskbar.height.clamp(28, 96) as i32 }
 }
 
-/// Bord d'une barre : le dock selon la configuration, la barre fine au bord opposé (en haut
+/// Bord d'une barre : le dock selon la configuration, la barre d'état au bord opposé (en haut
 /// si le dock est sur un côté).
 pub fn bar_edge(cfg: &NoosConfig, top: bool) -> &'static str {
     let dock = match cfg.taskbar.position.as_str() {
@@ -102,7 +102,7 @@ struct Item {
 }
 
 impl Taskbar {
-    /// `top` : barre fine supplémentaire (bord opposé au dock).
+    /// `top` : barre d'état supplémentaire (bord opposé au dock).
     pub fn new(shell: &Rc<Shell>, monitor: &gdk::Monitor, top: bool) -> Self {
         let cfg = shell.config();
         let bar_h = bar_height(&cfg, top);
@@ -448,7 +448,7 @@ impl Taskbar {
         left.set_valign(gtk::Align::Center);
         left.set_margin_start(6);
         let vitals = noos_widget_vitals::Vitals::new();
-        // Bureaux virtuels (barre fine par défaut) : une pastille par bureau.
+        // Bureaux virtuels (barre d'état par défaut) : une pastille par bureau.
         let desk_box = gtk::Box::new(gtk::Orientation::Horizontal, 4);
         desk_box.add_css_class("bar-desktops");
         desk_box.set_valign(gtk::Align::Center);

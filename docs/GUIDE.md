@@ -235,7 +235,7 @@ volants, Courbes) et des créations (Horizon rétro, Lampe à lave, Vitrail, Tun
 Lumières de la ville) ; **bibliothèque** locale ; **import** d'un fichier ou de code collé
 (format Shadertoy `mainImage`, ou GLSL Sandbox converti automatiquement).
 
-## Bureaux virtuels, plusieurs écrans, mode édition
+## Bureaux virtuels, plusieurs écrans
 
 **Bureaux virtuels** comme Windows : Super+Ctrl+← / → pour changer (glissement animé, nom du
 bureau affiché), Super+Ctrl+D pour en créer un, Super+Ctrl+F4 pour le fermer,
@@ -251,15 +251,76 @@ bord à bord), choisit l'écran principal ; Super+Maj+← / → envoie une fenê
 voisin (en gardant son ancrage) ; barre des tâches sur tous les écrans ou seulement le
 principal, chacune avec les fenêtres de son écran si on le souhaite.
 
-**Mode édition** (clic droit sur le bureau ou la barre) : les éléments de la barre se
-déplacent d'une zone à l'autre par glisser-déposer, se retirent d'un clic sur leur « × » et
-reviennent par « Ajouter à la barre ». Le dock se place **en bas, en haut, à gauche ou à
-droite** (les panneaux suivent) ; une **barre fine** optionnelle, au bord opposé, montre les
-bureaux virtuels (clic ou molette pour changer, « + » pour en créer) et accueille les éléments
-qu'on y dépose. Le cadre « Les notifications apparaîtront ici » se glisse vers l'un des quatre
-coins. Des widgets se posent librement sur le bureau : horloge, ressources, note (son texte est
-gardé), calendrier. Les mêmes réglages sont dans Paramètres › Personnalisation › Barre des
-tâches.
+## Mode édition du bureau
+
+Clic droit sur le bureau (« Modifier le bureau » ou « Ajouter des widgets ») ou dans le vide de
+la barre, Paramètres › Personnalisation › Barre des tâches › « Modifier la disposition ». Le
+bureau s'assombrit et montre une grille de points ; une barre d'outils apparaît en haut (en bas
+si la barre des tâches est en haut) avec, dessous, une ligne d'aide. Échap, Entrée ou
+« Terminé » pour sortir. La première fois, une **visite guidée** en six étapes présente le mode
+(bouton **?** pour la revoir). Plan détaillé et idées pour la suite : `docs/plans/mode-edition.md`.
+
+- **Annuler / rétablir** : tout est annulable — déplacements, retraits, bord, barre d'état,
+  coin des notifications, widgets (contenu d'une note compris), modèles. Ctrl+Z, Ctrl+Maj+Z ou
+  Ctrl+Y, boutons ↶ ↷ (leur info-bulle dit ce qui sera annulé), et « Annuler » dans le message
+  qui suit chaque action.
+- **Barres** : dans la barre, chaque élément est entouré de pointillés ; on le glisse vers une
+  autre zone (gauche, centre, droite de la barre des tâches ou de la barre d'état) — un **trait
+  d'accent** montre où il s'insérera. Le « × » apparaît au survol ; clic droit sur un élément :
+  « Vers la barre d'état · droite »… ou « Retirer de la barre ». Le panneau **Barres** choisit
+  le bord de la barre des tâches sur des **schémas d'écran**, centre ou aligne à gauche les
+  icônes, affiche la **barre d'état** et remet les **éléments retirés**.
+- **Barre d'état** (ancienne « barre fine », section `[statusbar]` de `noos.toml`, l'ancienne
+  `[topbar]` est relue) : seconde barre au bord opposé à la barre des tâches. Elle montre les
+  bureaux virtuels (clic ou molette pour changer, « + » pour en créer) et tout ce qu'on y glisse :
+  horloge, réseau, notifications… Le nom dit ce qu'elle montre, où qu'elle soit (en bas quand la
+  barre des tâches est en haut).
+- **Mises en page** : six modèles avec miniature — Windows 11, Classique (Démarrer à gauche),
+  Barre d'état (façon macOS), GNOME (horloge au centre en haut), Verticale (barre des tâches à
+  gauche), Épurée. Les modèles ne touchent pas aux widgets. « Mes mises en page » enregistre la
+  disposition actuelle **avec ses widgets** (`~/.config/noos/layouts/<nom>.toml`) pour la
+  réappliquer d'un clic ; **Exporter… / Importer…** un fichier `.toml` à partager ;
+  « Réinitialiser » revient à la disposition d'origine des barres (annulable).
+- **Notifications** : le cadre « Les notifications apparaîtront ici » se glisse vers un coin
+  (ou flèches ↖ ↗ ↙ ↘).
+- Bouton « Afficher le bureau » de la barre d'outils : réduit les fenêtres qui cachent les
+  widgets.
+
+### Widgets du bureau
+
+**Galerie** (bouton Widgets, touche W, Ctrl+F pour chercher) : une carte illustrée par widget,
+recherche, catégories (Heure et dates, Infos, Multimédia, Pratique, Système). On **glisse une
+carte sur le bureau** — sur n'importe quel écran — ou on clique pour la poser au premier endroit
+libre (Entrée dans la recherche ajoute le premier résultat). Les widgets apparaissent avec une
+petite animation.
+
+En mode édition, chaque widget a une **barre de titre** au-dessus de lui (nom, ⚙ réglages,
+× retirer) et une **poignée de taille** en bas à droite (glisser : petite, moyenne, grande). Il se
+déplace en le saisissant n'importe où, **aimanté** à une grille de 16 px, aux marges et au centre
+de l'écran (hors barres) et aux autres widgets (bords et centres alignés, côte à côte avec un
+écart régulier) ; des **repères pointillés** montrent l'alignement trouvé. Alt maintenu :
+déplacement libre. Un widget reste toujours entièrement à l'écran.
+
+**Réglages** (⚙, ou clic droit sur le widget hors mode édition) : taille, **fond** (verre,
+opaque, aucun), **écran** (plusieurs écrans), réglages propres au widget, Dupliquer, Retirer.
+
+| Widget | Contenu, réglages |
+|---|---|
+| Horloge | numérique (grands chiffres) ou **analogique** (cadran dessiné, trotteuse à la couleur d'accent) ; secondes, date |
+| Horloges du monde | une ligne par ville : petit cadran clair le jour, sombre la nuit, heure, « Demain, +8 h » ; recherche parmi les fuseaux du système (noms français des grandes villes), ordre, retrait |
+| Calendrier | grille du mois façon Windows 11 (aujourd'hui en pastille, week-ends atténués, jours fériés en couleur avec leur nom), mois précédent / suivant (flèches, molette), « Aujourd'hui », numéros de semaine, **prochain jour férié** (France : fêtes fixes et mobiles depuis Pâques) |
+| Compte à rebours | événement nommé, date et heure ; jours restants dans un **anneau de progression**, puis heures et minutes, « C'est aujourd'hui ! », « Depuis 3 jours » |
+| Météo | [Open-Meteo](https://open-meteo.com) (sans compte ni clé) : température, ressenti, conditions, min / max, humidité, vent, **prévisions sur 5 jours** (grande taille) ; fond dégradé selon le temps et le jour / la nuit ; recherche de ville en français, °C / °F ; actualisée toutes les 30 min, dernière réponse gardée pour le hors-ligne (`~/.cache/noos/weather/`). Seule la ville choisie est envoyée au service |
+| Lecteur multimédia | lecteur MPRIS (Firefox, Spotify, VLC, mpv…) : pochette et fond flouté, titre, artiste, progression, précédent / lecture-pause / suivant ; le lecteur qui joue a la priorité |
+| Cadre photo | images d'un dossier (Images par défaut) en fondu enchaîné, intervalle (1 min à 1 h), ordre aléatoire ; clic : ouvre l'image, molette : suivante |
+| Note | pense-bête en 5 couleurs, texte enregistré au fil de la frappe |
+| Dossiers | raccourcis colorés vers Documents, Téléchargements, Images… ; ajout / retrait de dossiers |
+| Ressources | processeur, carte graphique, mémoire, disque, réseau |
+
+Les widgets vivent dans leur propre surface (`noos-desktop-widgets`, couche « bottom »), jamais
+dans le fond d'écran (le flou Mica serait recalculé à chaque image). Configuration :
+`[[desktop_widget]]` (`id`, `kind`, `output`, `x` / `y` en fraction de l'écran, `size`, `style`,
+`text`, table `options`), les anciens fichiers restent valides.
 
 ## Mises à jour
 
