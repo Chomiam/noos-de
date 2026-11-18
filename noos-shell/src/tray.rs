@@ -94,6 +94,9 @@ impl Tray {
 
     /// Icônes à afficher (les éléments « Passive » sont masqués, comme le prévoit le protocole).
     pub fn items(&self) -> Vec<TrayItem> {
+        if let Some(n) = std::env::var("NOOS_TRAY_DEMO").ok().and_then(|v| v.parse::<usize>().ok()) {
+            return demo_items(n);
+        }
         self.items.borrow().iter().filter(|i| i.status != "Passive").cloned().collect()
     }
 
@@ -512,4 +515,40 @@ fn build_menu(vbox: &gtk::Box, nodes: &[MenuNode], depth: i32, activate: &Rc<dyn
         b.connect_clicked(move |_| activate(id));
         vbox.append(&b);
     }
+}
+
+/// Icônes fictives (`NOOS_TRAY_DEMO=n`, captures de l'aperçu, sans D-Bus).
+fn demo_items(n: usize) -> Vec<TrayItem> {
+    const ICONS: &[(&str, &str)] = &[
+        ("audio-x-generic-symbolic", "Lecteur de musique"),
+        ("mail-unread-symbolic", "Courrier"),
+        ("network-transmit-receive-symbolic", "Synchronisation"),
+        ("user-available-symbolic", "Messagerie"),
+        ("input-gaming-symbolic", "Steam"),
+        ("weather-few-clouds-symbolic", "Météo"),
+        ("camera-web-symbolic", "Webcam"),
+        ("printer-symbolic", "Imprimante"),
+        ("bluetooth-active-symbolic", "Bluetooth"),
+        ("document-save-symbolic", "Sauvegarde"),
+        ("security-high-symbolic", "Pare-feu"),
+        ("keyboard-brightness-symbolic", "Clavier"),
+    ];
+    (0..n)
+        .map(|i| {
+            let (icon, title) = ICONS[i % ICONS.len()];
+            TrayItem {
+                key: format!("demo{i}"),
+                bus: String::new(),
+                owner: String::new(),
+                path: String::new(),
+                id: format!("demo{i}"),
+                title: title.into(),
+                tooltip: String::new(),
+                status: "Active".into(),
+                icon: Some(TrayIcon::Named(icon.into())),
+                menu: None,
+                item_is_menu: false,
+            }
+        })
+        .collect()
 }

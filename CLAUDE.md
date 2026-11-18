@@ -141,6 +141,7 @@ compositeur y écrit (`[desktops] names`).
 | `NOOS_TASKVIEW_DEMO=1` / `NOOS_EDIT_DEMO=1` | noos-shell : vue des tâches / mode édition ouverts après 2,5 s (sans visite guidée automatique) |
 | `NOOS_EDIT_OPEN=étape;étape…` (+ `NOOS_EDIT_STEP_MS=1500`) | avec `NOOS_EDIT_DEMO=1` : étapes jouées l'une après l'autre — `widgets`, `bars`, `layouts`, `settings:n` (réglages du widget n), `toast:texte`, `preset:windows\|classic\|statusbar\|gnome\|vertical\|minimal`, `add:<type>`, `remove:n`, `undo`, `redo`, `tour:n`, `guides:x,y` (widget 0 « déplacé », repères affichés) |
 | `NOOS_EDIT_SEARCH=mot` / `NOOS_EDIT_TOUR=n` / `NOOS_EDIT_GUIDES=x,y` | galerie de widgets préremplie / visite guidée à l'étape n / repères d'alignement |
+| `NOOS_TRAY_DEMO=n` / `NOOS_TRAY_OPEN=1\|ms` | noos-shell : n icônes fictives dans la zone des applications actives (sans D-Bus) / leur bulle ouverte après 3,5 s (ou le délai donné, ex. `8000` après `NOOS_POWER_OPEN=1` pour vérifier qu'elle passe devant les panneaux) |
 | `NOOS_WEATHER_DEMO=1` / `NOOS_MEDIA_DEMO=1` | widgets Météo (Lyon fictif, sans réseau) / Lecteur multimédia (morceau fictif, sans lecteur MPRIS) |
 | `NOOS_LOGIN_PAGE=login` | noos-login ouvre directement le formulaire |
 | `NOOS_LOGIN_SESSION_DIRS=…` | dossiers de sessions supplémentaires (un conteneur n'en a pas) |

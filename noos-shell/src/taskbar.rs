@@ -358,8 +358,20 @@ impl Taskbar {
         tray_pop.set_has_arrow(false);
         tray_pop.add_css_class("tray-popover");
         tray_pop.set_child(Some(&tray_grid));
+        // À l'ouverture : les autres panneaux (son, réseau, énergie, recherche…) se ferment.
+        // Ce sont des surfaces à part, placées au-dessus de la barre : la bulle, rattachée à
+        // la barre, se retrouvait cachée dessous.
+        {
+            let shell = Rc::downgrade(shell);
+            tray_pop.connect_show(move |_| {
+                if let Some(s) = shell.upgrade() {
+                    s.close_flyouts();
+                }
+            });
+        }
         tray_overflow.set_popover(Some(&tray_pop));
         tray_overflow.set_visible(false);
+
 
         // ── Horloge et cloche : ouvrent le centre de notifications + calendrier ──
         let clock_btn = gtk::Button::new();
@@ -883,6 +895,15 @@ impl Taskbar {
         }
     }
 
+    /// Ouvre la bulle des icônes cachées (démo `NOOS_TRAY_OPEN`), si la barre est affichée.
+    pub fn open_tray(&self) -> bool {
+        if self.top || !self.tray_overflow.is_visible() || self.tray_overflow.root().is_none() {
+            return false;
+        }
+        self.tray_overflow.popup();
+        true
+    }
+
     /// Zone de notification et cloche.
     pub fn update_indicators(&self, tray: Option<&Rc<crate::tray::Tray>>, cfg: &NoosConfig, notifs: (usize, bool)) {
         // FlowBox : remove_all() (un unparent() direct corrompt sa liste interne d'enfants).
@@ -892,6 +913,12 @@ impl Taskbar {
         }
         let items = tray.map(|t| t.items()).unwrap_or_default();
         let size = (icon_size(self.height.get()) - 6).clamp(16, 24);
+        // Bulle à la mesure du nombre d'icônes : une ligne jusqu'à 3, puis une grille presque
+        // carrée (4 → 2 × 2, 6 → 3 × 2, 9 → 3 × 3), 5 colonnes au plus. Sans cela, la grille
+        // réservait toujours 5 colonnes.
+        let cols = tray_columns(items.len());
+        self.tray_grid.set_min_children_per_line(cols);
+        self.tray_grid.set_max_children_per_line(cols);
         if let Some(tray) = tray {
             let pop = self.tray_overflow.popover();
             let close: Rc<dyn Fn()> = Rc::new(move || {
@@ -919,6 +946,17 @@ impl Taskbar {
         }));
         self.bell_badge.set_visible(count > 0 && !dnd);
         self.bell_badge.set_text(&if count > 9 { "9+".to_string() } else { count.to_string() });
+    }
+}
+
+/// Colonnes de la bulle des icônes cachées pour `n` icônes.
+fn tray_columns(n: usize) -> u32 {
+    match n {
+        0..=3 => n.max(1) as u32,
+        4 => 2,
+        5 | 6 | 9 => 3,
+        7 | 8 | 11 | 12 => 4,
+        _ => 5,
     }
 }
 
@@ -1144,4 +1182,21 @@ fn task_button(item: Item, icon_px: i32, shell: &Weak<Shell>, hold: Hold) -> gtk
     }
     button.add_controller(middle);
     button
+}
+
+#[cfg(test)]
+mod tests {
+    use super::tray_columns;
+
+    #[test]
+    fn bulle_a_la_mesure() {
+        let cols: Vec<u32> = (1..=13).map(tray_columns).collect();
+        assert_eq!(cols, [1, 2, 3, 2, 3, 3, 4, 4, 3, 5, 4, 4, 5]);
+        // Jamais plus de 5 colonnes, ni de ligne vide de trop (lignes = plafond(n / colonnes)).
+        for n in 1..40usize {
+            let c = tray_columns(n) as usize;
+            assert!(c <= 5);
+            assert!(n.div_ceil(c) <= n.div_ceil(5).max(c.min(n)) + 1, "{n}");
+        }
+    }
 }

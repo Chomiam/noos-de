@@ -322,6 +322,20 @@ dans le fond d'écran (le flou Mica serait recalculé à chaque image). Configur
 `[[desktop_widget]]` (`id`, `kind`, `output`, `x` / `y` en fraction de l'écran, `size`, `style`,
 `text`, table `options`), les anciens fichiers restent valides.
 
+## Applications actives (zone de notification)
+
+Les icônes des applications qui tournent en arrière-plan (protocole StatusNotifierItem :
+Steam, Discord, Nextcloud…) sont regroupées derrière la flèche « ^ » de la barre, comme sur
+Windows 11, ou toutes visibles dans la barre (Paramètres › Barre des tâches,
+`[taskbar] tray_expanded`). Code : `noos-shell/src/tray.rs`, bulle dans `taskbar.rs`.
+
+- La bulle **s'adapte au nombre d'icônes** : une ligne jusqu'à 3, puis une grille presque
+  carrée (4 → 2 × 2, 6 → 3 × 2, 9 → 3 × 3), 5 colonnes au plus.
+- L'ouvrir **ferme les autres panneaux** (Énergie, son, réseau, réglages rapides,
+  notifications, recherche) : ce sont des surfaces à part, posées au-dessus de la barre, qui
+  cachaient la bulle.
+- Clic : action de l'application ; clic droit : son menu ; clic du milieu : action secondaire.
+
 ## Recherche (barre des tâches et menu Démarrer)
 
 La pastille « Rechercher » de la barre est un **vrai champ de saisie**, comme sous Windows 11 :

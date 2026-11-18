@@ -439,6 +439,9 @@ impl Shell {
         if let Some(a) = self.audio.borrow().as_ref() {
             a.hide();
         }
+        if let Some(s) = self.search.borrow().as_ref() {
+            s.end(false);
+        }
     }
 }
 
@@ -667,6 +670,17 @@ fn main() -> glib::ExitCode {
             });
         }
 
+        // Test : bulle des icônes cachées de la barre (NOOS_TRAY_OPEN=1 ou délai en ms, avec
+        // NOOS_TRAY_DEMO=n),
+        // après les éventuels panneaux de NOOS_SHELL_OPEN.
+        if let Ok(v) = std::env::var("NOOS_TRAY_OPEN") {
+            // Valeur : délai en millisecondes (3500 par défaut).
+            let ms = v.parse::<u64>().ok().filter(|ms| *ms > 1).unwrap_or(3500);
+            let shell = shell.clone();
+            glib::timeout_add_local_once(Duration::from_millis(ms), move || {
+                let _ = shell.taskbars.borrow().iter().any(|t| t.open_tray());
+            });
+        }
         // Test : ouvrir un panneau au démarrage (NOOS_SHELL_OPEN=audio|net|quick|notifications).
         if let Ok(which) = std::env::var("NOOS_SHELL_OPEN") {
             let shell = shell.clone();
