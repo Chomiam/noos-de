@@ -1,28 +1,5 @@
 Package: noos
 Architecture: amd64
-Version: 0.1.0~git202611180225.b6d72f14
-Priority: optional
-Section: x11
-Maintainer: Axel Valens <axel.valens@gmail.com>
-Installed-Size: 53414
-Depends: libappstream5 (>= 1.0.0), libc6 (>= 2.39), libcairo2 (>= 1.10.0), libdisplay-info3 (>= 0.3.0), libfribidi0 (>= 0.19.2), libgbm1 (>= 21.3.0~rc1), libgcc-s1 (>= 4.2), libgdk-pixbuf-2.0-0 (>= 2.31.1), libglib2.0-0t64 (>= 2.80.0), libgraphene-1.0-0 (>= 1.5.4), libgtk-4-1 (>= 4.12.0), libgtk4-layer-shell0 (>= 1.2.0), libgtksourceview-5-0 (>= 3.99.7), libinput10 (>= 1.19.1), libpam0g (>= 0.99.7.1), libpango-1.0-0 (>= 1.14.0), libseat1 (>= 0.5.0), libudev1 (>= 183), libvte-2.91-gtk4-0 (>= 0.69.90), libxkbcommon0 (>= 0.5.0), greetd, dbus-user-session, dbus-bin, plymouth, plymouth-label, initramfs-tools, busybox, wireless-regdb, rtkit, upower, libmtp-runtime, polkitd, pkexec, sudo, xdg-desktop-portal, xdg-desktop-portal-gtk, xdg-desktop-portal-wlr, pipewire, pipewire-pulse, pipewire-bin, wireplumber, network-manager, papirus-icon-theme, curl, ca-certificates, flatpak, appstream, libfuse2t64, fuse3, squashfs-tools, desktop-file-utils, gnome-keyring, libpam-gnome-keyring, snapper, btrfs-progs, grub-common, fish, fastfetch, power-profiles-daemon, 7zip, libarchive-tools, unar, xorriso, zstd, lz4, lzip, xz-utils, udisks2, ntfs-3g, exfatprogs, dosfstools, xfsprogs, f2fs-tools, fonts-dejavu, fonts-liberation2, fonts-crosextra-carlito, fonts-crosextra-caladea, fonts-noto-core, fonts-noto-mono, fonts-noto-cjk, fonts-noto-color-emoji, cabextract, wireguard-tools, xwayland, nftables, bluez, libspa-0.2-bluetooth, cups, cups-browsed, cups-bsd, cups-filters, avahi-daemon, avahi-utils, libnss-mdns, ipp-usb, printer-driver-gutenprint, printer-driver-hpcups, printer-driver-brlaser, sane-utils, sane-airscan, samba, wsdd2, openssh-server, rclone, openssl, gvfs, gvfs-backends, wsdd
-Recommends: grim, printer-driver-all, simple-scan, gcr, xdg-user-dirs, firefox | firefox-esr, adw-gtk3 | gnome-themes-extra, qt6ct, qt5ct, qt6-wayland, fonts-noto-extra, fonts-noto-ui-core, fonts-symbola, fonts-roboto, fonts-open-sans, fonts-lato, fonts-inter, fonts-firacode, fonts-jetbrains-mono, fonts-cascadia-code, fonts-ibm-plex, fonts-font-awesome, libopenraw-pixbuf-loader, heif-gdk-pixbuf, libheif-plugin-libde265, glycin-loaders, libtimezonemap1, pci.ids
-Filename: pool/main/n/noos/noos_0.1.0~git202611180225.b6d72f14_amd64.deb
-Size: 11872116
-MD5sum: 1b6f075243fdfeed0f7ce4a7aa0441cf
-SHA1: a7f2f815298b9c0c65f52d8763deedbb1293df70
-SHA256: 3273bd08e5dfa2e116474f908767b6bad45476c84b700e4ac470609c6c0af64c
-SHA512: 1a2265f7ad4e68c0c3e407fbbdb854da7596e949b55c3ddad0e7c9a9bc2874be570c7c5521efb4c356419ea4dc2271e451944c59f53512a4e974c3dfddcce077
-Homepage: https://github.com/Chomiam/noos-de
-Description: Bureau Wayland NOOS (Smithay, GTK4 + libAdapta), façon Windows 11
- NOOS est un environnement de bureau Wayland écrit en Rust : compositeur Smithay,
- barre des tâches et menu Démarrer façon Windows 11, Paramètres, explorateur de
- fichiers, terminal, outil de capture, porte-clés, logithèque (apt et Flatpak),
- écran de connexion (greetd) et installateur, tous en GTK4 + libAdapta. Pensé pour
- le jeu (VRR, HDR) et entièrement personnalisable.
-
-Package: noos
-Architecture: amd64
 Version: 0.1.0~git202611180253.2bbf280e
 Priority: optional
 Section: x11
@@ -109,6 +86,30 @@ MD5sum: 8168a3f81d9dfd617deed02ae34aa05c
 SHA1: 84a2675ed358072bacbf78205cf3d7ed89b5a938
 SHA256: 5fd66a1216599e6c90f1b0ce5101c9fa2168013bb8b69e7e23c5f24e60f06816
 SHA512: 653ff42de94b3bf4f07b25a0f7563eb1492bd62ad16296a49d1e67e99583321bc0d269f458e61261bb0a8be77bc424c5b861684401cafc15c07d4fdcf6161389
+Homepage: https://github.com/Chomiam/noos-de
+Description: Bureau Wayland NOOS (Smithay, GTK4 + libAdapta), façon Windows 11
+ NOOS est un environnement de bureau Wayland écrit en Rust : compositeur Smithay,
+ barre des tâches et menu Démarrer façon Windows 11, Paramètres, explorateur de
+ fichiers, terminal, outil de capture, porte-clés, logithèque (apt et Flatpak),
+ écran de connexion (greetd) et installateur, tous en GTK4 + libAdapta. Pensé pour
+ le jeu (VRR, HDR) et entièrement personnalisable.
+
+Package: noos
+Architecture: amd64
+Version: 0.1.0~git202611192029.7ffd6cf0
+Priority: optional
+Section: x11
+Maintainer: Axel Valens <axel.valens@gmail.com>
+Installed-Size: 55991
+Depends: libappstream5 (>= 1.0.0), libc6 (>= 2.39), libcairo2 (>= 1.10.0), libdisplay-info3 (>= 0.3.0), libfribidi0 (>= 0.19.2), libgbm1 (>= 21.3.0~rc1), libgcc-s1 (>= 4.2), libgdk-pixbuf-2.0-0 (>= 2.31.1), libglib2.0-0t64 (>= 2.80.0), libgraphene-1.0-0 (>= 1.5.4), libgtk-4-1 (>= 4.12.0), libgtk4-layer-shell0 (>= 1.2.0), libgtksourceview-5-0 (>= 3.99.7), libinput10 (>= 1.19.1), libpam0g (>= 0.99.7.1), libpango-1.0-0 (>= 1.14.0), libseat1 (>= 0.5.0), libudev1 (>= 183), libvte-2.91-gtk4-0 (>= 0.69.90), libxkbcommon0 (>= 0.5.0), greetd, dbus-user-session, dbus-bin, plymouth, plymouth-label, initramfs-tools, busybox, wireless-regdb, rtkit, upower, libmtp-runtime, polkitd, pkexec, sudo, xdg-desktop-portal, xdg-desktop-portal-gtk, xdg-desktop-portal-wlr, pipewire, pipewire-pulse, pipewire-bin, wireplumber, network-manager, papirus-icon-theme, curl, ca-certificates, flatpak, appstream, libfuse2t64, fuse3, squashfs-tools, desktop-file-utils, gnome-keyring, libpam-gnome-keyring, snapper, btrfs-progs, grub-common, fish, fastfetch, power-profiles-daemon, 7zip, libarchive-tools, unar, xorriso, zstd, lz4, lzip, xz-utils, udisks2, ntfs-3g, exfatprogs, dosfstools, xfsprogs, f2fs-tools, fonts-dejavu, fonts-liberation2, fonts-crosextra-carlito, fonts-crosextra-caladea, fonts-noto-core, fonts-noto-mono, fonts-noto-cjk, fonts-noto-color-emoji, cabextract, wireguard-tools, xwayland, nftables, bluez, libspa-0.2-bluetooth, cups, cups-browsed, cups-bsd, cups-filters, avahi-daemon, avahi-utils, libnss-mdns, ipp-usb, printer-driver-gutenprint, printer-driver-hpcups, printer-driver-brlaser, sane-utils, sane-airscan, samba, wsdd2, openssh-server, rclone, openssl, gvfs, gvfs-backends, wsdd
+Recommends: grim, printer-driver-all, simple-scan, gcr, xdg-user-dirs, firefox | firefox-esr, adw-gtk3 | gnome-themes-extra, qt6ct, qt5ct, qt6-wayland, fonts-noto-extra, fonts-noto-ui-core, fonts-symbola, fonts-roboto, fonts-open-sans, fonts-lato, fonts-inter, fonts-firacode, fonts-jetbrains-mono, fonts-cascadia-code, fonts-ibm-plex, fonts-font-awesome, libopenraw-pixbuf-loader, heif-gdk-pixbuf, libheif-plugin-libde265, glycin-loaders, libtimezonemap1, pci.ids, gamemode
+Suggests: gamescope, steam-installer, mangoapp, mangohud, vkbasalt, lutris, protontricks
+Filename: pool/main/n/noos/noos_0.1.0~git202611192029.7ffd6cf0_amd64.deb
+Size: 12604624
+MD5sum: acce7cebed5bad28e099895b4aace6fe
+SHA1: 6d803158ea989cc77709b0478609f678b29987e6
+SHA256: 0e83b0b687a845c28c2b91502f968aacff5e53d240770fb24539c96eaa775362
+SHA512: d361e8408786890f21ba81b5c3da71f40f4d2782d7d21fafbec03df9d7eaa6012ced94db93fa02608a59dd64f8976d10c7904c4c09b6a82b7b12da65f6da0844
 Homepage: https://github.com/Chomiam/noos-de
 Description: Bureau Wayland NOOS (Smithay, GTK4 + libAdapta), façon Windows 11
  NOOS est un environnement de bureau Wayland écrit en Rust : compositeur Smithay,
