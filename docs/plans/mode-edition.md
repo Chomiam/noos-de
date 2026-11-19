@@ -158,7 +158,17 @@ ajouts sur un bureau plein. Corrigé :
 - fond « Aucun » : poignée de taille sur le contenu → marges ; petits cadrans de nuit invisibles
   sur fond sombre (et de jour sur fond clair) → liseré ; pastilles étirées (Ressources, galerie).
 
-## 7. Reste à faire
+## 7. Largeurs communes (19/11/2026)
+
+Largeur fixe par taille pour tous les widgets (`widgets::WIDTHS` : 172 / 360 / 360 px, cadre
+compris) : grille à la Windows 11, deux petits = un moyen. Réarrangés pour tenir proprement :
+calendrier grand (« À venir » sous la grille), compte à rebours grand (tuiles sous l'anneau),
+lecteur petit (pochette et lecture en haut), ressources petites (jauges 2 × 2), dossiers petits,
+horloges du monde petites (« +1 » en exposant après l'heure). Barres de titre au survol
+seulement, à la largeur du widget (nom raccourci) : plus de chevauchement en grille.
+Capture : `grille.jpg`.
+
+## 8. Reste à faire
 
 Les lignes « — » ci-dessus, et : tester sur vrai matériel (plusieurs écrans physiques, HiDPI),
 traduire les noms de villes des fuseaux, widget d'agenda branché sur les calendriers en ligne

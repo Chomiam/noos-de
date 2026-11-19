@@ -6,7 +6,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc, time::Instant};
 use gtk::{glib, prelude::*};
 use noos_core::{config::DesktopWidget, weather::{self, Weather}};
 
-use super::{Ctx, by_size, choice, every, section};
+use super::{Ctx, choice, every, section};
 
 pub const CSS: &str = r#"
 .kind-weather.style-glass, .kind-weather.style-solid { color: white; border-color: alpha(white, 0.14); }
@@ -57,7 +57,7 @@ pub fn build(ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
         b.append(&t);
         let l = gtk::Label::new(Some("Choisissez une ville pour voir le temps qu'il fait."));
         l.set_wrap(true);
-        l.set_max_width_chars(26);
+        l.set_max_width_chars(20);
         l.set_justify(gtk::Justification::Center);
         l.add_css_class("desk-dim");
         b.append(&l);
@@ -67,7 +67,6 @@ pub fn build(ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
         let c = ctx.clone();
         btn.connect_clicked(move |_| c.open_settings());
         b.append(&btn);
-        b.set_size_request(by_size(w, 220, 280, 320), -1);
         root.append(&b);
         let r = root.clone();
         glib::idle_add_local_once(move || {
@@ -160,7 +159,8 @@ fn deg(v: f64) -> String {
 /// Petite taille : tuile carrée — température et icône en haut, ville et temps en bas.
 fn tile(place: &str, d: &Weather, error: Option<&str>) -> gtk::Widget {
     let b = gtk::Box::new(gtk::Orientation::Vertical, 2);
-    b.set_size_request(150, 150);
+    // Presque carrée : la hauteur suit la largeur commune des petits widgets.
+    b.set_size_request(-1, 118);
     let top = gtk::Box::new(gtk::Orientation::Horizontal, 4);
     let t = gtk::Label::new(Some(&deg(d.temp)));
     t.add_css_class("desk-weather-temp");
@@ -200,7 +200,6 @@ fn view(place: &str, d: Option<&Weather>, error: Option<&str>, size: &str, fahre
         return tile(place, d, error);
     }
     let b = gtk::Box::new(gtk::Orientation::Vertical, 8);
-    b.set_size_request(match size { "s" => 200, "l" => 400, _ => 330 }, -1);
     let top = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     let p = gtk::Label::new(Some(place));
     p.add_css_class("desk-weather-place");

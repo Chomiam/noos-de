@@ -12,13 +12,13 @@ pub const CSS: &str = r#"
 .desk-count-ring { color: @accent_bg_color; }
 .desk-count-num { font-size: 34px; font-weight: 700; font-feature-settings: "tnum"; }
 .size-s .desk-count-num { font-size: 24px; }
-.size-l .desk-count-num { font-size: 36px; }
+.size-l .desk-count-num { font-size: 28px; }
 .desk-count-unit { font-size: 0.8em; opacity: 0.7; margin-top: -4px; }
 .desk-count-title { font-weight: 700; font-size: 1.2em; }
 .size-l .desk-count-title { font-size: 1.45em; }
 .desk-count-rest { font-feature-settings: "tnum"; }
-.desk-count-tile { min-width: 62px; padding: 6px 4px; border-radius: 12px; background-color: alpha(currentColor, 0.07); }
-.desk-count-tile .v { font-size: 1.6em; font-weight: 800; font-feature-settings: "tnum"; }
+.desk-count-tile { min-width: 0; padding: 6px 4px; border-radius: 12px; background-color: alpha(currentColor, 0.07); }
+.desk-count-tile .v { font-size: 1.9em; font-weight: 800; font-feature-settings: "tnum"; }
 .desk-count-tile .u { font-size: 0.75em; opacity: 0.65; }
 "#;
 
@@ -45,7 +45,7 @@ pub fn build(_ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
     let (small, large) = (w.size() == "s", w.size() == "l");
     // Petite taille : anneau et titre empilés ; moyenne : côte à côte ; grande : tuiles en plus.
     let b = gtk::Box::new(if small { gtk::Orientation::Vertical } else { gtk::Orientation::Horizontal }, by_size(w, 8, 18, 22));
-    let ring_px = by_size(w, 96, 116, 150);
+    let ring_px = by_size(w, 96, 110, 118);
     let ring = gtk::Overlay::new();
     let area = gtk::DrawingArea::new();
     area.set_content_width(ring_px);
@@ -76,6 +76,8 @@ pub fn build(_ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
     when.add_css_class("desk-dim");
     when.set_xalign(0.0);
     when.set_visible(!small);
+    when.set_wrap(true);
+    when.set_max_width_chars(20);
     col.append(&when);
     let rest = gtk::Label::new(None);
     rest.add_css_class("desk-count-rest");
@@ -100,11 +102,26 @@ pub fn build(_ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
     }
     tiles.set_visible(large);
     col.append(&tiles);
+    b.append(&col);
     if small {
         col.set_halign(gtk::Align::Center);
         ring.set_halign(gtk::Align::Center);
     }
-    b.append(&col);
+    // Grande taille : anneau et titre en haut, tuiles sur toute la largeur dessous.
+    if large {
+        b.remove(&ring);
+        b.remove(&col);
+        col.remove(&tiles);
+        let top = gtk::Box::new(gtk::Orientation::Horizontal, 16);
+        top.append(&ring);
+        top.append(&col);
+        b.set_orientation(gtk::Orientation::Vertical);
+        b.set_spacing(12);
+        b.append(&top);
+        tiles.set_homogeneous(true);
+        tiles.set_margin_top(0);
+        b.append(&tiles);
+    }
     let progress = std::rc::Rc::new(std::cell::Cell::new(0.0f64));
     {
         let progress = progress.clone();

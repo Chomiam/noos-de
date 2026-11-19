@@ -34,7 +34,8 @@ pub const CSS: &str = r#"
 .editing-desk .desk-card.style-clear { background-color: alpha(black, 0.18); }
 .desk-shield { border-radius: 18px; }
 .desk-shield:hover { background-color: alpha(@accent_bg_color, 0.10); }
-.desk-chrome { min-height: 32px; }
+.desk-chrome { min-height: 32px; opacity: 0; transition: opacity 140ms ease-out; }
+.desk-outer:hover .desk-chrome, .desk-outer.active .desk-chrome { opacity: 1; }
 .desk-chip { padding: 0 12px 0 8px; min-height: 30px; border-radius: 99px; background-color: @accent_bg_color; color: @accent_fg_color; font-weight: 700; font-size: 0.85em; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
 .desk-chip-btn { min-width: 30px; min-height: 30px; padding: 0; border-radius: 99px; color: @window_fg_color; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
 .desk-chip-btn:hover { }
@@ -140,6 +141,8 @@ impl DeskWidget {
         }
         self.card.add_css_class(&format!("size-{}", w.size()));
         self.card.add_css_class(&format!("style-{style}"));
+        // Même largeur pour tous les widgets d'une taille (le contenu s'y range).
+        self.card.set_size_request(widgets::width(w), -1);
     }
 
     fn rebuild_content(&self) {
@@ -329,6 +332,7 @@ pub fn demo_guides(shell: &Rc<Shell>, x: f64, y: f64) {
         let (nx, ny, lines) = layout::snap(r, &others, &l.snap_area());
         l.fixed.move_(&d.outer, nx, ny - CHROME_H);
         d.card.add_css_class("dragging");
+        d.outer.add_css_class("active");
         *l.lines.borrow_mut() = lines;
         l.guides.queue_draw();
         return;
@@ -669,6 +673,7 @@ impl Inner {
     fn build_widget(self: &Rc<Self>, shell: &Rc<Shell>, w: &DesktopWidget) -> Rc<DeskWidget> {
         let spec = widgets::spec(&w.kind);
         let outer = gtk::Box::new(gtk::Orientation::Vertical, 6);
+        outer.add_css_class("desk-outer");
         // Barre de titre (mode édition), au-dessus de la carte.
         let chrome = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         chrome.add_css_class("desk-chrome");
@@ -677,7 +682,10 @@ impl Inner {
         chip.add_css_class("desk-chip");
         chip.set_valign(gtk::Align::Center);
         chip.append(&gtk::Image::from_icon_name("list-drag-handle-symbolic"));
-        chip.append(&gtk::Label::new(Some(spec.name)));
+        // Nom raccourci si besoin : la barre de titre garde la largeur du widget.
+        let chip_label = gtk::Label::new(Some(spec.name));
+        chip_label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+        chip.append(&chip_label);
         chip.set_tooltip_text(Some("Glisser pour déplacer (Alt : sans aimantation)"));
         chrome.append(&chip);
         let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
@@ -733,6 +741,13 @@ impl Inner {
         outer.append(&overlay);
         let settings = gtk::Popover::new();
         settings.set_parent(&outer);
+        // Barre de titre visible tant que les réglages sont ouverts.
+        {
+            let o = outer.clone();
+            settings.connect_show(move |_| o.add_css_class("active"));
+            let o = outer.clone();
+            settings.connect_closed(move |_| o.remove_css_class("active"));
+        }
         settings.set_position(gtk::PositionType::Right);
         let d = Rc::new(DeskWidget {
             conf: RefCell::new(w.clone()),
@@ -832,7 +847,17 @@ impl Inner {
                     g.set_state(gtk::EventSequenceState::Denied);
                     return;
                 }
-                let found = l.widgets.borrow().iter().find(|d| picked == d.outer || picked.is_ancestor(&d.outer)).cloned();
+                // La zone vide d'une barre de titre (invisible hors survol) laisse passer vers le
+                // widget dessous.
+                let on_empty_chrome = l.widgets.borrow().iter().any(|d| picked == d.chrome);
+                let found = if on_empty_chrome {
+                    l.widgets.borrow().iter().find(|d| {
+                        let r = d.rect(&l.fixed, true);
+                        px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h
+                    }).cloned()
+                } else {
+                    l.widgets.borrow().iter().find(|d| picked == d.outer || picked.is_ancestor(&d.outer)).cloned()
+                };
                 let Some(d) = found else {
                     g.set_state(gtk::EventSequenceState::Denied);
                     return;
@@ -841,6 +866,7 @@ impl Inner {
                 g.set_state(gtk::EventSequenceState::Claimed);
                 let r = d.rect(&l.fixed, true);
                 d.card.add_css_class("dragging");
+                d.outer.add_css_class("active");
                 *l.drag.borrow_mut() = Some(Drag { id: d.id(), mode, start: (r.x, r.y), size0: size_index(d.conf.borrow().size()) });
             });
         }
@@ -889,6 +915,7 @@ impl Inner {
                 l.guides.queue_draw();
                 let Some(d) = l.widgets.borrow().iter().find(|x| x.id() == drag.id).cloned() else { return };
                 d.card.remove_css_class("dragging");
+                d.outer.remove_css_class("active");
                 let Some(s) = l.shell.upgrade() else { return };
                 let name = d.name();
                 match drag.mode {

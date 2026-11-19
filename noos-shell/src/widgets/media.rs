@@ -140,7 +140,7 @@ fn art_file(url: &str, done: impl FnOnce(Option<gio::File>) + 'static) {
 pub fn build(_ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
     let size = w.size().to_string();
     let (small, large) = (size == "s", size == "l");
-    let art_px = by_size(w, 52, 84, 250);
+    let art_px = by_size(w, 52, 84, 296);
     let o = gtk::Overlay::new();
     o.set_overflow(gtk::Overflow::Hidden);
     let bg = gtk::Picture::new();
@@ -150,7 +150,7 @@ pub fn build(_ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
     o.set_child(Some(&bg));
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 16);
     row.add_css_class("desk-media");
-    row.set_size_request(by_size(w, 280, 340, 290), -1);
+    row.set_size_request(super::width(w), -1);
     // Grande taille : carte d'album — pochette en haut, texte et commandes centrés dessous.
     if large {
         row.set_orientation(gtk::Orientation::Vertical);
@@ -186,7 +186,7 @@ pub fn build(_ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
     title.set_ellipsize(gtk::pango::EllipsizeMode::End);
     title.set_max_width_chars(if small { 15 } else { 22 });
     if small {
-        title.set_width_chars(15);
+        title.set_width_chars(1);
     }
     col.append(&title);
     let artist = gtk::Label::new(Some("Lancez de la musique ou une vidéo"));
@@ -232,10 +232,23 @@ pub fn build(_ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
     row.append(&col);
     // Petite taille : l'essentiel — pochette, titre, artiste et lecture / pause à côté.
     if small {
+        // Pochette et lecture / pause sur une ligne, titre et artiste dessous.
         prev.set_visible(false);
         next.set_visible(false);
         ctl.set_valign(gtk::Align::Center);
-        row.append(&ctl);
+        row.remove(&art);
+        row.remove(&col);
+        let top = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        art.set_halign(gtk::Align::Start);
+        top.append(&art);
+        let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        spacer.set_hexpand(true);
+        top.append(&spacer);
+        top.append(&ctl);
+        row.set_orientation(gtk::Orientation::Vertical);
+        row.set_spacing(10);
+        row.append(&top);
+        row.append(&col);
     } else {
         col.append(&ctl);
     }

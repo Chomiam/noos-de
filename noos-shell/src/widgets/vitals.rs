@@ -88,7 +88,12 @@ fn medium() -> gtk::Widget {
 }
 
 fn small() -> gtk::Widget {
-    let b = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    // Deux jauges par ligne : la largeur des petits widgets.
+    let b = gtk::Grid::new();
+    b.set_column_spacing(14);
+    b.set_row_spacing(8);
+    b.set_column_homogeneous(true);
+    b.set_halign(gtk::Align::Center);
     b.add_css_class("desk-vit-gauges");
     let state: Rc<RefCell<[(f64, String); 4]>> = Rc::new(RefCell::new(Default::default()));
     let mut parts = vec![];
@@ -113,7 +118,7 @@ fn small() -> gtk::Widget {
         let n = gtk::Label::new(Some(name));
         n.add_css_class("name");
         col.append(&n);
-        b.append(&col);
+        b.attach(&col, (i % 2) as i32, (i / 2) as i32, 1, 1);
         parts.push((a, v));
     }
     watch(&b, move |s| {
@@ -128,7 +133,6 @@ fn small() -> gtk::Widget {
 
 fn large() -> gtk::Widget {
     let b = gtk::Box::new(gtk::Orientation::Vertical, 8);
-    b.set_size_request(380, -1);
     let t = gtk::Label::new(Some("Ressources"));
     t.add_css_class("desk-title");
     t.set_xalign(0.0);

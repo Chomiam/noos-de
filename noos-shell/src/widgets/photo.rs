@@ -41,7 +41,8 @@ fn images(dir: &std::path::Path) -> Vec<PathBuf> {
 }
 
 pub fn build(ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
-    let (pw, ph) = (by_size(w, 220, 330, 480), by_size(w, 150, 220, 320));
+    // Largeur commune (moins le liseré de 6 px du cadre) ; la grande taille gagne en hauteur.
+    let (pw, ph) = (super::width(w) - 12, by_size(w, 124, 220, 300));
     let dir = folder(w);
     let mut list = images(&dir);
     if list.is_empty() {

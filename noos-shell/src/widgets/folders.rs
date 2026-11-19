@@ -9,7 +9,7 @@ use noos_core::config::DesktopWidget;
 use super::{Ctx, open_path, section};
 
 pub const CSS: &str = r#"
-.desk-folder { padding: 8px 4px; border-radius: 12px; min-width: 72px; }
+.desk-folder { padding: 8px 2px; border-radius: 12px; min-width: 0; }
 .desk-folder:hover { background-color: alpha(currentColor, 0.08); }
 .desk-folder-tile { min-width: 44px; min-height: 44px; border-radius: 12px; color: white; }
 .desk-folder-tile.c0 { background-image: linear-gradient(135deg, #4f8ef7, #2f6ae0); }
@@ -20,8 +20,8 @@ pub const CSS: &str = r#"
 .desk-folder-tile.c5 { background-image: linear-gradient(135deg, #33c7de, #1c8fa8); }
 .desk-folder-row { padding: 6px 8px; border-radius: 12px; }
 .desk-folder-row:hover { background-color: alpha(currentColor, 0.08); }
-.size-s .desk-folder { min-width: 48px; padding: 6px; }
-.size-s .desk-folder-tile { min-width: 40px; min-height: 40px; }
+.size-s .desk-folder { min-width: 0; padding: 2px; }
+.size-s .desk-folder-tile { min-width: 34px; min-height: 34px; }
 .desk-folder-name { font-size: 0.85em; }
 "#;
 
@@ -106,7 +106,6 @@ pub fn build(_ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
     // Grande taille : une liste (nom et nombre d'éléments). Petite : les icônes seules.
     if w.size() == "l" {
         let list = gtk::Box::new(gtk::Orientation::Vertical, 2);
-        list.set_size_request(300, -1);
         for (i, p) in paths(w).into_iter().enumerate() {
             let btn = gtk::Button::new();
             btn.add_css_class("flat");
@@ -145,7 +144,7 @@ pub fn build(_ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
     grid.set_min_children_per_line(cols);
     grid.set_max_children_per_line(cols);
     grid.set_homogeneous(true);
-    grid.set_column_spacing(4);
+    grid.set_column_spacing(if small { 2 } else { 4 });
     grid.set_row_spacing(4);
     for (i, p) in paths(w).into_iter().enumerate() {
         let btn = gtk::Button::new();

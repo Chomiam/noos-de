@@ -306,7 +306,11 @@ déplacement libre. Un widget reste toujours entièrement à l'écran.
 opaque, aucun), **écran** (plusieurs écrans), réglages propres au widget, Dupliquer, Retirer.
 
 Les **trois tailles** ne font pas que grossir le widget : chacune a sa disposition (captures :
-`docs/plans/captures-mode-edition/tailles-*.jpg`).
+`docs/plans/captures-mode-edition/tailles-*.jpg`). Comme sur Windows 11, tous les widgets d'une
+même taille ont **la même largeur** : petite 172 px, moyenne et grande 360 px (la grande gagne en
+hauteur) ; deux petits côte à côte, avec l'écart de l'aimantation (16 px), font la largeur d'un
+moyen, et les widgets s'alignent en colonnes (`grille.jpg`). La barre de titre d'un widget (nom,
+⚙, ×) n'apparaît qu'au survol, pendant un déplacement ou quand ses réglages sont ouverts.
 
 | Widget | Petite | Moyenne | Grande | Réglages |
 |---|---|---|---|---|

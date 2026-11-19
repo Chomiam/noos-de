@@ -15,7 +15,7 @@ pub const CSS: &str = r#"
 .desk-cal-week { font-size: 0.72em; opacity: 0.45; }
 .desk-cal-day { min-width: 34px; min-height: 34px; border-radius: 99px; font-feature-settings: "tnum"; }
 .size-s .desk-cal-day { min-width: 26px; min-height: 26px; font-size: 0.85em; }
-.size-l .desk-cal-day { min-width: 44px; min-height: 44px; font-size: 1.1em; }
+.size-l .desk-cal-day { min-width: 38px; min-height: 38px; font-size: 1.05em; }
 .desk-cal-day.other { opacity: 0.3; }
 .desk-cal-day.weekend { opacity: 0.7; }
 .desk-cal-day.holiday { color: @accent_color; font-weight: 700; }
@@ -35,12 +35,12 @@ pub fn build(_ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
     match w.size() {
         "s" => today(),
         "l" => {
-            // Grande taille : la grille (avec les semaines) et, à côté, les prochains fériés.
-            let row = gtk::Box::new(gtk::Orientation::Horizontal, 18);
-            row.append(&month(w, true));
-            row.append(&gtk::Separator::new(gtk::Orientation::Vertical));
-            row.append(&upcoming());
-            row.upcast()
+            // Grande taille : la grille (avec les semaines) et, dessous, les prochains fériés.
+            let col = gtk::Box::new(gtk::Orientation::Vertical, 12);
+            col.append(&month(w, true));
+            col.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+            col.append(&upcoming());
+            col.upcast()
         }
         _ => month(w, false),
     }
@@ -49,7 +49,6 @@ pub fn build(_ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
 /// Petite taille : le jour (jour de la semaine, quantième, mois) et le prochain férié.
 fn today() -> gtk::Widget {
     let b = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    b.set_size_request(150, -1);
     let wd = gtk::Label::new(None);
     wd.add_css_class("desk-cal-wd");
     let num = gtk::Label::new(None);
@@ -90,17 +89,16 @@ fn days_until(now: &glib::DateTime, (hy, hm, hd, _): (i32, u32, u32, &str)) -> S
     }
 }
 
-/// Grande taille : les quatre prochains jours fériés.
+/// Grande taille : les trois prochains jours fériés.
 fn upcoming() -> gtk::Widget {
     let b = gtk::Box::new(gtk::Orientation::Vertical, 8);
-    b.set_size_request(190, -1);
     let t = gtk::Label::new(Some("À venir"));
     t.add_css_class("desk-cal-head");
     t.set_xalign(0.0);
     b.append(&t);
     let Ok(now) = glib::DateTime::now_local() else { return b.upcast() };
     let (mut y, mut m, mut d) = now.ymd();
-    for _ in 0..4 {
+    for _ in 0..3 {
         let h = holidays::next_holiday(y, m as u32, d as u32);
         let Ok(date) = glib::DateTime::from_local(h.0, h.1 as i32, h.2 as i32, 0, 0, 0.0) else { break };
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);

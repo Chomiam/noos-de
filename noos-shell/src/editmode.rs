@@ -850,7 +850,7 @@ impl EditMode {
         self.close_tour();
         let steps: [(&gtk::Widget, &str, &str); 6] = [
             (self.title_box.upcast_ref(), "Bienvenue dans le mode édition", "Ici, tout se déplace : les icônes de la barre, les widgets du bureau, les notifications. Rien n'est définitif : Ctrl+Z annule."),
-            (self.widgets_btn.upcast_ref(), "Ajoutez des widgets", "Météo, horloges du monde, lecteur multimédia, cadre photo… Glissez une carte sur le bureau ou cliquez dessus. Chaque widget a ses réglages (⚙) et trois tailles."),
+            (self.widgets_btn.upcast_ref(), "Ajoutez des widgets", "Météo, horloges du monde, lecteur multimédia, cadre photo… Glissez une carte sur le bureau ou cliquez dessus. Survolez un widget : sa barre (⚙ réglages, × retirer) apparaît ; la poignée en bas à droite change sa taille."),
             (self.bars_btn.upcast_ref(), "Réorganisez les barres", "Dans la barre, glissez une icône vers une autre zone (un trait montre où elle ira), ou clic droit › « Vers… ». Ici : le bord de la barre des tâches et la barre d'état."),
             (self.layouts_btn.upcast_ref(), "Mises en page", "Un modèle en un clic (Windows 11, Classique, GNOME…), ou enregistrez la vôtre pour la retrouver plus tard, et partagez-la."),
             (self.undo_btn.upcast_ref(), "Annuler, rétablir", "Ctrl+Z et Ctrl+Y fonctionnent pour tout. Après chaque action, la ligne sous la barre propose aussi « Annuler »."),

@@ -34,24 +34,34 @@ pub struct Spec {
     pub category: &'static str,
     /// Style quand la configuration n'en précise pas (`glass`, `solid`, `clear`).
     pub default_style: &'static str,
-    /// Taille approximative (moyenne), pour placer un nouveau widget sans chevauchement.
+    /// Taille approximative (moyenne, largeur commune), pour placer un nouveau widget sans chevauchement.
     pub approx: (f64, f64),
 }
 
 pub const CATEGORIES: &[(&str, &str)] = &[("all", "Tous"), ("time", "Heure et dates"), ("info", "Infos"), ("media", "Multimédia"), ("tools", "Pratique"), ("system", "Système")];
 
 pub const SPECS: &[Spec] = &[
-    Spec { kind: "clock", name: "Horloge", description: "L'heure et la date, en chiffres ou sur un cadran", icon: "preferences-system-time-symbolic", category: "time", default_style: "clear", approx: (260.0, 130.0) },
-    Spec { kind: "worldclock", name: "Horloges du monde", description: "L'heure de plusieurs villes, de jour comme de nuit", icon: "web-browser-symbolic", category: "time", default_style: "glass", approx: (300.0, 220.0) },
-    Spec { kind: "calendar", name: "Calendrier", description: "Le mois en cours, semaines et jours fériés", icon: "x-office-calendar-symbolic", category: "time", default_style: "glass", approx: (300.0, 320.0) },
-    Spec { kind: "countdown", name: "Compte à rebours", description: "Les jours qui restent avant un événement", icon: "alarm-symbolic", category: "time", default_style: "glass", approx: (320.0, 150.0) },
-    Spec { kind: "weather", name: "Météo", description: "Conditions actuelles et prévisions sur 5 jours", icon: "weather-few-clouds-symbolic", category: "info", default_style: "glass", approx: (330.0, 200.0) },
-    Spec { kind: "media", name: "Lecteur multimédia", description: "Ce qui joue en ce moment : pochette, titre, commandes", icon: "audio-x-generic-symbolic", category: "media", default_style: "glass", approx: (340.0, 150.0) },
-    Spec { kind: "photo", name: "Cadre photo", description: "Les images d'un dossier, en fondu enchaîné", icon: "image-x-generic-symbolic", category: "media", default_style: "glass", approx: (320.0, 210.0) },
-    Spec { kind: "note", name: "Note", description: "Un pense-bête toujours sous les yeux", icon: "accessories-text-editor-symbolic", category: "tools", default_style: "glass", approx: (240.0, 200.0) },
-    Spec { kind: "folders", name: "Dossiers", description: "Vos dossiers favoris à portée de clic", icon: "folder-symbolic", category: "tools", default_style: "glass", approx: (300.0, 200.0) },
-    Spec { kind: "vitals", name: "Ressources", description: "Processeur, carte graphique, mémoire, disque, réseau", icon: "power-profile-performance-symbolic", category: "system", default_style: "glass", approx: (380.0, 100.0) },
+    Spec { kind: "clock", name: "Horloge", description: "L'heure et la date, en chiffres ou sur un cadran", icon: "preferences-system-time-symbolic", category: "time", default_style: "clear", approx: (360.0, 130.0) },
+    Spec { kind: "worldclock", name: "Horloges du monde", description: "L'heure de plusieurs villes, de jour comme de nuit", icon: "web-browser-symbolic", category: "time", default_style: "glass", approx: (360.0, 220.0) },
+    Spec { kind: "calendar", name: "Calendrier", description: "Le mois en cours, semaines et jours fériés", icon: "x-office-calendar-symbolic", category: "time", default_style: "glass", approx: (360.0, 320.0) },
+    Spec { kind: "countdown", name: "Compte à rebours", description: "Les jours qui restent avant un événement", icon: "alarm-symbolic", category: "time", default_style: "glass", approx: (360.0, 150.0) },
+    Spec { kind: "weather", name: "Météo", description: "Conditions actuelles et prévisions sur 5 jours", icon: "weather-few-clouds-symbolic", category: "info", default_style: "glass", approx: (360.0, 200.0) },
+    Spec { kind: "media", name: "Lecteur multimédia", description: "Ce qui joue en ce moment : pochette, titre, commandes", icon: "audio-x-generic-symbolic", category: "media", default_style: "glass", approx: (360.0, 150.0) },
+    Spec { kind: "photo", name: "Cadre photo", description: "Les images d'un dossier, en fondu enchaîné", icon: "image-x-generic-symbolic", category: "media", default_style: "glass", approx: (360.0, 210.0) },
+    Spec { kind: "note", name: "Note", description: "Un pense-bête toujours sous les yeux", icon: "accessories-text-editor-symbolic", category: "tools", default_style: "glass", approx: (360.0, 200.0) },
+    Spec { kind: "folders", name: "Dossiers", description: "Vos dossiers favoris à portée de clic", icon: "folder-symbolic", category: "tools", default_style: "glass", approx: (360.0, 200.0) },
+    Spec { kind: "vitals", name: "Ressources", description: "Processeur, carte graphique, mémoire, disque, réseau", icon: "power-profile-performance-symbolic", category: "system", default_style: "glass", approx: (360.0, 100.0) },
 ];
+
+/// Largeur commune des widgets, par taille (comme les widgets de Windows 11) : deux petits
+/// côte à côte (avec l'écart de 16 px de l'aimantation) font un moyen ; le grand a la largeur du
+/// moyen et gagne en hauteur. Cadre compris.
+pub const WIDTHS: [i32; 3] = [172, 360, 360];
+
+/// Largeur du cadre d'un widget.
+pub fn width(w: &DesktopWidget) -> i32 {
+    by_size(w, WIDTHS[0], WIDTHS[1], WIDTHS[2])
+}
 
 pub fn spec(kind: &str) -> &'static Spec {
     SPECS.iter().find(|s| s.kind == kind).unwrap_or(&SPECS[7])

@@ -66,7 +66,6 @@ fn zones(w: &DesktopWidget) -> Vec<String> {
 
 pub fn build(_ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
     let b = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    b.set_size_request(by_size(w, 220, 290, 360), -1);
     let t = gtk::Label::new(Some("Horloges du monde"));
     t.add_css_class("desk-title");
     t.set_xalign(0.0);
@@ -75,6 +74,7 @@ pub fn build(_ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
         b.append(&t);
     }
     let face = by_size(w, 0, 40, 52);
+    let small = w.size() == "s";
     let mut ticks: Vec<Box<dyn Fn()>> = vec![];
     for id in zones(w) {
         // Identifiants tirés de la base du système : un nom inconnu donnerait UTC.
@@ -99,10 +99,12 @@ pub fn build(_ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
         let name = gtk::Label::new(Some(&city(&id)));
         name.add_css_class("desk-world-city");
         name.set_xalign(0.0);
+        name.set_ellipsize(gtk::pango::EllipsizeMode::End);
         col.append(&name);
         let off = gtk::Label::new(None);
         off.add_css_class("desk-world-off");
         off.set_xalign(0.0);
+        off.set_ellipsize(gtk::pango::EllipsizeMode::End);
         col.append(&off);
         row.append(&col);
         let time = gtk::Label::new(None);
@@ -133,7 +135,18 @@ pub fn build(_ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
         }
         ticks.push(Box::new(move || {
             let (Ok(here), Ok(there)) = (glib::DateTime::now_local(), glib::DateTime::now(&tz)) else { return };
-            time.set_text(&there.format("%H:%M").map(|s| s.to_string()).unwrap_or_default());
+            let hm = there.format("%H:%M").map(|s| s.to_string()).unwrap_or_default();
+            // Petite taille : jour d'écart en exposant après l'heure (« 04:22⁺¹ »).
+            let jump = match (there.ymd(), here.ymd()) {
+                (a, b) if a > b => "+1",
+                (a, b) if a < b => "−1",
+                _ => "",
+            };
+            if small && !jump.is_empty() {
+                time.set_markup(&format!("{hm}<span size=\"60%\" rise=\"6pt\">{jump}</span>"));
+            } else {
+                time.set_text(&hm);
+            }
             let diff = (there.utc_offset().as_seconds() - here.utc_offset().as_seconds()) / 60;
             let day = match (there.ymd(), here.ymd()) {
                 (a, b) if a > b => "Demain",
@@ -147,7 +160,11 @@ pub fn build(_ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
                 let sign = if diff > 0 { "+" } else { "−" };
                 if m == 0 { format!("{sign}{h} h") } else { format!("{sign}{h} h {m:02}") }
             };
-            off.set_text(&format!("{day}, {off_txt}"));
+            // Petite taille : le décalage seul (le jour seulement s'il change).
+            off.set_text(&match (small, day) {
+                (true, _) => off_txt,
+                _ => format!("{day}, {off_txt}"),
+            });
             area.queue_draw();
             bar.queue_draw();
         }));

@@ -35,7 +35,8 @@ pub fn build(ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
     b.add_css_class(color);
     let tv = gtk::TextView::new();
     tv.set_wrap_mode(gtk::WrapMode::WordChar);
-    tv.set_size_request(by_size(w, 180, 230, 320), by_size(w, 120, 170, 250));
+    // Largeur commune (moins les marges du papier) ; la grande taille est plus haute.
+    tv.set_size_request(super::width(w) - 28, by_size(w, 120, 170, 300));
     tv.buffer().set_text(&w.text);
     // Texte indicatif (pas du vrai texte à effacer) tant que la note est vide.
     let o = gtk::Overlay::new();
