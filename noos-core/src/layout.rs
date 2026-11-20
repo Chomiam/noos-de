@@ -150,14 +150,25 @@ impl Layout {
 pub struct History {
     undo: Vec<(String, Layout)>,
     redo: Vec<(String, Layout)>,
+    /// Dernière action enregistrée et son heure : la même action répétée aussitôt (flèches
+    /// du clavier) ne fait qu'une étape d'annulation.
+    last: Option<(String, std::time::Instant)>,
 }
 
 impl History {
     pub const MAX: usize = 50;
+    /// Délai sous lequel la même action répétée est fusionnée.
+    pub const MERGE: std::time::Duration = std::time::Duration::from_millis(1200);
 
     /// Action `label` faite, `before` = état d'avant.
     pub fn push(&mut self, label: &str, before: Layout) {
         if self.undo.last().is_some_and(|(_, l)| *l == before) && self.redo.is_empty() {
+            return;
+        }
+        let now = std::time::Instant::now();
+        let repeat = self.last.as_ref().is_some_and(|(l, t)| l == label && now.duration_since(*t) < Self::MERGE);
+        self.last = Some((label.to_string(), now));
+        if repeat && self.redo.is_empty() && self.undo.last().is_some_and(|(l, _)| l == label) {
             return;
         }
         self.undo.push((label.to_string(), before));
@@ -169,12 +180,14 @@ impl History {
 
     /// Annule la dernière action : état à appliquer et nom de l'action.
     pub fn undo(&mut self, current: Layout) -> Option<(String, Layout)> {
+        self.last = None;
         let (label, before) = self.undo.pop()?;
         self.redo.push((label.clone(), current));
         Some((label, before))
     }
 
     pub fn redo(&mut self, current: Layout) -> Option<(String, Layout)> {
+        self.last = None;
         let (label, after) = self.redo.pop()?;
         self.undo.push((label.clone(), current));
         Some((label, after))
@@ -495,6 +508,9 @@ mod tests {
         c.statusbar = true;
         h.push("Bord", a.clone());
         h.push("Barre d'état", b.clone());
+        // La même action répétée aussitôt (flèches) : une seule étape.
+        h.push("Barre d'état", c.clone());
+        assert_eq!(h.undo_label(), Some("Barre d'état"));
         assert_eq!(h.undo_label(), Some("Barre d'état"));
         let (l, s) = h.undo(c.clone()).unwrap();
         assert_eq!((l.as_str(), &s), ("Barre d'état", &b));

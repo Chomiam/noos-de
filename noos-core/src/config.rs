@@ -400,7 +400,7 @@ impl Default for TopBar {
 }
 
 /// Widget du bureau (`clock`, `vitals`, `note`, `calendar`, `weather`, `worldclock`, `media`,
-/// `countdown`, `photo`, `folders`), placé en fraction de l'écran.
+/// `countdown`, `photo`, `folders`, `battery`), placé en fraction de l'écran.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(default)]
 pub struct DesktopWidget {

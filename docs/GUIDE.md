@@ -286,6 +286,11 @@ si la barre des tâches est en haut) avec, dessous, une ligne d'aide. Échap, En
   (ou flèches ↖ ↗ ↙ ↘).
 - Bouton « Afficher le bureau » de la barre d'outils : réduit les fenêtres qui cachent les
   widgets.
+- **Super+W** ouvre et ferme le mode édition (la touche des widgets de Windows 11).
+- **Au clavier** : Tab / Maj+Tab choisit un widget (un clic aussi) ; flèches = une case de la
+  grille (Maj : au pixel) ; + / − = taille ; Entrée = réglages ; Suppr = retirer ;
+  Ctrl+Maj+← / → = écran voisin ; Échap = ne plus rien choisir, puis quitter. Les appuis répétés
+  ne font qu'une étape d'annulation.
 
 ### Widgets du bureau
 
@@ -323,6 +328,7 @@ moyen, et les widgets s'alignent en colonnes (`grille.jpg`). La barre de titre d
 | Cadre photo | l'image seule | + nom au survol | + **barre** nom, date, ‹ › | dossier, intervalle (1 min à 1 h), ordre aléatoire |
 | Note | trois tailles de papier ; texte indicatif « Écrivez ici… » tant qu'elle est vide | | | 5 couleurs |
 | Dossiers | les icônes seules | icônes et noms | **liste** avec le nombre d'éléments | ajout / retrait de dossiers |
+| Batterie | jauge ronde, pourcentage, état en un mot | batterie dessinée (verte en charge, orange / rouge quand elle faiblit), autonomie, mode d'alimentation | + santé, consommation, cycles, modèle, bouton « Modes d'alimentation… » (panneau Énergie) ; sur un PC fixe : jauge et nom du mode | — |
 | Ressources | **4 jauges rondes** (processeur, graphique, mémoire, disque) | barre compacte (comme dans la barre des tâches) | une **carte par composant** : matériel, valeur, jauge, détail (espace libre, débits, température), réseau | — |
 
 Météo : [Open-Meteo](https://open-meteo.com) (sans compte ni clé), fond dégradé selon le temps
@@ -1032,6 +1038,7 @@ Dans un terminal, `pkexec` garde sa propre invite texte (comme sous GNOME) ; ajo
 | Glisser une fenêtre vers le haut | Barre de dispositions : moitiés, 2/3 + 1/3, tiers, moitié + quarts, quarts |
 | Super+glisser | Déplacer une fenêtre depuis n'importe où |
 | Super+D | Afficher le bureau |
+| Super+W | Mode édition du bureau (widgets, barres, mises en page) ; Échap pour sortir |
 | Super+F, F11 | Plein écran |
 | Alt+Tab, Alt+F4 | Fenêtre suivante, fermer |
 | Super+Maj+S, Impr. écran | Outil Capture d'écran |

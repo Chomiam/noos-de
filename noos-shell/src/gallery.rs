@@ -31,6 +31,7 @@ pub const CSS: &str = r#"
 .tile-photo { background-image: linear-gradient(135deg, #2ec27e, #158a6b); }
 .tile-note { background-image: linear-gradient(135deg, #f8d14a, #e6a823); }
 .tile-folders { background-image: linear-gradient(135deg, #6b8af7, #8f5cf0); }
+.tile-battery { background-image: linear-gradient(135deg, #57d37a, #1fa35b); }
 .tile-vitals { background-image: linear-gradient(135deg, #3ec27f, #2a8fc9); }
 "#;
 

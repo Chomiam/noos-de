@@ -1596,7 +1596,7 @@ pub fn taskbar(app: &Rc<App>) -> adap::NavigationPage {
         });
     }
     layout.add(&notif_pos);
-    let edit = card("document-edit-symbolic", "Modifier la disposition", "Mode édition : déplacez les éléments des barres, ajoutez des widgets (météo, horloges, lecteur…), choisissez une mise en page (aussi : clic droit sur le bureau)");
+    let edit = card("document-edit-symbolic", "Modifier la disposition", "Mode édition : déplacez les éléments des barres, ajoutez des widgets (météo, horloges, lecteur…), choisissez une mise en page (aussi : Super+W, clic droit sur le bureau)");
     edit.set_activatable(true);
     edit.add_suffix(&gtk::Image::from_icon_name("go-next-symbolic"));
     edit.connect_activated(|_| {

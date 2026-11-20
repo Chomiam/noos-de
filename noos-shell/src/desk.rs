@@ -35,7 +35,8 @@ pub const CSS: &str = r#"
 .desk-shield { border-radius: 18px; }
 .desk-shield:hover { background-color: alpha(@accent_bg_color, 0.10); }
 .desk-chrome { min-height: 32px; opacity: 0; transition: opacity 140ms ease-out; }
-.desk-outer:hover .desk-chrome, .desk-outer.active .desk-chrome { opacity: 1; }
+.desk-outer:hover .desk-chrome, .desk-outer.active .desk-chrome, .desk-outer.selected .desk-chrome { opacity: 1; }
+.editing-desk .desk-outer.selected .desk-card { box-shadow: 0 0 0 3px @accent_bg_color, 0 14px 36px rgba(0,0,0,0.4); }
 .desk-chip { padding: 0 12px 0 8px; min-height: 30px; border-radius: 99px; background-color: @accent_bg_color; color: @accent_fg_color; font-weight: 700; font-size: 0.85em; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
 .desk-chip-btn { min-width: 30px; min-height: 30px; padding: 0; border-radius: 99px; color: @window_fg_color; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
 .desk-chip-btn:hover { }
@@ -305,6 +306,122 @@ pub fn remove(shell: &Rc<Shell>, id: &str, name: &str) {
     shell.edit_layout(&format!("« {name} » retiré"), move |c| c.desktop_widgets.retain(|w| w.id != id));
 }
 
+// ───────────────────────────── Clavier (mode édition) ─────────────────────────────
+
+/// Écrans de gauche à droite, et leurs widgets de haut en bas, de gauche à droite.
+fn ordered(shell: &Rc<Shell>) -> Vec<(DeskLayer, Rc<DeskWidget>)> {
+    let mut layers: Vec<DeskLayer> = shell.wallpapers.borrow().iter().map(|w| w.desk.clone()).collect();
+    layers.sort_by_key(|l| (l.monitor.geometry().x(), l.monitor.geometry().y()));
+    let mut v = vec![];
+    for l in layers {
+        let mut ws: Vec<Rc<DeskWidget>> = l.widgets.borrow().clone();
+        ws.sort_by(|a, b| {
+            let (ra, rb) = (a.rect(&l.fixed, true), b.rect(&l.fixed, true));
+            ((ra.y / 40.0).round(), ra.x).partial_cmp(&((rb.y / 40.0).round(), rb.x)).unwrap_or(std::cmp::Ordering::Equal)
+        });
+        v.extend(ws.into_iter().map(|w| (l.clone(), w)));
+    }
+    v
+}
+
+fn find(shell: &Rc<Shell>, id: &str) -> Option<(DeskLayer, Rc<DeskWidget>)> {
+    ordered(shell).into_iter().find(|(_, d)| d.id() == id)
+}
+
+/// Widget suivant (`delta` = 1) ou précédent après `current` ; son identifiant et son nom.
+pub fn cycle(shell: &Rc<Shell>, current: Option<&str>, delta: i32) -> Option<(String, &'static str)> {
+    let all = ordered(shell);
+    if all.is_empty() {
+        return None;
+    }
+    let n = all.len() as i32;
+    let i = match current.and_then(|c| all.iter().position(|(_, d)| d.id() == c)) {
+        Some(i) => (i as i32 + delta).rem_euclid(n),
+        None if delta < 0 => n - 1,
+        None => 0,
+    };
+    let (_, d) = &all[i as usize];
+    Some((d.id(), d.name()))
+}
+
+/// Widget mis en avant (clavier) : barre de titre visible, contour marqué.
+pub fn mark_selected(shell: &Rc<Shell>, id: Option<&str>) {
+    for (l, d) in ordered(shell) {
+        if Some(d.id().as_str()) == id {
+            d.outer.add_css_class("selected");
+            // Au premier plan (dernier enfant du `gtk::Fixed`, dessiné par-dessus les autres).
+            d.outer.insert_before(&l.fixed, None::<&gtk::Widget>);
+        } else {
+            d.outer.remove_css_class("selected");
+        }
+    }
+}
+
+/// Déplace un widget de (dx, dy) pixels (flèches du clavier), sans sortir de l'écran.
+pub fn nudge(shell: &Rc<Shell>, id: &str, dx: f64, dy: f64) {
+    let Some((l, d)) = find(shell, id) else { return };
+    let (sw, sh) = l.size();
+    let r = d.rect(&l.fixed, true);
+    let x = (r.x + dx).min(sw - r.w).max(0.0);
+    let y = (r.y + dy).min(sh - r.h).max(CHROME_H);
+    let (fx, fy) = (x / sw.max(1.0), y / sh.max(1.0));
+    let id = id.to_string();
+    shell.edit_layout(&format!("« {} » déplacé", d.name()), move |c| {
+        if let Some(w) = c.desktop_widgets.iter_mut().find(|w| w.id == id) {
+            w.x = fx;
+            w.y = fy;
+        }
+    });
+}
+
+/// Taille voisine (`delta` = 1 : plus grande).
+pub fn resize_step(shell: &Rc<Shell>, id: &str, delta: i32) {
+    let Some((_, d)) = find(shell, id) else { return };
+    let i = (size_index(d.conf.borrow().size()) as i32 + delta).clamp(0, 2) as usize;
+    let size = SIZES[i];
+    let label = format!("« {} » : taille {}", d.name(), match size {
+        "s" => "petite",
+        "l" => "grande",
+        _ => "moyenne",
+    });
+    let id = id.to_string();
+    shell.edit_layout(&label, move |c| {
+        if let Some(w) = c.desktop_widgets.iter_mut().find(|w| w.id == id) {
+            w.size = size.into();
+        }
+    });
+}
+
+/// Envoie un widget sur l'écran voisin (`dir` = -1 : à gauche), à la même place relative.
+pub fn to_neighbor_output(shell: &Rc<Shell>, id: &str, dir: i32) -> Option<String> {
+    let Some((l, d)) = find(shell, id) else { return None };
+    let mut layers: Vec<DeskLayer> = shell.wallpapers.borrow().iter().map(|w| w.desk.clone()).collect();
+    layers.sort_by_key(|x| (x.monitor.geometry().x(), x.monitor.geometry().y()));
+    let i = layers.iter().position(|x| Rc::ptr_eq(x, &l))? as i32 + dir;
+    let target = layers.get(usize::try_from(i).ok()?)?.output.clone();
+    let primary = shell.primary_output();
+    let out = if primary.as_deref() == Some(target.as_str()) { String::new() } else { target.clone() };
+    let id = id.to_string();
+    shell.edit_layout(&format!("« {} » déplacé sur {target}", d.name()), move |c| {
+        if let Some(w) = c.desktop_widgets.iter_mut().find(|w| w.id == id) {
+            w.output = out;
+        }
+    });
+    Some(target)
+}
+
+/// Un panneau de réglages de widget est-il ouvert ?
+pub fn settings_open(shell: &Rc<Shell>) -> bool {
+    shell.wallpapers.borrow().iter().any(|w| w.desk.widgets.borrow().iter().any(|d| d.settings.is_visible()))
+}
+
+/// Retire un widget par son identifiant (touche Suppr).
+pub fn remove_by_id(shell: &Rc<Shell>, id: &str) {
+    if let Some((_, d)) = find(shell, id) {
+        remove(shell, id, d.name());
+    }
+}
+
 /// Ouvre les réglages d'un widget, où qu'il soit.
 pub fn open_settings(shell: &Rc<Shell>, id: &str) {
     for w in shell.wallpapers.borrow().iter() {
@@ -513,6 +630,25 @@ impl Inner {
                     l.draw(a, cr, wd as f64, ht as f64);
                 }
             });
+        }
+        // Clavier du mode édition (le widget cliqué donne le clavier à cette surface).
+        {
+            let keys = gtk::EventControllerKey::new();
+            keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+            let (w, win) = (Rc::downgrade(shell), layer.window.clone());
+            keys.connect_key_pressed(move |_, k, _, m| {
+                let Some(s) = w.upgrade() else { return glib::Propagation::Proceed };
+                // Panneau de réglages ouvert (champ de recherche…) : les touches sont à lui.
+                if settings_open(&s) {
+                    return glib::Propagation::Proceed;
+                }
+                let e = s.editmode.borrow().clone();
+                match e {
+                    Some(e) => e.handle_key(&win, k, m),
+                    None => glib::Propagation::Proceed,
+                }
+            });
+            layer.window.add_controller(keys);
         }
         layer.setup_drag();
         layer.setup_drop();
@@ -867,6 +1003,11 @@ impl Inner {
                 let r = d.rect(&l.fixed, true);
                 d.card.add_css_class("dragging");
                 d.outer.add_css_class("active");
+                if let Some(s) = l.shell.upgrade() {
+                    if let Some(e) = s.editmode.borrow().as_ref() {
+                        e.select(Some(d.id()), false);
+                    }
+                }
                 *l.drag.borrow_mut() = Some(Drag { id: d.id(), mode, start: (r.x, r.y), size0: size_index(d.conf.borrow().size()) });
             });
         }

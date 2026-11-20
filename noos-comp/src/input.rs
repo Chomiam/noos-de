@@ -54,6 +54,8 @@ enum Action {
     NewDesktop,
     CloseDesktop,
     TaskView,
+    /// Mode édition du bureau (Super+W, la touche des widgets de Windows 11).
+    EditMode,
     /// Envoyer la fenêtre active sur l'écran voisin.
     WindowToOutput(i32),
 }
@@ -117,6 +119,7 @@ fn shortcut(mods: &ModifiersState, sym: Keysym) -> Option<Action> {
     }
     match sym {
         Keysym::e | Keysym::E => Some(Action::Spawn("noos-file".into())),
+        Keysym::w | Keysym::W => Some(Action::EditMode),
         Keysym::i | Keysym::I => Some(Action::Spawn("noos-settings".into())),
         Keysym::Return | Keysym::KP_Enter => Some(Action::Spawn(terminal_command())),
         Keysym::d | Keysym::D => Some(Action::ShowDesktop),
@@ -225,6 +228,7 @@ impl NoosState {
                 self.remove_desktop(cur);
             }
             Action::TaskView => self.ipc.broadcast(&noos_core::ipc::Event::ToggleTaskView),
+            Action::EditMode => self.ipc.broadcast(&noos_core::ipc::Event::ToggleEditMode),
             Action::WindowToOutput(d) => {
                 if let Some(w) = self.focused_window() {
                     self.move_window_to_adjacent_output(&w, d);

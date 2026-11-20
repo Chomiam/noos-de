@@ -1094,6 +1094,12 @@ impl Power {
         f.window.set_default_size(1, 1);
     }
 
+    /// État actuel, pour le widget de bureau « Batterie » : batterie (`None` sur un PC fixe) et
+    /// mode d'alimentation actif.
+    pub fn snapshot(&self) -> (Option<Battery>, String) {
+        (self.battery.borrow().clone(), self.active.borrow().clone())
+    }
+
     pub fn toggle(self: &Rc<Self>) {
         if self.flyout.borrow().is_none() {
             let f = self.build_flyout();

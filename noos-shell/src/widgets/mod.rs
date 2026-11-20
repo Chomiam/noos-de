@@ -5,6 +5,7 @@
 //! réglage modifié passe par [`Ctx::edit`] (annulable) puis le contenu est reconstruit, dans le
 //! même cadre.
 
+mod battery;
 mod calendar;
 mod clock;
 mod countdown;
@@ -50,6 +51,7 @@ pub const SPECS: &[Spec] = &[
     Spec { kind: "photo", name: "Cadre photo", description: "Les images d'un dossier, en fondu enchaîné", icon: "image-x-generic-symbolic", category: "media", default_style: "glass", approx: (360.0, 210.0) },
     Spec { kind: "note", name: "Note", description: "Un pense-bête toujours sous les yeux", icon: "accessories-text-editor-symbolic", category: "tools", default_style: "glass", approx: (360.0, 200.0) },
     Spec { kind: "folders", name: "Dossiers", description: "Vos dossiers favoris à portée de clic", icon: "folder-symbolic", category: "tools", default_style: "glass", approx: (360.0, 200.0) },
+    Spec { kind: "battery", name: "Batterie", description: "Charge, autonomie et mode d'alimentation", icon: "battery-good-symbolic", category: "system", default_style: "glass", approx: (360.0, 130.0) },
     Spec { kind: "vitals", name: "Ressources", description: "Processeur, carte graphique, mémoire, disque, réseau", icon: "power-profile-performance-symbolic", category: "system", default_style: "glass", approx: (360.0, 100.0) },
 ];
 
@@ -64,7 +66,7 @@ pub fn width(w: &DesktopWidget) -> i32 {
 }
 
 pub fn spec(kind: &str) -> &'static Spec {
-    SPECS.iter().find(|s| s.kind == kind).unwrap_or(&SPECS[7])
+    SPECS.iter().find(|s| s.kind == kind).unwrap_or_else(|| SPECS.iter().find(|s| s.kind == "note").unwrap())
 }
 
 /// Style effectif d'un widget (celui de la configuration, sinon celui du widget).
@@ -133,6 +135,7 @@ pub fn build(ctx: &Ctx, w: &DesktopWidget) -> gtk::Widget {
         "photo" => photo::build(ctx, w),
         "folders" => folders::build(ctx, w),
         "vitals" => vitals::build(ctx, w),
+        "battery" => battery::build(ctx, w),
         _ => note::build(ctx, w),
     }
 }
@@ -273,5 +276,5 @@ pub const CSS: &str = r#"
 
 /// Feuilles de style de tous les widgets.
 pub fn css() -> String {
-    [CSS, clock::CSS, calendar::CSS, countdown::CSS, weather::CSS, worldclock::CSS, media::CSS, photo::CSS, folders::CSS, note::CSS, vitals::CSS].concat()
+    [CSS, clock::CSS, calendar::CSS, countdown::CSS, weather::CSS, worldclock::CSS, media::CSS, photo::CSS, folders::CSS, note::CSS, vitals::CSS, battery::CSS].concat()
 }

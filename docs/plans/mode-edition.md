@@ -65,7 +65,7 @@ L (plusieurs jours). ✅ = réalisé dans cette version.
 | Raccourcis : Échap / Entrée (terminer), Ctrl+Z / Ctrl+Y, W (widgets), Ctrl+F (recherche de widgets) | ★ | S | ✅ |
 | Bouton « Afficher le bureau » (réduire les fenêtres qui cachent les widgets) | ★ | S | ✅ |
 | Zoom arrière du bureau façon KDE Plasma (miniature de l'écran, barres autour) | ★★ | L | — |
-| Navigation entièrement au clavier (Tab entre widgets, flèches pour déplacer) | ★ | M | — |
+| Navigation entièrement au clavier (Tab entre widgets, flèches pour déplacer, +/−, Suppr, Entrée) | ★ | M | ✅ |
 
 ### B. Fonctions
 
@@ -78,10 +78,10 @@ L (plusieurs jours). ✅ = réalisé dans cette version.
 | Réinitialiser (avec annulation possible) | ★ | S | ✅ |
 | Plusieurs écrans : glisser un widget de la galerie sur n'importe quel écran, « Écran » dans les réglages du widget | ★★ | S | ✅ |
 | Barre d'outils de chaque écran secondaire (aujourd'hui : écran principal) | ★ | M | — |
-| Glisser un widget directement d'un écran à l'autre | ★ | L | — |
+| Glisser un widget directement d'un écran à l'autre | ★ | L | — (au clavier : Ctrl+Maj+← / → ✅) |
 | Widgets dans la barre (météo, lecteur multimédia compacts) | ★★ | L | — |
 | Mise en page par bureau virtuel | ★ | L | — |
-| Raccourci global pour entrer dans le mode édition (compositeur) | ★ | S | — |
+| Raccourci global pour entrer dans le mode édition (compositeur) : **Super+W** | ★ | S | ✅ |
 
 ### C. Widgets
 
@@ -97,7 +97,8 @@ L (plusieurs jours). ✅ = réalisé dans cette version.
 | **Calendrier** (revu) | Grille du mois façon Windows 11, numéros de semaine, **prochain jour férié** (France) | ✅ |
 | **Note** (revue) | Cinq couleurs, trois tailles | ✅ |
 | Ressources | Existant, style verre | ✅ |
-| Batterie, presse-papiers, agenda (calendriers en ligne), flux RSS, citations | — | — |
+| **Batterie** | Charge, autonomie, santé, consommation, mode d'alimentation ; sur un PC fixe, le mode | ✅ |
+| Presse-papiers, agenda (calendriers en ligne), flux RSS, citations | — | — |
 
 ## 4. Choix techniques
 

@@ -371,6 +371,8 @@ pub struct EditMode {
     /// Barre d'outils en bas de l'écran (choisi à l'entrée du mode : le côté qui cache le
     /// moins de widgets ; toujours en bas si la barre des tâches est en haut).
     pub at_bottom: Cell<bool>,
+    /// Widget choisi au clavier (Tab) ou par un clic : flèches, +/−, Entrée, Suppr.
+    selected: RefCell<Option<String>>,
     tour: RefCell<Option<gtk::Popover>>,
     /// Emplacement des notifications (cadre glissable vers un coin).
     notif: gtk::Window,
@@ -545,6 +547,7 @@ impl EditMode {
             hint_undo,
             toast_n: Cell::new(0),
             at_bottom: Cell::new(false),
+            selected: RefCell::new(None),
             tour: RefCell::new(None),
             notif,
         });
@@ -623,30 +626,13 @@ impl EditMode {
         }
         {
             let keys = gtk::EventControllerKey::new();
+            // Avant les raccourcis de navigation de GTK (Tab, flèches) ; la recherche de la
+            // galerie garde toutes ses touches.
+            keys.set_propagation_phase(gtk::PropagationPhase::Capture);
             let w = Rc::downgrade(&e);
-            keys.connect_key_pressed(move |_, k, _, m| {
-                let Some(e) = w.upgrade() else { return glib::Propagation::Proceed };
-                let ctrl = m.contains(gdk::ModifierType::CONTROL_MASK);
-                let shift = m.contains(gdk::ModifierType::SHIFT_MASK);
-                let Some(s) = e.shell.upgrade() else { return glib::Propagation::Proceed };
-                match k {
-                    gdk::Key::Escape | gdk::Key::Return | gdk::Key::KP_Enter => {
-                        if e.widgets_btn.is_active() && k == gdk::Key::Escape {
-                            e.widgets_btn.set_active(false);
-                        } else {
-                            e.set_active(false);
-                        }
-                    }
-                    gdk::Key::z | gdk::Key::Z if ctrl => s.undo(shift),
-                    gdk::Key::y | gdk::Key::Y if ctrl => s.undo(true),
-                    gdk::Key::f | gdk::Key::F if ctrl => {
-                        e.widgets_btn.set_active(true);
-                        e.gallery.search.grab_focus();
-                    }
-                    gdk::Key::w | gdk::Key::W if !ctrl => e.widgets_btn.set_active(!e.widgets_btn.is_active()),
-                    _ => return glib::Propagation::Proceed,
-                }
-                glib::Propagation::Stop
+            keys.connect_key_pressed(move |_, k, _, m| match w.upgrade() {
+                Some(e) => e.handle_key(&e.toolbar.clone(), k, m),
+                None => glib::Propagation::Proceed,
             });
             e.toolbar.add_controller(keys);
         }
@@ -663,7 +649,7 @@ impl EditMode {
 
     /// Variables de démonstration (captures) : `NOOS_EDIT_OPEN` = étapes séparées par « ; »,
     /// jouées toutes les 1,5 s (`widgets`, `bars`, `layouts`, `settings:n`, `toast:texte`,
-    /// `preset:id`, `add:type`, `remove:n`, `undo`, `redo`, `tour:n`, `guides:x,y`).
+    /// `preset:id`, `add:type`, `remove:n`, `undo`, `redo`, `tour:n`, `guides:x,y`, `key:touche`).
     fn demo(self: &Rc<Self>) {
         let mut steps: Vec<String> = std::env::var("NOOS_EDIT_OPEN").unwrap_or_default().split(';').filter(|s| !s.is_empty()).map(String::from).collect();
         if let Ok(n) = std::env::var("NOOS_EDIT_TOUR") {
@@ -700,6 +686,23 @@ impl EditMode {
                     "remove" => {
                         if let Some(w) = s.config().desktop_widgets.get(n) {
                             crate::desk::remove(&s, &w.id, crate::widgets::spec(&w.kind).name);
+                        }
+                    }
+                    // Touche simulée : `key:Tab`, `key:Right`, `key:plus`, `key:shift+Left`…
+                    "key" => {
+                        let (mods, name) = match arg.rsplit_once('+').filter(|(_, n)| !n.is_empty()) {
+                            Some((m, n)) => (m, n),
+                            None => ("", arg),
+                        };
+                        let mut m = gdk::ModifierType::empty();
+                        if mods.contains("shift") {
+                            m |= gdk::ModifierType::SHIFT_MASK;
+                        }
+                        if mods.contains("ctrl") {
+                            m |= gdk::ModifierType::CONTROL_MASK;
+                        }
+                        if let Some(k) = gdk::Key::from_name(name) {
+                            let _ = e.handle_key(&e.toolbar.clone(), k, m);
                         }
                     }
                     "undo" => s.undo(false),
@@ -824,12 +827,104 @@ impl EditMode {
                 });
             }
         } else {
+            self.select(None, false);
             self.close_tour();
             self.widgets_btn.set_active(false);
             self.pill_rev.set_reveal_child(false);
             self.toolbar.set_visible(false);
             self.notif.set_visible(false);
         }
+    }
+
+    /// Touches du mode édition (barre d'outils et surface des widgets, qui reçoit le clavier
+    /// après un clic sur un widget). La saisie de texte (recherche, réglages) les garde.
+    pub fn handle_key(&self, win: &gtk::Window, k: gdk::Key, m: gdk::ModifierType) -> glib::Propagation {
+        if !self.active.get() {
+            return glib::Propagation::Proceed;
+        }
+        let typing = gtk::prelude::GtkWindowExt::focus(win).is_some_and(|f| f.is::<gtk::Text>() || f.ancestor(gtk::Entry::static_type()).is_some() || f.ancestor(gtk::SearchEntry::static_type()).is_some());
+        if typing {
+            return glib::Propagation::Proceed;
+        }
+        let ctrl = m.contains(gdk::ModifierType::CONTROL_MASK);
+        let shift = m.contains(gdk::ModifierType::SHIFT_MASK);
+        let Some(s) = self.shell.upgrade() else { return glib::Propagation::Proceed };
+        let sel = self.selected.borrow().clone();
+        match (k, sel) {
+            (gdk::Key::Tab, _) => self.select_next(1),
+            (gdk::Key::ISO_Left_Tab, _) => self.select_next(-1),
+            (gdk::Key::Escape, Some(_)) => self.select(None, false),
+            (gdk::Key::Return | gdk::Key::KP_Enter, Some(id)) => crate::desk::open_settings(&s, &id),
+            (gdk::Key::Delete | gdk::Key::BackSpace, Some(id)) => {
+                self.select(None, false);
+                crate::desk::remove_by_id(&s, &id);
+            }
+            (gdk::Key::Left | gdk::Key::Right, Some(id)) if ctrl && shift => {
+                let dir = if k == gdk::Key::Left { -1 } else { 1 };
+                if crate::desk::to_neighbor_output(&s, &id, dir).is_none() {
+                    self.toast("Pas d'autre écran de ce côté", false);
+                }
+            }
+            (gdk::Key::Left | gdk::Key::Right | gdk::Key::Up | gdk::Key::Down, Some(id)) => {
+                // Une case de la grille (16 px), au pixel près avec Maj.
+                let step = if shift { 1.0 } else { 16.0 };
+                let (dx, dy) = match k {
+                    gdk::Key::Left => (-step, 0.0),
+                    gdk::Key::Right => (step, 0.0),
+                    gdk::Key::Up => (0.0, -step),
+                    _ => (0.0, step),
+                };
+                crate::desk::nudge(&s, &id, dx, dy);
+            }
+            (gdk::Key::plus | gdk::Key::KP_Add | gdk::Key::equal, Some(id)) => crate::desk::resize_step(&s, &id, 1),
+            (gdk::Key::minus | gdk::Key::KP_Subtract, Some(id)) => crate::desk::resize_step(&s, &id, -1),
+            (gdk::Key::Escape | gdk::Key::Return | gdk::Key::KP_Enter, None) => {
+                if self.widgets_btn.is_active() && k == gdk::Key::Escape {
+                    self.widgets_btn.set_active(false);
+                } else {
+                    self.set_active(false);
+                }
+            }
+            (gdk::Key::z | gdk::Key::Z, _) if ctrl => s.undo(shift),
+            (gdk::Key::y | gdk::Key::Y, _) if ctrl => s.undo(true),
+            (gdk::Key::f | gdk::Key::F, _) if ctrl => {
+                self.widgets_btn.set_active(true);
+                self.gallery.search.grab_focus();
+            }
+            (gdk::Key::w | gdk::Key::W, _) if !ctrl => self.widgets_btn.set_active(!self.widgets_btn.is_active()),
+            _ => return glib::Propagation::Proceed,
+        }
+        glib::Propagation::Stop
+    }
+
+    /// Remarque le widget choisi (après une reconstruction des widgets).
+    pub fn reselect(&self) {
+        if let Some(s) = self.shell.upgrade() {
+            crate::desk::mark_selected(&s, self.selected.borrow().as_deref());
+        }
+    }
+
+    /// Choisit un widget (clavier ou clic) ; `announce` : rappel des touches dans la ligne
+    /// d'aide.
+    pub fn select(&self, id: Option<String>, announce: bool) {
+        let Some(s) = self.shell.upgrade() else { return };
+        crate::desk::mark_selected(&s, id.as_deref());
+        if announce {
+            if let Some(name) = id.as_ref().and_then(|i| crate::desk::cycle(&s, Some(i), 0)).map(|(_, n)| n) {
+                self.toast(&format!("« {name} » : flèches pour déplacer (Maj : au pixel), + / − taille, Entrée réglages, Suppr retirer"), false);
+            }
+        }
+        *self.selected.borrow_mut() = id;
+    }
+
+    fn select_next(&self, delta: i32) {
+        let Some(s) = self.shell.upgrade() else { return };
+        let cur = self.selected.borrow().clone();
+        let next = crate::desk::cycle(&s, cur.as_deref(), delta).map(|(id, _)| id);
+        if next.is_none() {
+            self.toast("Aucun widget : ajoutez-en depuis la galerie (W)", false);
+        }
+        self.select(next, true);
     }
 
     /// Ouvre le mode édition avec la galerie (menu du bureau « Ajouter des widgets »).

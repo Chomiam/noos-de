@@ -153,6 +153,7 @@ impl Shell {
             s.rebuild_desktop_widgets();
             if let Some(e) = s.editmode.borrow().as_ref() {
                 e.sync_labels();
+                e.reselect();
             }
         });
     }
